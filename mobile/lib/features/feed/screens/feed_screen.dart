@@ -115,7 +115,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final home = me?.areaLabel?.heading ?? 'Your area';
     final exploring = ref.watch(exploreProvider);
     // While exploring, the header names where the feed is from now.
-    final area = exploring?.area.heading ?? home;
+    final area = exploring == null
+        ? home
+        // An area too quiet to be named yet reads as "Around here", not "Around you".
+        : exploring.area.precision == 'generic'
+            ? 'Around here'
+            : exploring.area.label;
+    // Home, as words that fit mid-sentence.
+    final homeName = me?.areaLabel == null || me!.areaLabel!.precision == 'generic'
+        ? 'your home area'
+        : me.areaLabel!.label;
     final radius = feed.radiusKm;
 
     return Scaffold(
@@ -178,7 +187,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       ),
                       if (exploring != null) ...[
                         const SizedBox(height: 10),
-                        _ExploringStrip(exploring: exploring, home: home),
+                        _ExploringStrip(exploring: exploring, home: homeName),
                       ],
                       const SizedBox(height: 12),
                       const StoriesStrip(),
@@ -209,14 +218,25 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               else if (feed.posts.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  child: _Message(
-                    icon: Icons.forum_outlined,
-                    title: 'Nothing here yet',
-                    body: 'Be the first to post in $area: a question, a recommendation, '
-                        'something lost or found.',
-                    action: 'Write a post',
-                    onAction: () => context.push(Routes.compose),
-                  ),
+                  // Exploring: a post would go to home, so the way out is home, not
+                  // "Write a post".
+                  child: exploring != null
+                      ? _Message(
+                          icon: Icons.explore_outlined,
+                          title: 'Nothing posted around here yet',
+                          body: "Neighbours here haven't posted recently. Your own posts still go to "
+                              '$homeName.',
+                          action: 'Back to home',
+                          onAction: () => ref.read(exploreProvider.notifier).backHome(),
+                        )
+                      : _Message(
+                          icon: Icons.forum_outlined,
+                          title: 'Nothing here yet',
+                          body: 'Be the first to post in $area: a question, a recommendation, '
+                              'something lost or found.',
+                          action: 'Write a post',
+                          onAction: () => context.push(Routes.compose),
+                        ),
                 )
               else ...[
                 SliverList.separated(

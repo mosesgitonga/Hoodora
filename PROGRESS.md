@@ -3733,3 +3733,18 @@ and the feed comes from there.
   has moved for good.
 - **Scope:** the feed only, as asked. Market, Services and Groups keep the home
   area for now.
+
+### Built and verified (2026-11-19)
+
+- **Server:** `same_area_as_home` is added, with 3 new tests.
+- **App:** the button, the exploring strip, and the feed read from the explored
+  hexagon. The offline copy of the home feed is left alone. 3 new widget tests;
+  all 125 app tests pass.
+- **Live on the emulator** against staging, with its GPS set to Karatina:
+  - the feed moved there (empty), and the header read "Around here", "Within
+    15 km of here";
+  - the strip said "until 12:54 · your posts still go to your home area";
+  - while exploring, an empty feed offers **Back to home**, not "Write a post".
+- **Wording fix found live:** an unnamed area read "Around you", so "your posts
+  still go to Around you". Unnamed areas now read "Around here" and "your home
+  area".
