@@ -1,3 +1,5 @@
+<img src="docs/brand/hoodora-logo.svg" alt="Hoodora" width="360">
+
 # Hoodora — backend
 
 Backend API for **Hoodora**, a hyperlocal community app for Kenya: everything happening

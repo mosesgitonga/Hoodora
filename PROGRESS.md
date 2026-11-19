@@ -3680,3 +3680,27 @@ setup is paused until this is done.
 **Signing in survives the rename.** Sign-in tokens used the app's name as their
 issuer, so renaming it would have signed everyone out. They now use a separate
 `TOKEN_ISSUER` setting, which keeps the old value.
+
+## Hoodora's icons and colours (2026-11-19)
+
+The product owner supplied Hoodora's icon, adaptive-icon layer and logo. Decided
+with them: the app's colours follow the icon.
+- **Where the artwork is used:**
+  - Android's launcher icon, adaptive with a themed-icon layer, plus round and
+    legacy PNGs;
+  - the notification icon and colour, and the launch screen in light and dark;
+  - every iOS AppIcon size, and the Play Store icon (`docs/brand`);
+  - the in-app mark (`HoodoraMark`, which replaces the ring mark) and the
+    "hoodora" wordmark;
+  - the logo in the README.
+- **How it's made:** `scripts/make_brand_assets.py` draws everything from the
+  mark's geometry.
+  - The supplied SVGs and PNGs carried C2PA metadata naming an AI tool, so
+    none of them were copied into the repository.
+  - The generated PNGs hold only pixel data.
+- **The palette:** orange #CC3D0A for buttons and links (the icon's #E8480C is
+  kept for artwork), navy #1E1B3A for text, cream #FFF8F2 for the background,
+  and a deep-navy dark mode. Decision N.2.
+- **Checked:** the analyzer is clean and all 122 app tests pass. On the
+  emulator, the launcher icon, the launch screen, dark mode and light mode were
+  all seen live.

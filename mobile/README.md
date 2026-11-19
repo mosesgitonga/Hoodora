@@ -1,3 +1,5 @@
+<img src="../docs/brand/hoodora-icon.svg" alt="Hoodora" width="96">
+
 # Hoodora app
 
 The Flutter app for Hoodora, for Android (and iOS, which needs a Mac to build).

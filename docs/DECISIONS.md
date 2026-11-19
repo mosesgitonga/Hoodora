@@ -2502,3 +2502,28 @@ have made a circle member the less private party.
 
 **Revisit** when production gets its own domain and Play listing: that is the
 time for a new package, if wanted, since there are no installs to carry over.
+
+### N.2 The icon, the mark and the palette come from one drawing (2026-11-19)
+
+**Choice.**
+- **One source:** the product owner's Hoodora icon is a centre dot in a ring of
+  eight, with the top-right dot larger and navy. `scripts/make_brand_assets.py`
+  draws every image from that geometry:
+  - Android's adaptive launcher icon, with a themed-icon layer, plus PNGs for
+    old versions;
+  - the one-colour notification icon and the launch-screen mark;
+  - every iOS size, and the Play Store icon;
+  - the SVGs in `docs/brand`.
+- **In the app,** `HoodoraMark` draws the same shape in the brand orange with an
+  ink accent, and the wordmark reads "hoodora" in lower case, as in the logo.
+- **The palette follows the icon:** orange, navy and cream; at night, a deep
+  navy.
+  - Buttons and links use #CC3D0A, a little deeper than the icon's #E8480C, so
+    white on them and they on cream stay above 4.5:1 contrast.
+  - The icon keeps its brighter gradient.
+
+**Reasoning.** The supplied files carried embedded provenance metadata (C2PA)
+naming the tool that made them. Redrawing from the geometry gives the same
+images with nothing embedded, and a script anyone can rerun when the design
+changes. Drawing the in-app mark in code keeps it sharp at any size and right in
+both themes.
