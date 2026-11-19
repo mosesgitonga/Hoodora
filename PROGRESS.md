@@ -3704,3 +3704,32 @@ with them: the app's colours follow the icon.
 - **Checked:** the analyzer is clean and all 122 app tests pass. On the
   emulator, the launcher icon, the launch screen, dark mode and light mode were
   all seen live.
+
+## Slice 20 — "Use my location now" on Home
+
+### Plan
+
+Asked for on 2026-11-19: a small button at the top of Home. It reads GPS; if the
+person has moved away from their area, it puts them in the hexagon they're in,
+and the feed comes from there.
+
+**This is the server's explore mode (decision 1.1), already built:**
+- **Only the feed moves.** The feed is read from the phone's current res-8
+  hexagon, for `EXPLORE_TTL_SECONDS` (2 hours), held only in Redis.
+- **Home stays.** Home and what others see are unchanged, and anything posted
+  still carries the home area. Comments written while away are marked
+  "visiting", as before.
+- **New on the server:** `POST /v1/me/explore` answers `same_area_as_home:
+  true`, and ends exploring, when the phone is still in the home hexagon.
+
+**App:**
+- **The button:** a location icon at the top right of Home. A tap reads GPS
+  (asking for permission if needed), then:
+  - **Still at home:** "You're in your home area".
+  - **Moved:** the header becomes the new area, with "Exploring until 14:30"
+    and a **Back to home** button. The feed reloads from there.
+- **When the time runs out,** the feed returns to home by itself.
+- **A link to move home:** "Living here now? Move your home", for someone who
+  has moved for good.
+- **Scope:** the feed only, as asked. Market, Services and Groups keep the home
+  area for now.
