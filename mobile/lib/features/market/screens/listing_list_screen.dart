@@ -93,7 +93,7 @@ class _ListingListScreenState extends ConsumerState<ListingListScreen> {
                     padding: const EdgeInsets.all(32),
                     children: [
                       const SizedBox(height: 32),
-                      const Center(child: RadiusMark(size: 48)),
+                      const Center(child: HoodoraMark(size: 48)),
                       const SizedBox(height: 16),
                       Text(_error ?? widget.which.emptyTitle, textAlign: TextAlign.center, style: text.titleLarge),
                       const SizedBox(height: 8),

@@ -181,7 +181,7 @@ class _GuestScreenState extends ConsumerState<GuestScreen> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const RadiusMark(size: 56),
+                                  const HoodoraMark(size: 56),
                                   const SizedBox(height: 20),
                                   Text('Nothing here yet', style: text.titleLarge),
                                   const SizedBox(height: 8),
@@ -247,7 +247,7 @@ class _Finding extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const RadiusMark(size: 56),
+          const HoodoraMark(size: 56),
           const SizedBox(height: 20),
           Text('Finding your neighbourhood…', style: text.titleMedium),
           const SizedBox(height: 16),
@@ -272,7 +272,7 @@ class _Problem extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const RadiusMark(size: 56),
+          const HoodoraMark(size: 56),
           const SizedBox(height: 20),
           Text('See what is happening near you', style: text.titleLarge, textAlign: TextAlign.center),
           const SizedBox(height: 8),

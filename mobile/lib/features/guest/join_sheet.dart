@@ -18,7 +18,7 @@ Future<void> showJoinSheet(BuildContext context, {required String toDo}) {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const RadiusMark(size: 44),
+              const HoodoraMark(size: 44),
               const SizedBox(height: 14),
               Text('Join Hoodora to $toDo', style: text.titleMedium, textAlign: TextAlign.center),
               const SizedBox(height: 6),

@@ -76,7 +76,7 @@ class _MyServicesScreenState extends ConsumerState<MyServicesScreen> {
                 children: [
                   if (_posts.isEmpty) ...[
                     const SizedBox(height: 64),
-                    const Center(child: RadiusMark(size: 48)),
+                    const Center(child: HoodoraMark(size: 48)),
                     const SizedBox(height: 16),
                     Text(_error ?? 'Nothing posted yet', textAlign: TextAlign.center, style: text.titleLarge),
                     const SizedBox(height: 8),

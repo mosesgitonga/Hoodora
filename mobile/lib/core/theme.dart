@@ -38,19 +38,21 @@ class PaletteColors {
   final Color danger;
   final Color surface;
 
-  /// The "Red soil" palette, agreed in the mockups.
+  /// Hoodora's palette, from the app icon: its orange, navy and cream. Buttons
+  /// and links use a deeper orange than the icon's #E8480C, so white text on
+  /// them, and they on cream, stay above 4.5:1 contrast.
   static const light = PaletteColors(
-    primary: Color(0xFFC4502E),
-    primaryDark: Color(0xFF9E3D20),
-    glow: Color(0xFFF0805C),
-    glowTint: Color(0xFFFDE6DA),
-    ink: Color(0xFF1C2333),
-    inkSoft: Color(0xFF3A4252),
-    muted: Color(0xFF565E6E),
-    cream: Color(0xFFFFF6EE),
-    sand: Color(0xFFF3E6DA),
-    line: Color(0xFFEFE3D8),
-    lineStrong: Color(0xFFDDCBBB),
+    primary: Color(0xFFCC3D0A),
+    primaryDark: Color(0xFFA3310A),
+    glow: Color(0xFFFF7A1A),
+    glowTint: Color(0xFFFFE7D6),
+    ink: Color(0xFF1E1B3A),
+    inkSoft: Color(0xFF3A3756),
+    muted: Color(0xFF5B5872),
+    cream: Color(0xFFFFF8F2),
+    sand: Color(0xFFF6EADF),
+    line: Color(0xFFF1E5DA),
+    lineStrong: Color(0xFFE1CFC0),
     trust: Color(0xFF0E7C70),
     trustInk: Color(0xFF0B6158),
     trustTint: Color(0xFFE3F4F1),
@@ -58,25 +60,25 @@ class PaletteColors {
     surface: Color(0xFFFFFFFF),
   );
 
-  /// The same palette at night: warm near-black instead of cream, the red soil a
-  /// shade brighter so it still reads, text a warm off-white.
+  /// At night: the icon's navy, deepened, instead of cream; the orange a shade
+  /// brighter so it still reads; text a soft off-white.
   static const dark = PaletteColors(
-    primary: Color(0xFFE0714C),
-    primaryDark: Color(0xFFF0A080),
-    glow: Color(0xFFF0805C),
-    glowTint: Color(0xFF3B2820),
-    ink: Color(0xFFF2EAE3),
-    inkSoft: Color(0xFFD9CEC5),
-    muted: Color(0xFFA9A09A),
-    cream: Color(0xFF16120F),
-    sand: Color(0xFF2B2420),
-    line: Color(0xFF332B26),
-    lineStrong: Color(0xFF4B4039),
+    primary: Color(0xFFF0642A),
+    primaryDark: Color(0xFFFF9A66),
+    glow: Color(0xFFFF7A1A),
+    glowTint: Color(0xFF3A2418),
+    ink: Color(0xFFF3EFF7),
+    inkSoft: Color(0xFFD8D3E2),
+    muted: Color(0xFFA6A2B8),
+    cream: Color(0xFF13111F),
+    sand: Color(0xFF26223A),
+    line: Color(0xFF2C2842),
+    lineStrong: Color(0xFF443E5E),
     trust: Color(0xFF43B9A9),
     trustInk: Color(0xFF8DDCD0),
-    trustTint: Color(0xFF16332F),
+    trustTint: Color(0xFF142F33),
     danger: Color(0xFFF0705F),
-    surface: Color(0xFF211C18),
+    surface: Color(0xFF1D1A2E),
   );
 
   static PaletteColors of(Brightness brightness) => brightness == Brightness.dark ? dark : light;
@@ -109,7 +111,7 @@ class Palette {
   static Color get trustTint => _current.trustTint;
   static Color get danger => _current.danger;
 
-  /// Cards, sheets and fields: white by day, a raised dark brown at night.
+  /// Cards, sheets and fields: white by day, a raised navy at night.
   static Color get surface => _current.surface;
 
   /// Text and icons on the brand colour or over a photo: white in both modes.

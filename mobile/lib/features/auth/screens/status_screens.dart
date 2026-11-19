@@ -16,7 +16,7 @@ class RestoringScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadiusMark(size: 64),
+            HoodoraMark(size: 64),
             SizedBox(height: 24),
             SizedBox.square(
               dimension: 22,

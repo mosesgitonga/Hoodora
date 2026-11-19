@@ -60,7 +60,7 @@ class _HomeAreaScreenState extends ConsumerState<HomeAreaScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Align(alignment: Alignment.centerLeft, child: RadiusMark(size: 56)),
+              const Align(alignment: Alignment.centerLeft, child: HoodoraMark(size: 56)),
               const SizedBox(height: 28),
               Text(
                 !found

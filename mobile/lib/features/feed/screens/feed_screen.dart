@@ -316,7 +316,7 @@ class _Message extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const RadiusMark(size: 56),
+          const HoodoraMark(size: 56),
           const SizedBox(height: 20),
           Text(title, style: text.titleLarge, textAlign: TextAlign.center),
           const SizedBox(height: 8),

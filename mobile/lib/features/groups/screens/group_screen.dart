@@ -481,7 +481,7 @@ class _GroupScreenState extends ConsumerState<GroupScreen> {
     if (_pinned.isEmpty && rest.isEmpty) {
       return [
         const SizedBox(height: 24),
-        const Center(child: RadiusMark(size: 44)),
+        const Center(child: HoodoraMark(size: 44)),
         const SizedBox(height: 12),
         Text('No posts yet', textAlign: TextAlign.center, style: text.titleMedium),
         const SizedBox(height: 4),

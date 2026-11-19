@@ -1,10 +1,15 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'theme.dart';
 
-/// The radius mark: glow rings around a primary centre.
-class RadiusMark extends StatelessWidget {
-  const RadiusMark({super.key, this.size = 36});
+/// Hoodora's mark: a centre dot in a ring of eight neighbours, one of them
+/// larger and darker: you, among them. Drawn from the same geometry as the app
+/// icon (scripts/make_brand_assets.py), in the brand orange with an ink accent,
+/// so it reads on the light and the dark background.
+class HoodoraMark extends StatelessWidget {
+  const HoodoraMark({super.key, this.size = 36});
 
   final double size;
 
@@ -12,29 +17,42 @@ class RadiusMark extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox.square(
       dimension: size,
-      child: CustomPaint(painter: _RadiusMarkPainter()),
+      child: CustomPaint(painter: _HoodoraMarkPainter(dots: Palette.primary, accent: Palette.ink)),
     );
   }
 }
 
-class _RadiusMarkPainter extends CustomPainter {
+class _HoodoraMarkPainter extends CustomPainter {
+  _HoodoraMarkPainter({required this.dots, required this.accent});
+
+  final Color dots;
+  final Color accent;
+
+  // In units of the mark's width, as in the icon, enlarged to fill the square.
+  static const _ring = 0.372;
+  static const _centre = 0.145;
+  static const _outer = 0.0717;
+  static const _accent = 0.104;
+
   @override
   void paint(Canvas canvas, Size size) {
+    final side = size.shortestSide;
     final centre = size.center(Offset.zero);
-    final unit = size.shortestSide / 36;
-    final ring = Paint()
-      ..color = Palette.glow
-      ..style = PaintingStyle.stroke;
-    canvas.drawCircle(centre, 16 * unit, ring..strokeWidth = 1.5 * unit);
-    canvas.drawCircle(centre, 11 * unit, ring..strokeWidth = 2 * unit);
-    canvas.drawCircle(centre, 6.5 * unit, Paint()..color = Palette.primary);
-    canvas.drawCircle(centre, 2.2 * unit, Paint()..color = Palette.cream);
+    final dot = Paint()..color = dots;
+    canvas.drawCircle(centre, _centre * side, dot);
+    for (var step = 0; step < 8; step++) {
+      final angle = (-90 + step * 45) * math.pi / 180;
+      final at = centre + Offset(math.cos(angle), math.sin(angle)) * (_ring * side);
+      final isAccent = step == 1;
+      canvas.drawCircle(at, (isAccent ? _accent : _outer) * side, isAccent ? (Paint()..color = accent) : dot);
+    }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(_HoodoraMarkPainter old) => old.dots != dots || old.accent != accent;
 }
 
+/// The mark and the name, as in the logo: lower case, heavy, in ink.
 class Wordmark extends StatelessWidget {
   const Wordmark({super.key});
 
@@ -43,9 +61,17 @@ class Wordmark extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const RadiusMark(),
+        const HoodoraMark(),
         const SizedBox(width: 10),
-        Text('Hoodora', style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          'hoodora',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Palette.ink,
+                fontWeight: FontWeight.w800,
+                fontVariations: const [FontVariation('wght', 800)],
+                letterSpacing: -0.5,
+              ),
+        ),
       ],
     );
   }

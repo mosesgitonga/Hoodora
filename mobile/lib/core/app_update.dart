@@ -126,7 +126,7 @@ class UpdateRequiredScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Center(child: RadiusMark(size: 64)),
+              const Center(child: HoodoraMark(size: 64)),
               const SizedBox(height: 24),
               Text('Update required', textAlign: TextAlign.center, style: text.headlineSmall),
               const SizedBox(height: 10),

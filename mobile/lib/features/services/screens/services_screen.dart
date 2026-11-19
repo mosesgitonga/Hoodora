@@ -182,7 +182,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         children: [
           ...header,
           const SizedBox(height: 48),
-          const Center(child: RadiusMark(size: 48)),
+          const Center(child: HoodoraMark(size: 48)),
           const SizedBox(height: 16),
           Text(title, textAlign: TextAlign.center, style: text.titleLarge),
           const SizedBox(height: 8),
