@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hoodora's colours, for what Android draws before the app does: the launch
+     screen and notifications. The app's own palette is in lib/core/theme.dart. -->
+<resources>
+    <color name="hoodora_orange">#E8480C</color>
+    <color name="hoodora_navy">#1E1B3A</color>
+    <color name="hoodora_cream">#FFF8F2</color>
+    <color name="launch_background">#FFF8F2</color>
+</resources>
