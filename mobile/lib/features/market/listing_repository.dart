@@ -8,9 +8,17 @@ class ListingRepository {
 
   final ApiClient _api;
 
-  Future<ListingPage> browse({String? query, String? category, String? sort, String? cursor}) async {
+  /// With [aroundNow], listings around where the phone is rather than home.
+  Future<ListingPage> browse({
+    String? query,
+    String? category,
+    String? sort,
+    String? cursor,
+    bool aroundNow = false,
+  }) async {
     final q = query?.trim();
     final data = Map<String, dynamic>.from(await _api.get('/listings', query: {
+      if (aroundNow) 'anchor': 'explore',
       if (q != null && q.isNotEmpty) 'q': q,
       'category': ?category,
       'sort': ?sort,

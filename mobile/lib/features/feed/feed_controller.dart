@@ -65,13 +65,18 @@ class FeedController extends Notifier<FeedState> {
 
   bool get _exploring => ref.read(exploreProvider)?.active ?? false;
 
+  /// Each load gets a number; an answer to an older one is dropped, so switching
+  /// between around-you-now and home never shows the other place's posts.
+  int _generation = 0;
+
   Future<void> refresh() async {
     // Nothing is watching any more (the screen that read it has gone).
     if (!ref.mounted) return;
+    final generation = ++_generation;
     state = state.copyWith(loading: true, clearError: true);
     try {
       final page = await ref.read(feedRepositoryProvider).feed(exploring: _exploring);
-      if (!ref.mounted) return;
+      if (!ref.mounted || generation != _generation) return;
       state = FeedState(
         posts: page.items,
         nextCursor: page.nextCursor,
@@ -79,15 +84,18 @@ class FeedController extends Notifier<FeedState> {
         loading: false,
       );
     } on ApiException catch (error) {
-      if (ref.mounted) state = state.copyWith(loading: false, error: error);
+      if (ref.mounted && generation == _generation) state = state.copyWith(loading: false, error: error);
     }
   }
 
   Future<void> loadMore() async {
     if (!state.hasMore || state.loadingMore || state.loading) return;
+    final generation = _generation;
     state = state.copyWith(loadingMore: true);
     try {
       final page = await ref.read(feedRepositoryProvider).feed(cursor: state.nextCursor, exploring: _exploring);
+      // A reload started meanwhile: this page belongs to the list it replaced.
+      if (!ref.mounted || generation != _generation) return;
       final seen = {for (final post in state.posts) post.id};
       state = state.copyWith(
         posts: [...state.posts, ...page.items.where((post) => !seen.contains(post.id))],

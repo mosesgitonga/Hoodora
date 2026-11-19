@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
+import '../feed/explore.dart';
 import 'listing_models.dart';
 
 class MarketState {
@@ -63,9 +64,15 @@ class MarketController extends Notifier<MarketState> {
 
   @override
   MarketState build() {
+    // Showing what's around the phone now, or home again, starts afresh.
+    ref.listen(exploreProvider, (was, now) {
+      if ((was == null) != (now == null) || was?.area.label != now?.area.label) refresh();
+    });
     Future.microtask(refresh);
     return const MarketState();
   }
+
+  bool get _aroundNow => ref.read(exploreProvider)?.active ?? false;
 
   void setQuery(String query) {
     if (query.trim() == state.query.trim()) return;
@@ -97,6 +104,7 @@ class MarketController extends Notifier<MarketState> {
             category: current.category,
             // A search is best ranked by relevance unless a sort was chosen.
             sort: current.query.trim().isNotEmpty && current.sort == 'newest' ? null : current.sort,
+            aroundNow: _aroundNow,
           );
       if (generation != _generation) return;
       state = current.copyWith(
@@ -124,6 +132,7 @@ class MarketController extends Notifier<MarketState> {
             category: current.category,
             sort: current.query.trim().isNotEmpty && current.sort == 'newest' ? null : current.sort,
             cursor: current.nextCursor,
+            aroundNow: _aroundNow,
           );
       if (generation != _generation) return;
       final seen = {for (final l in current.listings) l.id};

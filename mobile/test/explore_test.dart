@@ -38,6 +38,8 @@ void main() {
               ? FakeReply(200, feedJson([postJson('p2', body: 'Matatu stage moved')]))
               : FakeReply(200, feedJson([postJson('p1', body: 'Water off on Saturday')])),
           ('POST', '/me/explore') => FakeReply(200, explore),
+          ('GET', '/listings') => FakeReply(200, {'items': <Object>[], 'next_cursor': null, 'radius_km': 10}),
+          ('GET', '/services') => FakeReply(200, {'items': <Object>[], 'next_cursor': null, 'radius_km': 10}),
           ('DELETE', '/me/explore') => const FakeReply(204),
           _ => FakeReply(404, errorBody('not_found', 'Resource not found')),
         });
@@ -76,16 +78,38 @@ void main() {
     final asked = sent.singleWhere((r) => r.method == 'POST' && r.path == '/me/explore');
     expect((asked.data as Map).keys, containsAll(['latitude', 'longitude']));
     expect(find.text('Kingongo'), findsOneWidget);
-    expect(find.textContaining('Your posts still go to Nyeri Town'), findsOneWidget);
+    expect(find.textContaining('What you post still goes to Nyeri Town'), findsOneWidget);
     expect(find.text('Matatu stage moved'), findsOneWidget);
     expect(find.text('Water off on Saturday'), findsNothing);
 
-    await tester.tap(find.text('Back to home'));
+    await tester.tap(find.text('Show home area'));
     await tester.pumpAndSettle();
 
     expect(sent.where((r) => r.method == 'DELETE' && r.path == '/me/explore'), hasLength(1));
     expect(find.text('Water off on Saturday'), findsOneWidget);
-    expect(find.text('Back to home'), findsNothing);
+    expect(find.text('Show home area'), findsNothing);
+  });
+
+  testWidgets('the market and services and jobs follow too', (tester) async {
+    await open(tester, explore: {
+      'area_label': {'label': 'Kingongo', 'precision': 'area'},
+      'expires_at': later(),
+      'same_area_as_home': false,
+    });
+    await tester.tap(find.byTooltip('Use my location now'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Market'));
+    await tester.pumpAndSettle();
+    final listings = sent.where((r) => r.path == '/listings').toList();
+    expect(listings.last.queryParameters['anchor'], 'explore');
+    expect(find.textContaining("Showing what's around you now"), findsOneWidget);
+
+    // Back home from the market: it reloads around home.
+    await tester.tap(find.text('Show home area'));
+    await tester.pumpAndSettle();
+    expect(sent.where((r) => r.path == '/listings').last.queryParameters.containsKey('anchor'), isFalse);
+    expect(find.textContaining("Showing what's around you now"), findsNothing);
   });
 
   testWidgets('still in the home hexagon, nothing changes and the app says so', (tester) async {
@@ -99,7 +123,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining("You're in your home area"), findsOneWidget);
-    expect(find.text('Back to home'), findsNothing);
+    expect(find.text('Show home area'), findsNothing);
     expect(find.text('Water off on Saturday'), findsOneWidget);
   });
 

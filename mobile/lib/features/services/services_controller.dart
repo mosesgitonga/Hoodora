@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
+import '../feed/explore.dart';
 import 'service_models.dart';
 
 class ServicesState {
@@ -42,9 +43,15 @@ class ServicesController extends Notifier<ServicesState> {
 
   @override
   ServicesState build() {
+    // Showing what's around the phone now, or home again, starts afresh.
+    ref.listen(exploreProvider, (was, now) {
+      if ((was == null) != (now == null) || was?.area.label != now?.area.label) refresh();
+    });
     Future.microtask(refresh);
     return const ServicesState();
   }
+
+  bool get _aroundNow => ref.read(exploreProvider)?.active ?? false;
 
   void setKind(ServiceKind kind) {
     if (kind == state.kind) return;
@@ -81,6 +88,7 @@ class ServicesController extends Notifier<ServicesState> {
             kind: current.kind,
             category: current.category,
             query: current.query,
+            aroundNow: _aroundNow,
           );
       if (generation != _generation) return;
       state = ServicesState(
@@ -116,6 +124,7 @@ class ServicesController extends Notifier<ServicesState> {
             category: current.category,
             query: current.query,
             cursor: current.nextCursor,
+            aroundNow: _aroundNow,
           );
       if (generation != _generation) return;
       final seen = {for (final p in current.posts) p.id};

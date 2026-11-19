@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
+import '../../feed/explore.dart';
+import '../../feed/widgets/explore_widgets.dart';
 import '../listing_models.dart';
 import '../market_controller.dart';
 import '../widgets/listing_card.dart';
@@ -74,6 +76,7 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final state = ref.watch(marketControllerProvider);
+    final exploring = ref.watch(exploreProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -85,6 +88,7 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
               child: Row(
                 children: [
                   Expanded(child: Text('Marketplace', style: text.headlineSmall)),
+                  const LocateButton(),
                   IconButton(
                     tooltip: 'Saved',
                     onPressed: () => context.go(Routes.savedListings),
@@ -107,6 +111,11 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                 ],
               ),
             ),
+            if (exploring != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: ExploringStrip(exploring: exploring, offerMove: false),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
@@ -198,7 +207,10 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
             sliver: SliverToBoxAdapter(
-              child: Text('Within ${_km(state.radiusKm!)} km of home', style: text.bodySmall),
+              child: Text(
+                reachLabel(state.radiusKm!, aroundNow: ref.read(exploreProvider) != null),
+                style: text.bodySmall,
+              ),
             ),
           ),
         SliverPadding(
@@ -229,8 +241,6 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
     );
   }
 
-  static String _km(double value) =>
-      value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
 }
 
 class _Chip extends StatelessWidget {

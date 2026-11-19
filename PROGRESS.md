@@ -3748,3 +3748,26 @@ and the feed comes from there.
 - **Wording fix found live:** an unnamed area read "Around you", so "your posts
   still go to Around you". Unnamed areas now read "Around here" and "your home
   area".
+
+### Widened: around you now, anywhere (2026-11-19)
+
+The product owner clarified: the button is for whoever wants what's around them
+now (on a trip, on a visit, or at home), and the market and jobs should follow,
+not just the feed.
+- **Market and Services & jobs** now read from the phone's current spot
+  whenever the feed does (`anchor=explore`). Each has the strip, and a location
+  button of its own.
+- **Wording no longer assumes a trip away:**
+  - "Showing what's around you now, until 14:30. What you post still goes to
+    your home area.";
+  - **Show home area**;
+  - "Within 15 km of you".
+- **Fixed:** the feed now drops an older load that answers after a newer one,
+  as Market and Services already did. Switching places can't show the other
+  place's posts.
+- **Live on the emulator:** from Nyeri town, Home showed the Nyeri posts, and
+  Market showed the strip, "Within 30 km of you", and the phone listing at
+  "1–3 km" (it was "10+ km" from home).
+- **Seen in the logs, not a bug:** both staging test accounts had their home
+  moved through Move home at 20:03 and 20:16 UTC, by taps on the devices. A
+  home moved there makes "you're in your home area" the right answer.

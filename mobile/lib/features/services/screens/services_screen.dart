@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
+import '../../feed/explore.dart';
+import '../../feed/widgets/explore_widgets.dart';
 import '../contact.dart';
 import '../service_models.dart';
 import '../services_controller.dart';
@@ -53,11 +55,14 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final state = ref.watch(servicesControllerProvider);
+    // Rebuilds when showing what's around the phone starts or ends.
+    ref.watch(exploreProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Services & jobs'),
         actions: [
+          const LocateButton(),
           IconButton(
             tooltip: 'Your posts',
             onPressed: () => context.go(Routes.myServices),
@@ -149,12 +154,17 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   }
 
   Widget _list(ServicesState state, TextTheme text) {
+    final exploring = ref.read(exploreProvider);
     final header = <Widget>[
+      if (exploring != null) ExploringStrip(exploring: exploring, offerMove: false),
       if (state.kind == ServiceKind.hiring) const JobSafetyNote(),
       if (state.radiusKm != null)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text('Within ${_km(state.radiusKm!)} km of home', style: text.bodySmall),
+          child: Text(
+            reachLabel(state.radiusKm!, aroundNow: ref.read(exploreProvider) != null),
+            style: text.bodySmall,
+          ),
         ),
     ];
     if (state.loading && state.posts.isEmpty) {
@@ -214,8 +224,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     );
   }
 
-  static String _km(double value) =>
-      value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
 }
 
 class _CategoryChip extends StatelessWidget {

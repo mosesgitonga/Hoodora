@@ -14,9 +14,11 @@ class ServiceRepository {
     String? category,
     String? query,
     String? cursor,
+    bool aroundNow = false,
   }) async {
     final q = query?.trim();
     final data = Map<String, dynamic>.from(await _api.get('/services', query: {
+      if (aroundNow) 'anchor': 'explore',
       'kind': kind.key,
       'category': ?category,
       if (q != null && q.isNotEmpty) 'q': q,
