@@ -115,6 +115,13 @@ class ExploreOut(BaseModel):
 
     area_label: AreaLabelOut
     expires_at: datetime
+    same_area_as_home: bool = Field(
+        default=False,
+        description=(
+            "True when the phone is still in the home hexagon: nothing to explore, "
+            "so browsing stays at home and no session is started."
+        ),
+    )
     note: str = Field(
         default=(
             "Explore mode is temporary and private. Your posts still go to your "

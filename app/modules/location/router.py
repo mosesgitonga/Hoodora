@@ -146,7 +146,9 @@ async def check_presence(
         "memory for about two hours and is never written to the database.\n\n"
         "This changes only what the caller sees. Anything they post still carries "
         "their home area, and other people still see their home area — so explore "
-        "mode cannot be used to post into a neighbourhood somebody does not live in."
+        "mode cannot be used to post into a neighbourhood somebody does not live in.\n\n"
+        "From the home hexagon itself, nothing starts: the answer says "
+        "`same_area_as_home`."
     ),
     dependencies=[Depends(user_rate_limit(bucket="start_explore", limit=30, window_seconds=3600))],
 )
@@ -167,9 +169,14 @@ async def start_explore(
     label = await location_service.area_label_for_cell(
         session, redis, cell_res9=explored.cell_res9, settings=settings
     )
+    # Still in the home hexagon: the feed is already measured from here.
+    at_home = user.home_cell_res8 is not None and explored.cell_res8 == user.home_cell_res8
+    if at_home:
+        await location_service.stop_explore(redis, user_id=user.id)
     return ExploreOut(
         area_label=AreaLabelOut(label=label.label, precision=label.precision),
         expires_at=explored.expires_at,
+        same_area_as_home=at_home,
     )
 
 

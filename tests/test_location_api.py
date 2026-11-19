@@ -690,3 +690,31 @@ async def test_areas_can_be_filtered(
 
 async def test_areas_require_authentication(client: httpx.AsyncClient) -> None:
     assert (await client.get("/v1/areas")).status_code == 401
+
+
+async def test_from_the_home_hexagon_nothing_is_explored(
+    auth_client: httpx.AsyncClient, redis_client: Redis, user: User
+) -> None:
+    """The "use my location" button at home: the feed is already measured from
+    here, so no session starts and the app says so."""
+    response = await auth_client.post("/v1/me/explore", json=NYERI_TOWN.as_payload())
+
+    assert response.status_code == 200
+    assert response.json()["same_area_as_home"] is True
+    assert await redis_client.get(f"explore:{user.id}") is None
+
+
+async def test_elsewhere_is_not_the_home_hexagon(auth_client: httpx.AsyncClient) -> None:
+    response = await auth_client.post("/v1/me/explore", json=KARATINA.as_payload())
+
+    assert response.json()["same_area_as_home"] is False
+
+
+async def test_moving_back_home_ends_exploring(
+    auth_client: httpx.AsyncClient, redis_client: Redis, user: User
+) -> None:
+    await auth_client.post("/v1/me/explore", json=KARATINA.as_payload())
+
+    await auth_client.post("/v1/me/explore", json=NYERI_TOWN.as_payload())
+
+    assert await redis_client.get(f"explore:{user.id}") is None
