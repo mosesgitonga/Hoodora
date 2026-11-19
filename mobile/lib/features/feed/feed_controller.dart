@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
+import 'explore.dart';
 import 'feed_models.dart';
 
 class FeedState {
@@ -54,16 +55,22 @@ class FeedController extends Notifier<FeedState> {
 
   @override
   FeedState build() {
+    // Moving the feed to where the phone is, or back home, reloads it.
+    ref.listen(exploreProvider, (was, now) {
+      if ((was == null) != (now == null) || was?.area.label != now?.area.label) refresh();
+    });
     Future.microtask(refresh);
     return const FeedState();
   }
+
+  bool get _exploring => ref.read(exploreProvider)?.active ?? false;
 
   Future<void> refresh() async {
     // Nothing is watching any more (the screen that read it has gone).
     if (!ref.mounted) return;
     state = state.copyWith(loading: true, clearError: true);
     try {
-      final page = await ref.read(feedRepositoryProvider).feed();
+      final page = await ref.read(feedRepositoryProvider).feed(exploring: _exploring);
       if (!ref.mounted) return;
       state = FeedState(
         posts: page.items,
@@ -80,7 +87,7 @@ class FeedController extends Notifier<FeedState> {
     if (!state.hasMore || state.loadingMore || state.loading) return;
     state = state.copyWith(loadingMore: true);
     try {
-      final page = await ref.read(feedRepositoryProvider).feed(cursor: state.nextCursor);
+      final page = await ref.read(feedRepositoryProvider).feed(cursor: state.nextCursor, exploring: _exploring);
       final seen = {for (final post in state.posts) post.id};
       state = state.copyWith(
         posts: [...state.posts, ...page.items.where((post) => !seen.contains(post.id))],

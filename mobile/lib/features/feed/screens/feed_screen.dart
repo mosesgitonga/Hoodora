@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/location.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
 import '../../../core/theme.dart';
@@ -13,6 +14,7 @@ import '../../me/me_screen.dart';
 import '../../profile/profile_screen.dart';
 import '../../stories/stories_controller.dart';
 import '../../stories/stories_strip.dart';
+import '../explore.dart';
 import '../feed_controller.dart';
 import '../feed_models.dart';
 import '../widgets/home_menu.dart';
@@ -110,11 +112,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final feed = ref.watch(feedControllerProvider);
     final auth = ref.watch(authControllerProvider);
     final me = auth is AuthSignedIn ? auth.me : null;
-    final area = me?.areaLabel?.heading ?? 'Your area';
+    final home = me?.areaLabel?.heading ?? 'Your area';
+    final exploring = ref.watch(exploreProvider);
+    // While exploring, the header names where the feed is from now.
+    final area = exploring?.area.heading ?? home;
     final radius = feed.radiusKm;
 
     return Scaffold(
-      drawer: HomeMenu(area: area, radiusKm: radius),
+      drawer: HomeMenu(area: home, radiusKm: radius),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push(Routes.compose),
         tooltip: 'New post',
@@ -158,19 +163,28 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                 Text(area, style: text.headlineSmall),
                                 const SizedBox(height: 2),
                                 Text(
-                                  radius == null ? 'Around you' : 'Within ${_km(radius)} km of home',
+                                  exploring != null
+                                      ? (radius == null ? 'Around you now' : 'Within ${_km(radius)} km of here')
+                                      : radius == null
+                                          ? 'Around you'
+                                          : 'Within ${_km(radius)} km of home',
                                   style: text.bodySmall,
                                 ),
                               ],
                             ),
                           ),
+                          const _LocateButton(),
                         ],
                       ),
+                      if (exploring != null) ...[
+                        const SizedBox(height: 10),
+                        _ExploringStrip(exploring: exploring, home: home),
+                      ],
                       const SizedBox(height: 12),
                       const StoriesStrip(),
                       if (me != null && me.homeProvisional) ...[
                         const SizedBox(height: 12),
-                        _ProvisionalHomeCard(area: area, confirmBy: me.homeConfirmBy),
+                        _ProvisionalHomeCard(area: home, confirmBy: me.homeConfirmBy),
                       ],
                     ],
                   ),
@@ -323,6 +337,105 @@ class _Message extends StatelessWidget {
           Text(body, style: text.bodyMedium?.copyWith(color: Palette.muted), textAlign: TextAlign.center),
           const SizedBox(height: 20),
           OutlinedButton(onPressed: onAction, child: Text(action)),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// "Use my location now": reads GPS and, if the phone has left home's hexagon,
+/// moves the feed to the one it is in.
+class _LocateButton extends ConsumerStatefulWidget {
+  const _LocateButton();
+
+  @override
+  ConsumerState<_LocateButton> createState() => _LocateButtonState();
+}
+
+class _LocateButtonState extends ConsumerState<_LocateButton> {
+  bool _busy = false;
+
+  Future<void> _locate() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final outcome = await ref.read(exploreProvider.notifier).fromHere();
+      if (outcome == ExploreOutcome.atHome) {
+        messenger.showSnackBar(const SnackBar(content: Text("You're in your home area. The feed is from here.")));
+      }
+    } on LocationProblem catch (problem) {
+      messenger.showSnackBar(SnackBar(content: Text(problem.message)));
+    } on ApiException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text("Couldn't read your location. Try again.")));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: _busy ? null : _locate,
+      tooltip: 'Use my location now',
+      color: Palette.ink,
+      visualDensity: VisualDensity.compact,
+      icon: _busy
+          ? SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Palette.primary))
+          : const Icon(Icons.my_location_rounded),
+    );
+  }
+}
+
+/// While the feed is from somewhere else: until when, the way back, and the way
+/// to move home for good.
+class _ExploringStrip extends ConsumerWidget {
+  const _ExploringStrip({required this.exploring, required this.home});
+
+  final Exploring exploring;
+  final String home;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final until = TimeOfDay.fromDateTime(exploring.until).format(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(color: Palette.glowTint, borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.explore_outlined, size: 18, color: Palette.primaryDark),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Exploring until $until. Your posts still go to $home.',
+                  style: text.bodySmall?.copyWith(color: Palette.ink),
+                ),
+              ),
+              TextButton(
+                onPressed: () => ref.read(exploreProvider.notifier).backHome(),
+                child: const Text('Back to home'),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 26),
+            child: InkWell(
+              onTap: () => context.go(Routes.moveHome),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  'Living here now? Move your home',
+                  style: text.bodySmall?.copyWith(color: Palette.primary, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

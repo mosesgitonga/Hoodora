@@ -14,9 +14,14 @@ class FeedRepository {
   /// Kept offline: the newest [savedPosts] posts of the Home feed.
   static const savedPosts = 50;
 
-  Future<FeedPage> feed({String? cursor}) async {
+  /// With [exploring], the feed around where the phone is now. That one is not
+  /// saved for offline reading, which keeps home's.
+  Future<FeedPage> feed({String? cursor, bool exploring = false}) async {
     final Map<String, dynamic> data;
-    if (cursor == null) {
+    if (exploring) {
+      data = Map<String, dynamic>.from(
+          await _api.get('/feed', query: {'anchor': 'explore', 'cursor': ?cursor}) as Map);
+    } else if (cursor == null) {
       data = Map<String, dynamic>.from(await fetchOrRecall(
         _offline,
         'feed',
