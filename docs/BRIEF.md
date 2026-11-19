@@ -142,7 +142,7 @@ Starting values (all in config, to be tuned once real data exists):
 
 | Feature | Rule | Min | Max | User distance filter |
 |---|---|---|---|---|
-| Feed and stories | target 500 active users | 1 km | 15 km | none |
+| Feed and stories | target 200 active users (was 500; see decision T.1) | 1 km | 15 km | none |
 | Group discovery | 2 × feed radius | 2 km | 25 km | up to 25 km |
 | Marketplace | 2 × feed radius | 2 km | 30 km | up to 50 km |
 | Jobs and services | 3 × feed radius | 3 km | 40 km | up to 50 km |

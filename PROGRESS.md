@@ -3771,3 +3771,23 @@ not just the feed.
 - **Seen in the logs, not a bug:** both staging test accounts had their home
   moved through Move home at 20:03 and 20:16 UTC, by taps on the devices. A
   home moved there makes "you're in your home area" the right answer.
+
+## Feed fills at 200 active people (2026-11-20)
+
+**Asked:** the product owner wants the feed to stay local sooner: about 200
+people within 3 km, rather than the brief's 500.
+
+**Plan:**
+- `FEED_TARGET_ACTIVE_USERS` defaults to 200. The feed's reach is the distance
+  that holds 200 active people (app opened in the last 14 days, counted by home
+  area), still between 1 and 15 km.
+- Market, Services, Groups and Events follow, as they are multiples of the feed.
+- The brief's table, the pinned config test and a decision record (T.1) are
+  updated.
+- **Expected on staging:** no visible change yet. With a handful of accounts
+  every area is still short of 200, so the reach stays at 15 km.
+
+### Built (2026-11-20)
+
+- The default is now 200. The brief's table, the pinned config test and
+  decision T.1 are updated. All backend tests pass.

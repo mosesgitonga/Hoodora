@@ -174,7 +174,7 @@ def test_the_radius_table_matches_the_brief() -> None:
     """The product's main tuning surface, pinned so a careless edit is visible."""
     rules = _settings().radius_rules
 
-    assert rules[RadiusFeature.feed].target_active_users == 500
+    assert rules[RadiusFeature.feed].target_active_users == 200
     assert (rules[RadiusFeature.feed].min_km, rules[RadiusFeature.feed].max_km) == (1.0, 15.0)
     assert rules[RadiusFeature.feed].user_filter_max_km is None
 

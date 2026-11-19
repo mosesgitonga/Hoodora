@@ -277,7 +277,9 @@ class Settings(BaseSettings):
 
     # Feed is the only feature with a density target; the rest are multiples of it,
     # so every feature widens and narrows together as an area fills up.
-    feed_target_active_users: int = Field(default=500, ge=1)
+    # 200 rather than the brief's 500 (decision T.1): about 200 active people
+    # within 3 km is enough to keep a feed busy and genuinely local.
+    feed_target_active_users: int = Field(default=200, ge=1)
     feed_radius_min_km: float = Field(default=1.0, gt=0)
     feed_radius_max_km: float = Field(default=15.0, gt=0)
 

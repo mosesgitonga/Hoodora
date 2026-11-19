@@ -2527,3 +2527,20 @@ naming the tool that made them. Redrawing from the geometry gives the same
 images with nothing embedded, and a script anyone can rerun when the design
 changes. Drawing the in-app mark in code keeps it sharp at any size and right in
 both themes.
+
+## Tuning
+
+### T.1 The feed fills at 200 active people, not 500 (2026-11-20)
+
+**Context.** The brief's starting value was 500 active users. The feed widens
+until that many live within reach, so 3 km needed about 500 regular users
+around a town centre and 1 km about 500 in a few central estates. For a launch
+in Nyeri, that would keep most feeds at the 15 km cap for a long time, mixing
+places 10 km apart.
+
+**Choice.** The product owner set `FEED_TARGET_ACTIVE_USERS` to 200: about 200
+active people within 3 km makes a 3 km feed. The bounds stay 1 to 15 km. The
+other features follow, since they are multiples of the feed.
+
+**Trade-off.** Each feed draws on fewer neighbours, so a small reach can be
+quieter. The setting can be tuned per deployment without a release.
