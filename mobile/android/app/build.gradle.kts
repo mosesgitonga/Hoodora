@@ -16,8 +16,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "ke.myradius"
+        // The app's identity on phones and the Play Store, and what Firebase's
+        // google-services.json is registered for. `namespace` above is internal
+        // and keeps the old name (decision N.1).
+        applicationId = "app.hoodora"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

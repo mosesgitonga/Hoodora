@@ -3809,3 +3809,38 @@ people within 3 km, rather than the brief's 500.
 
 - The default is now 200. The brief's table, the pinned config test and
   decision T.1 are updated. All backend tests pass.
+
+## The Android package becomes app.hoodora (2026-11-20)
+
+**Asked:** the product owner made a new Firebase project, `hoodora-c028f`, with
+an Android app `app.hoodora`. They also asked for google-services plugin 4.6.0.
+
+**Plan:**
+- **Package:** the `applicationId` becomes `app.hoodora`, which is what the new
+  Firebase file is for. The Kotlin namespace and `MainActivity` stay at
+  `ke.myradius`: they are internal, as in decision N.1. iOS's bundle ID becomes
+  `app.hoodora` too.
+- **Firebase:** the new `google-services.json` replaces the old one. It is
+  still git-ignored.
+- **Plugin:** google-services moves from 4.5.0 to 4.6.0.
+- **Shorebird:** a new release, 1.1.0+3, because patches apply only to the
+  build they were made from. Release 1.1.0+2 and its patch stay for the old
+  package.
+- **Docs:** decision N.1 is revisited.
+- **What changes for testers:** the phone sees a new app. Installing it puts it
+  beside the old `ke.myradius` app, which then needs removing by hand, and
+  testers sign in again.
+- **Push:** the server's service-account key, still to come, must now be from
+  `hoodora-c028f`. Phone tokens from the old project won't work with it; each
+  phone sends a new one when it signs in.
+
+### Built (2026-11-20)
+
+- **Build:** the new Firebase file builds as `app.hoodora`, with google-services
+  4.6.0.
+- **Shorebird:** release 1.1.0+3 is published.
+- **On the phone:** the new app is installed beside the old one. On launch,
+  `FirebaseApp initialization successful`, and Shorebird checks in as
+  1.1.0+3.
+- **Not checked yet:** a push token from the new project reaching the server,
+  which needs a sign-in on the new app.

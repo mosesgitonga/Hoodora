@@ -2503,6 +2503,17 @@ have made a circle member the less private party.
 **Revisit** when production gets its own domain and Play listing: that is the
 time for a new package, if wanted, since there are no installs to carry over.
 
+**Revisited (2026-11-20): the Android package is now `app.hoodora`.**
+- **Why:** the product owner made a new Firebase project, `hoodora-c028f`,
+  registered for `app.hoodora`. Firebase's file has to match the package. This
+  was before any Play upload, so only test phones had the old app.
+- **What changed:** the `applicationId` and iOS's bundle ID. The Kotlin
+  `namespace` and `MainActivity` stay at `ke.myradius`, as internal names.
+- **Cost:** test phones install it as a new app beside the old one and sign in
+  again. Shorebird needed a new release (1.1.0+3); patches for 1.1.0+2 reach
+  only the old package.
+- **Push:** the server's service-account key must come from `hoodora-c028f`.
+
 ### N.2 The icon, the mark and the palette come from one drawing (2026-11-19)
 
 **Choice.**
