@@ -3656,6 +3656,24 @@ banner and the blocking screen.
 - Then `shorebird init` (which adds `mobile/shorebird.yaml`), the first release
   with `scripts/app_release.sh`, and installing that APK on the phone once.
 
+### Finished (2026-11-20)
+
+- **Linked:** the product owner signed in, and `shorebird init` registered the
+  app as "Hoodora". `mobile/shorebird.yaml` holds its app ID, which isn't a
+  secret.
+- **Release 1.1.0+2** was built and published with `scripts/app_release.sh`,
+  and installed on the phone.
+- **Patch 1, verified on the phone:** a small Dart fix (an unnamed home area
+  no longer reads "Around you" twice while the feed loads).
+  - **First launch:** the phone found the patch (209 KB), checked its signature
+    and installed it in the background.
+  - **Second launch:** it started from patch 1, with no prompt.
+- **Script fix:** `shorebird patch` now asks for a track. `scripts/app_patch.sh`
+  passes `stable` (every phone), or `PATCH_TRACK` when set.
+- **Still to do for the Play Store:** release builds are signed with the debug
+  key. The Play upload key needs its own Shorebird release, and patches then
+  follow that release.
+
 ## The app is now Hoodora (2026-11-13)
 
 The product owner renamed the app from MyRadius to Hoodora. Slice 19's Shorebird

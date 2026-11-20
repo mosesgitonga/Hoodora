@@ -175,7 +175,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                   exploring != null
                                       ? (radius == null ? 'Around you now' : reachLabel(radius, aroundNow: true))
                                       : radius == null
-                                          ? 'Around you'
+                                          // An unnamed home is already headed "Around you".
+                                          ? (area == 'Around you' ? 'Your neighbourhood' : 'Around you')
                                           : 'Within ${_km(radius)} km of home',
                                   style: text.bodySmall,
                                 ),

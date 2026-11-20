@@ -10,7 +10,9 @@
 # refuses a patch that needs native changes, and then scripts/app_release.sh is
 # the way. Phones download it in the background and run it from their next launch.
 #
-# API_BASE_URL must match the release's (staging by default).
+# API_BASE_URL must match the release's (staging by default). PATCH_TRACK picks
+# Shorebird's track: "stable" (every phone, the default), or "beta" or
+# "staging" for phones that opt in.
 set -euo pipefail
 
 cd "$(dirname "$0")/../mobile"
@@ -22,5 +24,5 @@ build="${version##*+}"
 
 echo "Patching release ${version} against ${api}"
 # The same defines as the release: Shorebird refuses a patch whose differ.
-"${shorebird}" patch android --release-version="${version}" \
+"${shorebird}" patch android --release-version="${version}" --track="${PATCH_TRACK:-stable}" \
   --dart-define=API_BASE_URL="${api}" --dart-define=APP_BUILD="${build}"
