@@ -2375,6 +2375,37 @@ recent, so it stays 64-bit.
 - **Phones only, without x86_64:** a bundle 22 MB smaller and a quicker build,
   but Chromebooks would install an app that can't open.
 
+### M.14 Release builds sign with the upload key when the machine has one (2026-11-23)
+
+**Context.** Release builds were signed with the debug key, which the Play Store
+refuses.
+
+**Choice.**
+- **The key:** an upload key made by the product owner with `keytool` (RSA 2048,
+  alias `upload`, valid 10,000 days, named "Hoodora"). It is kept outside the
+  repository, at `%USERPROFILE%\keys\hoodora-upload.jks`, with a backup off the
+  machine.
+- **The build:** `mobile/android/key.properties` names the keystore and its
+  passwords. The file is never committed. When it exists, every release build is
+  signed with the upload key, the tester APK included. When it doesn't, release
+  builds fall back to the debug key, so other machines still build.
+- **The guard:** `scripts/app_release.sh play` refuses to run without
+  `key.properties`, so a Play bundle can't quietly fall back to the debug key.
+- **Play App Signing:** accepted at the first upload. Google keeps the key that
+  signs what users install; the upload key only proves an upload is ours, and
+  Google can reset it if it is lost.
+
+**Reasoning.** This is Flutter's documented setup, and it keeps the passwords out
+of the repository and out of the build file. Signing the tester APK with the same
+key means one key to look after, and the build no longer depends on a debug key
+that differs from machine to machine.
+
+**Alternatives.**
+- **Passwords in environment variables:** fine for CI, but nothing builds the app
+  in CI yet.
+- **The upload key for Play builds only:** the tester APK would stay on a debug
+  key that changes with the machine that built it.
+
 ## Circle and follows
 
 From the "Circle (mutual connections) and Follows" brief of 2026-11-01. The

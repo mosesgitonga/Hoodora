@@ -21,6 +21,7 @@ set -euo pipefail
 
 mode="${1:-apk}"
 if [[ $# -gt 0 ]]; then shift; fi
+needs_upload_key=false
 case "${mode}" in
   apk)
     # Shared as a file, so kept small. A 32-bit phone may install it and then
@@ -36,6 +37,7 @@ case "${mode}" in
     artifact=aab
     platforms=android-arm,android-arm64,android-x64
     output=mobile/build/app/outputs/bundle/release/app-release.aab
+    needs_upload_key=true
     ;;
   *)
     echo "usage: scripts/app_release.sh [apk|play] [shorebird options]" >&2
@@ -44,6 +46,11 @@ case "${mode}" in
 esac
 
 cd "$(dirname "$0")/../mobile"
+# Without it the build falls back to the debug key, which the Play Store refuses.
+if [[ "${needs_upload_key}" == true && ! -f android/key.properties ]]; then
+  echo "No upload key: mobile/android/key.properties is missing (DECISIONS M.14)." >&2
+  exit 1
+fi
 # On PATH once the terminal has restarted after installing; else its usual home.
 shorebird="$(command -v shorebird || echo "${HOME}/.shorebird/bin/shorebird")"
 api="${API_BASE_URL:-https://myradius.chatara.co}"

@@ -3864,6 +3864,21 @@ phones. The APK shared with testers stays 64-bit only. Decision M.13.
 - Shorebird then stopped, because 1.1.0+3 already has a release. The Play
   release needs a version of its own.
 
+### The upload key (2026-11-23)
+
+- **Made by the product owner** with `keytool`, kept at
+  `%USERPROFILE%\keys\hoodora-upload.jks`. Decision M.14.
+- **The build:** release builds are signed with it whenever
+  `mobile/android/key.properties` exists, and fall back to the debug key when
+  it doesn't. `scripts/app_release.sh play` refuses to run without the file.
+- **Checked:**
+  - **Without `key.properties`:** `./gradlew :app:signingReport` shows the
+    release variant on the debug key, and `play` mode stops with a message.
+  - **With it** (written by the product owner): the release variant is on the
+    `upload` key, valid until 10 April 2054, SHA-256 `5A:D1:22:10:…:8A:78`.
+    `keytool -certreq` used the key, so both passwords and the alias are
+    right.
+
 ### Chromebooks too (2026-11-23)
 
 - **Asked:** the product owner added x86_64, so Chromebooks can open the app.
@@ -3873,9 +3888,12 @@ phones. The APK shared with testers stays 64-bit only. Decision M.13.
   - The bundle is 62.2 MB, up from 39.9 MB.
   - Each of `armeabi-v7a`, `arm64-v8a` and `x86_64` carries the engine and
     the app's code, 9–10 MB compressed each. 32 MB is debug symbols.
+  - `keytool -printcert` shows the bundle signed by the upload key
+    (CN=Hoodora, SHA-256 `5A:D1:22:10:…:8A:78`).
   - Shorebird stopped at the existing 1.1.0+3, as expected.
 
 **Still to do for the Play Store:**
-- Release builds are still signed with the debug key; Play needs the upload
-  key.
+- A new version and a Shorebird release signed with the upload key. Testers
+  uninstall the old app once, since Android refuses an update signed with a
+  different key.
 - Seeing the app on a real 32-bit phone.
