@@ -4026,3 +4026,15 @@ an SMS code through Africa's Talking.
 **For real SMS:** an Africa's Talking account, then `SMS_PROVIDER=africastalking`
 with `AFRICASTALKING_USERNAME` and `AFRICASTALKING_API_KEY` on the server.
 Staging still logs codes.
+
+### Release 1.3.0+5 on the phone (2026-11-23)
+
+- **Published** on Shorebird with `scripts/app_release.sh`, as a 64-bit APK
+  (22.2 MB) signed with the upload key. `apksigner` shows CN=Hoodora and SHA-1
+  `549c4e9c…c4b1`, the fingerprint registered in Firebase.
+- **Staging** runs `ebacb36` with `GOOGLE_CLIENT_ID` set: `GET /v1/auth/methods`
+  says Google is on.
+- **Installed** on the product owner's Redmi A5 over adb.
+  - **First launch:** Firebase started and Shorebird reported release 1.3.0+5
+    with no patch. The app opened on its location prompt.
+- **Not yet seen:** a Google sign-in from the phone.
