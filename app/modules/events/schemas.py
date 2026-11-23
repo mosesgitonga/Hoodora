@@ -156,7 +156,7 @@ EventPageOut = CursorPage[EventOut]
 class EventBrowseOut(BaseModel):
     items: list[EventOut]
     next_cursor: str | None = None
-    radius_km: float = Field(description="How far this search reached, rounded to 0.5 km.")
+    radius_km: float = Field(description="How far this search reached, rounded up to 0.5 km.")
 
 
 class AttendeeOut(BaseModel):

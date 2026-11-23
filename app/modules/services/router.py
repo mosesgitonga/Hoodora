@@ -20,6 +20,7 @@ from app.modules.auth.dependencies import (
     tiered_user_rate_limit,
     user_rate_limit,
 )
+from app.modules.location.radius import rounded_for_display
 from app.modules.messaging import views as messaging_views
 from app.modules.messaging.schemas import ConversationOut
 from app.modules.services import reviews as reviews_service
@@ -166,7 +167,7 @@ async def browse(
             buckets=result.buckets,
         ),
         next_cursor=result.next_cursor,
-        radius_km=round(result.radius_km * 2) / 2,
+        radius_km=rounded_for_display(result.radius_km, settings.radius_display_rounding_km),
         sort=result.sort,
     )
 

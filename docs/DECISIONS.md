@@ -569,6 +569,16 @@ immediate area is, and an exact count is a count of identifiable people. Both ar
 information about the caller's neighbours rather than about the caller. Rounding
 also gives the app the string it actually wants to show: "Your radius: 3 km".
 
+**Amended 2026-11-23: rounded up, everywhere.** Asked by the product owner.
+- **Up, not to the nearest.** The app says "Within X km", and to the nearest
+  half kilometre a 2.2 km reach read "Within 2 km" while showing a post 2.1 km
+  away. Rounded up, it reads 2.5, so the claim holds for everything shown. It
+  still reveals no more than the half-kilometre step.
+- **One rule.** `location.radius.rounded_for_display` now rounds every radius a
+  response carries: the feed, `GET /v1/me/radius`, and the market, services,
+  events and groups searches. Those four had each rounded to the nearest half
+  kilometre inline.
+
 ---
 
 ### Deferred from Phase 1, with the phase that will own it

@@ -136,9 +136,9 @@ class RadiusOut(BaseModel):
     feature: RadiusFeature
     radius_km: float = Field(
         description=(
-            "Rounded to the nearest half kilometre. Rounded rather than exact "
-            "because a precise radius is a direct read-out of how dense your own "
-            "street is."
+            "Rounded up to the next half kilometre, so everything shown is within "
+            "it. Rounded rather than exact because a precise radius is a direct "
+            "read-out of how dense your own street is."
         ),
         examples=[3.0],
     )

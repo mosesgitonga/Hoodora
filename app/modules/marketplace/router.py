@@ -23,6 +23,7 @@ from app.modules.auth.dependencies import (
     user_rate_limit,
 )
 from app.modules.feed.views import author_view, load_assets, load_users
+from app.modules.location.radius import rounded_for_display
 from app.modules.marketplace import service as marketplace_service
 from app.modules.marketplace import views
 from app.modules.marketplace.models import Listing, ListingAvailability, ListingCondition
@@ -181,7 +182,7 @@ async def browse(
             buckets=result.buckets,
         ),
         next_cursor=result.next_cursor,
-        radius_km=round(result.radius_km * 2) / 2,
+        radius_km=rounded_for_display(result.radius_km, settings.radius_display_rounding_km),
         sort=sort or ("relevance" if q and q.strip() else "newest"),
     )
 

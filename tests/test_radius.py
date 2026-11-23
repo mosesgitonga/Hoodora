@@ -346,13 +346,28 @@ async def test_inactive_users_do_not_count_towards_density(
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
     ("radius_km", "expected"),
-    [(1.0, 1.0), (1.2, 1.0), (1.3, 1.5), (2.87, 3.0), (14.9, 15.0), (0.1, 0.5)],
+    [
+        (1.0, 1.0),
+        (1.2, 1.5),
+        (1.3, 1.5),
+        (1.49, 1.5),
+        (2.2, 2.5),
+        (2.33, 2.5),
+        (2.5, 2.5),
+        (2.87, 3.0),
+        (14.9, 15.0),
+        (15.0, 15.0),
+        (0.1, 0.5),
+        # Float error on a whole step must not push it up a step.
+        (1.5000000001, 1.5),
+    ],
 )
-async def test_display_rounding_is_to_the_half_kilometre(
+async def test_display_rounds_up_to_the_half_kilometre(
     radius_engine: RadiusEngine, settings: Settings, radius_km: float, expected: float
 ) -> None:
     """An exact radius is a read-out of how dense the caller's own street is, so
-    what the app shows is rounded."""
+    what the app shows is rounded, and rounded up, so that "within X km" holds
+    for everything shown."""
     result = RadiusResult(
         feature=RadiusFeature.feed,
         radius_km=radius_km,

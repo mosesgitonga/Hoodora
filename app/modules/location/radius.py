@@ -30,6 +30,7 @@ configured proportion, so small density wobbles change nothing.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -68,15 +69,27 @@ class RadiusResult:
         return round(self.radius_km * 1000)
 
     def display_km(self, rounding_km: float) -> float:
-        """Rounded for display, so the app shows "3 km" rather than "2.87 km".
+        """Rounded up for display. See `rounded_for_display`."""
+        return rounded_for_display(self.radius_km, rounding_km)
 
-        Not only cosmetic: an exact radius is a direct read-out of how dense the
-        caller's own immediate area is, which is information about their
-        neighbours rather than about them.
-        """
-        rounded = round(self.radius_km / rounding_km) * rounding_km
-        # Never round down to nothing; the smallest meaningful answer is one step.
-        return max(rounding_km, round(rounded, 3))
+
+def rounded_for_display(radius_km: float, rounding_km: float) -> float:
+    """A radius as people are told it: rounded *up* to the next step, so the app
+    shows "3 km" rather than "2.87 km". The one rule for every radius a response
+    carries.
+
+    Up, so "within X km" holds for everything shown: a 2.2 km reach reads 2.5,
+    never 2, which would be contradicted by a post 2.1 km away.
+
+    Rounded at all because an exact radius is a direct read-out of how dense the
+    caller's own immediate area is, which is information about their neighbours
+    rather than about them (decision 1.19).
+    """
+    # The tolerance keeps a radius that is a whole step, give or take float
+    # error (1.5000000001), from being pushed up a step.
+    steps = math.ceil(radius_km / rounding_km - 1e-9)
+    # Never down to nothing; the smallest meaningful answer is one step.
+    return max(rounding_km, round(steps * rounding_km, 3))
 
 
 @dataclass(frozen=True, slots=True)

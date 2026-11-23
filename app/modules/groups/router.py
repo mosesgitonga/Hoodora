@@ -53,6 +53,7 @@ from app.modules.groups.schemas import (
     ReviewIn,
     RoleIn,
 )
+from app.modules.location.radius import rounded_for_display
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -189,7 +190,7 @@ async def discover(
             session, redis, storage, groups=result.groups, viewer=user, settings=settings
         ),
         next_cursor=result.next_cursor,
-        radius_km=round(result.radius_km * 2) / 2,
+        radius_km=rounded_for_display(result.radius_km, settings.radius_display_rounding_km),
     )
 
 

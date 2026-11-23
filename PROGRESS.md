@@ -4038,3 +4038,23 @@ Staging still logs codes.
   - **First launch:** Firebase started and Shorebird reported release 1.3.0+5
     with no patch. The app opened on its location prompt.
 - **Not yet seen:** a Google sign-in from the phone.
+
+## The radius shown is rounded up (2026-11-23)
+
+**Asked:** the product owner checked whether "Within 15 km of home" tells the
+truth once an area fills up. It does: the number comes from the server on every
+load, and shrinks with the feed. But it was rounded to the nearest half
+kilometre, so a 2.2 km reach read "Within 2 km" while showing a post 2.1 km
+away.
+
+**Built:**
+- **Rounded up:** every radius a response carries now goes to the next half
+  kilometre, so 2.2 km reads 2.5. This covers the feed, `GET /v1/me/radius`, and
+  the market, services, events and groups searches.
+- **One rule:** `location.radius.rounded_for_display`, where those four
+  searches had each rounded inline. Decision 1.19 is amended.
+- **Checked:** the display test now covers rounding up, exact steps and float
+  error. 301 tests across radius, feed and browsing pass, and ruff and mypy are
+  clean.
+- **Around Nyeri town** the feed's reach moves in rings of about 0.87 km: 1.49,
+  2.33, 3.19, 4.06 km… These now read 1.5, 2.5, 3.5 and 4.5 km.

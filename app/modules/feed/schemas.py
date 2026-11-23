@@ -129,7 +129,10 @@ class FeedOut(BaseModel):
     items: list[PostOut]
     next_cursor: str | None = None
     radius_km: float = Field(
-        description="The radius this page was drawn from, rounded for display."
+        description=(
+            "The radius this page was drawn from, rounded up to the next half "
+            "kilometre, so every post on it is within this distance."
+        )
     )
     sort: Literal["recent"] = Field(
         default="recent",

@@ -37,6 +37,7 @@ from app.modules.events.schemas import (
     ReviewRsvpIn,
     RsvpIn,
 )
+from app.modules.location.radius import rounded_for_display
 from app.modules.users.models import User
 
 router = APIRouter(tags=["events"])
@@ -158,7 +159,7 @@ async def browse(
     return EventBrowseOut(
         items=await _page(session, redis, storage, result.events, user, settings),
         next_cursor=result.next_cursor,
-        radius_km=round(result.radius_km * 2) / 2,
+        radius_km=rounded_for_display(result.radius_km, settings.radius_display_rounding_km),
     )
 
 
