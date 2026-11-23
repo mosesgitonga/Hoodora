@@ -4308,3 +4308,19 @@ test; all Circle tests pass.
   Lint, types and the analyzer are clean.
 
 **Not yet:** seen on the phone. It needs a new app release.
+
+## Release 1.4.0+6 on the phone (2026-11-23)
+
+- **Published** on Shorebird with `scripts/app_release.sh`: a 64-bit APK
+  (22.3 MB), signed with the upload key (CN=Hoodora, SHA-1 `549c4e9c…c4b1`).
+- **What's in it:**
+  - everything following the phone (L.1);
+  - posting needing days in a place (L.2);
+  - Circle in the app.
+- **Staging** runs `eaaae8a` at migration 0022. CI and the deploy passed.
+- **Installed** on the product owner's Redmi A5 over adb, as an update to
+  1.3.0+5 (same key, so still signed in).
+  - **On screen:** it opens on Home with "Around you, Within 15 km of you" and
+    the staging feed.
+- **Not yet tried on the phone:** Circle, the posting rule, and the new
+  sign-up question.
