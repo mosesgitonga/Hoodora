@@ -3844,3 +3844,38 @@ an Android app `app.hoodora`. They also asked for google-services plugin 4.6.0.
   1.1.0+3.
 - **Not checked yet:** a push token from the new project reaching the server,
   which needs a sign-in on the new app.
+
+## 32-bit phones in the Play Store build (2026-11-23)
+
+**Asked:** the product owner wants the Play Store release to include 32-bit
+phones. The APK shared with testers stays 64-bit only. Decision M.13.
+
+**Built:**
+- **`scripts/app_release.sh play`** builds an app bundle for 32- and 64-bit
+  phones (`android-arm,android-arm64`).
+  - With no mode, the script builds the 64-bit tester APK as before.
+  - Anything after the mode goes to shorebird, such as `--dry-run`.
+- **Patches need no change:** `shorebird patch` covers whatever platforms its
+  release was built for.
+
+**Checked** with `scripts/app_release.sh play --dry-run`:
+- The bundle built (39.9 MB). It carries the Flutter engine and the app's code
+  for both `armeabi-v7a` and `arm64-v8a`, about 9 MB compressed for each.
+- Shorebird then stopped, because 1.1.0+3 already has a release. The Play
+  release needs a version of its own.
+
+### Chromebooks too (2026-11-23)
+
+- **Asked:** the product owner added x86_64, so Chromebooks can open the app.
+  `play` mode now builds for `android-arm,android-arm64,android-x64`. Decision
+  M.13 is updated.
+- **Checked** with `scripts/app_release.sh play --dry-run`:
+  - The bundle is 62.2 MB, up from 39.9 MB.
+  - Each of `armeabi-v7a`, `arm64-v8a` and `x86_64` carries the engine and
+    the app's code, 9–10 MB compressed each. 32 MB is debug symbols.
+  - Shorebird stopped at the existing 1.1.0+3, as expected.
+
+**Still to do for the Play Store:**
+- Release builds are still signed with the debug key; Play needs the upload
+  key.
+- Seeing the app on a real 32-bit phone.

@@ -2336,6 +2336,45 @@ app does should still go out as a store release.
 - **Server-driven screens:** too limited for feature work.
 - **The version check alone:** every change would still need a reinstall.
 
+### M.13 The Play Store build carries 32-bit and Chromebooks; the tester APK stays 64-bit (2026-11-23)
+
+**Context.** `scripts/app_release.sh` built for 64-bit phones only
+(`android-arm64`), and nothing recorded why.
+- **Who that leaves out:** phones running a 32-bit system. Some have a chip
+  that can only do 32-bit (Tecno Pop 5c, Nokia C1 2nd Edition); others are
+  older Go phones (Neon Kicka 4, itel A32F, Nokia 1).
+- **How it fails:** a plugin brings a small 32-bit library but the Flutter
+  engine is 64-bit only, so such a phone probably installs the APK and then
+  fails to open it. Not yet seen on a phone.
+- **How many:** few. Newer cheap phones are 64-bit even on Android Go: the
+  product owner's Redmi A5 runs the APK. But they are the poorest users.
+
+**Choice.**
+- **Play Store:** `scripts/app_release.sh play` builds an app bundle for
+  `android-arm`, `android-arm64` and `android-x64`.
+  - **x86_64** is for Chromebooks. Plugin libraries for it were in the bundle
+    anyway, so without the engine a Chromebook would have installed the app
+    and failed to open it, as a 32-bit phone would have.
+- **Tester APK:** `scripts/app_release.sh` stays 64-bit only.
+
+**Reasoning.** The Play Store sends each device only its own CPU's code, so
+32-bit and x86_64 support cost 64-bit phones nothing. The costs fall on us
+instead:
+- **The uploaded bundle:** 62 MB, rather than 40 MB without x86_64. Half of it
+  is debug symbols, which the Play Console keeps for crash reports.
+- **The build:** about three minutes per extra CPU.
+
+An APK shared as a file carries every CPU's code, and testers' phones are
+recent, so it stays 64-bit.
+
+**Alternatives.**
+- **32-bit in the tester APK too:** a bigger file for everyone, to cover phones
+  testers probably don't have.
+- **64-bit only, refusing 32-bit installs:** a clear message instead of a
+  crash, but the cheapest phones lose the app.
+- **Phones only, without x86_64:** a bundle 22 MB smaller and a quicker build,
+  but Chromebooks would install an app that can't open.
+
 ## Circle and follows
 
 From the "Circle (mutual connections) and Follows" brief of 2026-11-01. The
