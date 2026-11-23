@@ -2625,3 +2625,68 @@ other features follow, since they are multiples of the feed.
 
 **Trade-off.** Each feed draws on fewer neighbours, so a small reach can be
 quieter. The setting can be tuned per deployment without a release.
+
+## Sign-in
+
+### A.1 Sign up with Google, or with a phone number (2026-11-23)
+
+**Context.** Until now, identity was a phone number proved by an SMS code. The
+product owner asked for Google as a second way to sign up, beside the phone
+number verified through Africa's Talking.
+
+**Choice.**
+- **Google alone is enough to sign up,** decided with the product owner. The
+  app shows Google's account picker and sends the server the ID token Google
+  issued (`POST /v1/auth/google`).
+  - The server checks it with `google-auth`: Google's keys, our client ID as the
+    audience, Google as the issuer, and the expiry.
+  - A known Google account is signed in. A new one gets a signup token, and
+    `POST /v1/auth/signup` then works as it does for a number: the same name,
+    the same 18+ confirmation and the same consents.
+- **Only Google's `sub` is kept** (`users.google_sub`). The token also carries
+  the email, name and photo; none is stored. The app suggests the Google name on
+  the sign-up form, and it reaches the server only if the person keeps it.
+- **A phone is still needed for trust.** Posting jobs and the verified-neighbour
+  badge keep their rules, which require a proved number. A Google-only account
+  adds one with `POST /v1/me/phone`, using a code from
+  `POST /v1/auth/otp/request`. Without one, a job is refused with
+  `reason: phone_required`.
+- **A live account can always sign in:** the `user_can_sign_in` check requires a
+  phone number or a Google account unless the account is purged.
+- **Bans reach Google accounts.** Banning an account adds its Google account to
+  `banned_google_accounts` (a keyed hash, like phones and devices), and
+  unbanning lifts it. A banned Google account fails like an invalid token.
+- **Off until configured.** `GOOGLE_CLIENT_ID` holds the Firebase project's web
+  client ID. The app learns it from `GET /v1/auth/methods` and hands it to
+  Google, so it lives in one place, and the button only appears once it's set.
+- **No linking yet.** Signing in with Google always means the Google account. A
+  phone account can't add Google, and Google with an unknown `sub` starts a new
+  account.
+
+**Reasoning.** Google sign-in saves an SMS and a code for people who already
+have a Google account on their phone, which on Android is nearly everyone.
+Keeping only `sub` follows the Act's data minimisation: the account needs an
+identifier, not an email address.
+
+The risk is that Google accounts are free, so a banned person can open another
+one. Device bans still apply. And the things scammers want, posting jobs, need
+a phone number, which is scarcer and is banned with the account.
+
+**Alternatives.**
+- **Google plus a phone at signup:** strongest against ban evasion, but signing
+  up would be no quicker than today.
+- **Google fully trusted:** simplest, but it would weaken the job-scam
+  protections that rely on a proved number.
+- **Firebase Authentication:** would hold the identity in Firebase, adding a
+  second user store and a dependency on it at every sign-in. Verifying Google's
+  token ourselves keeps the account in our own database.
+- **Keeping the email:** useful for account recovery one day, but nothing needs
+  it now.
+
+**Deferred.**
+- Linking a phone account and a Google account.
+- Changing a number already held.
+- iOS: Google sign-in there needs its own client ID. And the App Store's
+  guideline 4.8 asks apps offering Google sign-in to offer an equivalent
+  privacy-focused option too, such as Sign in with Apple. To check when the iOS
+  app ships.

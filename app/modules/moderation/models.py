@@ -75,6 +75,8 @@ class AuditAction(StrEnum):
     refresh_token_reuse_detected = "refresh_token_reuse_detected"  # noqa: S105 — an action name
     """Security-relevant: either a stolen token or a client bug, and the
     difference matters."""
+    phone_added = "phone_added"
+    """An account that signed up with Google proved a phone number (decision A.1)."""
 
     # Location
     home_location_set = "home_location_set"
@@ -356,6 +358,22 @@ class BannedPhone(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     """The account banned, when the number came from one."""
+
+
+class BannedGoogleAccount(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """A Google account that may not sign in, as a keyed hash of its `sub`.
+    Added and lifted with the account's ban (decision A.1)."""
+
+    __tablename__ = "banned_google_accounts"
+
+    google_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    staff_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("staff_accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class BannedDevice(Base, UUIDPrimaryKeyMixin, TimestampMixin):

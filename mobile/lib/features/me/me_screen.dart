@@ -89,6 +89,12 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
                   detail: me.areaLabel?.label,
                   onTap: () => context.go(Routes.moveHome),
                 ),
+                if (me.phoneNumber == null)
+                  _Row(
+                    label: 'Add a phone number',
+                    detail: 'For posting jobs',
+                    onTap: () => context.push(Routes.addPhone),
+                  ),
                 _Row(
                   label: 'Appearance',
                   detail: _appearanceName(ref.watch(themeModeProvider)),
@@ -108,10 +114,10 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
                 icon: const Icon(Icons.logout_rounded),
                 label: const Text('Sign out'),
               ),
-              if (me.phoneNumber != null) ...[
+              if (me.phoneNumber != null || me.hasGoogleAccount) ...[
                 const SizedBox(height: 16),
                 Text(
-                  'Signed in as ${me.phoneNumber}'
+                  '${me.phoneNumber != null ? 'Signed in as ${me.phoneNumber}' : 'Signed in with Google'}'
                   '${me.memberSince == null ? '' : ' · on Hoodora since ${_monthYear(me.memberSince!)}'}',
                   textAlign: TextAlign.center,
                   style: text.bodySmall,

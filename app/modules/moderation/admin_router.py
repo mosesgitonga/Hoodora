@@ -445,6 +445,7 @@ async def ban_user(
         user_id=user_id,
         reason=payload.reason,
         ban_phone=payload.ban_phone,
+        ban_google_account=payload.ban_google_account,
         ban_devices=payload.ban_devices,
         remove_content=payload.remove_content,
         settings=settings,

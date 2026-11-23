@@ -1,4 +1,4 @@
-"""The phone and device ban lists.
+"""The phone, Google-account and device ban lists.
 
 Both hold keyed hashes, never the values: the list must not itself be a list of
 people's numbers. The key is `BAN_LIST_KEY` (falling back to `SECRET_KEY`), and the
@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.modules.moderation.models import BannedDevice, BannedPhone
+from app.modules.moderation.models import BannedDevice, BannedGoogleAccount, BannedPhone
 
 
 def _hash(kind: str, value: str, settings: Settings) -> str:
@@ -34,6 +34,20 @@ def phone_hash(phone_number: str, settings: Settings) -> str:
 
 def device_hash(device_id: str, settings: Settings) -> str:
     return _hash("device", device_id, settings)
+
+
+def google_hash(google_sub: str, settings: Settings) -> str:
+    """Of Google's `sub` for the account."""
+    return _hash("google", google_sub, settings)
+
+
+async def is_google_banned(session: AsyncSession, google_sub: str, settings: Settings) -> bool:
+    found = await session.scalar(
+        select(BannedGoogleAccount.id).where(
+            BannedGoogleAccount.google_hash == google_hash(google_sub, settings)
+        )
+    )
+    return found is not None
 
 
 async def is_phone_banned(session: AsyncSession, phone_number: str, settings: Settings) -> bool:

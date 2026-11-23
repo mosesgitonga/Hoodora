@@ -31,6 +31,40 @@ class AuthRepository {
     return SignupRequired(data['signup_token'] as String);
   }
 
+  /// Whether Google sign-in is on. Phone only when the server can't be asked:
+  /// the sign-in screen must still work.
+  Future<SignInMethods> methods() async {
+    try {
+      final data = await _api.get('/auth/methods');
+      return SignInMethods.fromJson(Map<String, dynamic>.from(data as Map));
+    } on Exception {
+      return SignInMethods.phoneOnly;
+    }
+  }
+
+  /// Signs in with the ID token Google gave the app. A Google account with a
+  /// Hoodora account is signed in here; a new one gets a token for [signUp].
+  Future<VerifyOutcome> signInWithGoogle(String idToken) async {
+    final data = Map<String, dynamic>.from(await _api.post(
+      '/auth/google',
+      body: {'id_token': idToken, ...await _api.deviceFields()},
+      auth: false,
+    ) as Map);
+    if (data['status'] == 'signed_in') {
+      await _api.startSession(TokenPair.fromJson(Map<String, dynamic>.from(data['tokens'] as Map)));
+      return const SignedIn();
+    }
+    return SignupRequired(data['signup_token'] as String);
+  }
+
+  /// Adds a phone number to an account that signed up with Google, with the
+  /// code [requestCode] sent to it. Answers with the updated account.
+  Future<Me> addPhone(String phoneNumber, String code) async {
+    final data = await _api.post('/me/phone', body: {'phone_number': phoneNumber, 'code': code});
+    await _offline.write('me', data);
+    return Me.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
   /// Creates the account. The three consents are separate, as the Data
   /// Protection Act requires; marketing is optional and off unless chosen.
   Future<void> signUp({

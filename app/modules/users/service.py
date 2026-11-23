@@ -93,6 +93,11 @@ async def get_user_by_phone(session: AsyncSession, phone_number: str) -> User | 
     return (await session.execute(statement)).scalar_one_or_none()
 
 
+async def get_user_by_google_sub(session: AsyncSession, google_sub: str) -> User | None:
+    statement = select(User).where(User.google_sub == google_sub, User.deleted_at.is_(None))
+    return (await session.execute(statement)).scalar_one_or_none()
+
+
 async def touch_last_active(session: AsyncSession, user_id: uuid.UUID) -> None:
     """Record that the app was opened, which is what "active" means for density.
 
@@ -111,16 +116,22 @@ async def touch_last_active(session: AsyncSession, user_id: uuid.UUID) -> None:
 async def create_user(
     session: AsyncSession,
     *,
-    phone_number: str,
     display_name: str,
     settings: Settings,
     granted_consents: set[ConsentType],
+    phone_number: str | None = None,
+    google_sub: str | None = None,
 ) -> User:
     """Create an account, with its consent records, in one transaction.
+
+    The account signs in with a proved phone number or a Google account
+    (decision A.1); at least one is required.
 
     `adult_confirmed_at` is a timestamp, not a flag: the Act asks when a
     declaration was made, and a bare `true` records nothing worth having.
     """
+    if phone_number is None and google_sub is None:
+        raise ValueError("An account needs a phone number or a Google account")
     missing = set(REQUIRED_CONSENTS) - granted_consents
     if missing:
         raise BadRequestError(
@@ -131,8 +142,9 @@ async def create_user(
     now = datetime.now(UTC)
     user = User(
         phone_number=phone_number,
+        google_sub=google_sub,
         display_name=display_name.strip(),
-        phone_verified_at=now,
+        phone_verified_at=now if phone_number is not None else None,
         adult_confirmed_at=now,
         last_active_at=now,
         status=UserStatus.active,
@@ -149,7 +161,10 @@ async def create_user(
         actor_id=user.id,
         target_type="user",
         target_id=user.id,
-        context={"consents": sorted(str(c) for c in granted_consents)},
+        context={
+            "consents": sorted(str(c) for c in granted_consents),
+            "signed_up_with": "phone" if phone_number is not None else "google",
+        },
     )
     return user
 
@@ -475,6 +490,7 @@ async def export_user_data(
         "account": {
             "id": str(user.id),
             "phone_number": user.phone_number,
+            "google_account_id": user.google_sub,
             "display_name": user.display_name,
             "status": str(user.status),
             "suspended_until": user.suspended_until.isoformat() if user.suspended_until else None,
@@ -564,6 +580,7 @@ async def purge_user(session: AsyncSession, *, user: User) -> None:
     account is useless for the investigations it exists for.
     """
     user.phone_number = None
+    user.google_sub = None
     user.display_name = "Deleted user"
     user.phone_verified_at = None
     user.avatar_media_id = None

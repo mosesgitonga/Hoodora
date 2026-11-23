@@ -197,6 +197,17 @@ async def create_post(
             "Set your home area before posting",
             details={"action": "PUT /v1/me/location"},
         )
+    if (
+        kind == ServiceKind.hiring
+        and author.phone_verified_at is None
+        and not author.is_verified_neighbour
+    ):
+        # Signed up with Google and no number yet (decision A.1). Said apart from
+        # the age threshold, because this one the person can fix straight away.
+        raise ForbiddenError(
+            "Add your phone number to post jobs",
+            details={"reason": "phone_required", "action": "POST /v1/me/phone"},
+        )
     if kind == ServiceKind.hiring and not can_hire(author, settings):
         raise ForbiddenError(
             "New accounts cannot post jobs yet",

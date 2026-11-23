@@ -26,6 +26,7 @@ import '../features/market/screens/listing_screen.dart';
 import '../features/market/screens/market_screen.dart';
 import '../features/market/screens/sell_screen.dart';
 import '../features/me/me_screen.dart';
+import '../features/me/screens/add_phone_screen.dart';
 import '../features/me/screens/data_screens.dart';
 import '../features/me/screens/settings_screens.dart';
 import '../features/people/people_nearby_screen.dart';
@@ -64,6 +65,7 @@ class Routes {
   static const sell = '/sell';
   static String editListing(String id) => '/listings/$id/edit';
   static const editProfile = '/profile/edit';
+  static const addPhone = '/add-phone';
   static const accountSettings = '/me/settings';
   static String person(String id) => '/people/$id';
   static const moveHome = '/me/home';
@@ -127,6 +129,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.sell, builder: (_, _) => const SellScreen()),
       // A form: over the tabs, so the keyboard and its Save button have the room.
       GoRoute(path: Routes.editProfile, builder: (_, _) => const EditProfileScreen()),
+      GoRoute(path: Routes.addPhone, builder: (_, _) => const AddPhoneScreen()),
       GoRoute(
         path: '/people/:id',
         builder: (_, state) => ProfileScreen(userId: state.pathParameters['id']!),

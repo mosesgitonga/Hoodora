@@ -19,6 +19,8 @@ from app.core.providers.storage import StorageProvider, get_storage_provider
 from app.core.redis import get_redis
 from app.modules.auth import service as auth_service
 from app.modules.auth.dependencies import ActiveUser, CurrentUser, user_rate_limit
+from app.modules.auth.phone import normalise_phone_number
+from app.modules.auth.schemas import AddPhoneIn
 from app.modules.circle import service as circle_service
 from app.modules.events import service as events_service
 from app.modules.feed import service as feed_service
@@ -136,6 +138,7 @@ async def get_me(
         id=user.id,
         display_name=user.display_name,
         phone_number=user.phone_number,
+        has_google_account=user.google_sub is not None,
         status=user.status,
         member_since=user.created_at,
         area_label=await _area_label(session, redis, user, settings),
@@ -190,6 +193,40 @@ async def update_me(
         bio=payload.bio,
         circle_request_policy=payload.circle_request_policy,
         show_in_nearby=payload.show_in_nearby,
+    )
+    return await get_me(user, session, redis, settings, storage)
+
+
+@router.post(
+    "/me/phone",
+    response_model=MeOut,
+    summary="Add a phone number",
+    description=(
+        "For an account that signed up with Google: proves a number with the code "
+        "`POST /v1/auth/otp/request` sent to it, and adds it to the account. Posting "
+        "jobs and the verified-neighbour badge need one (decision A.1). Returns the "
+        "full profile.\n\n"
+        "409 `phone_already_set` when the account has a number already, and "
+        "`phone_in_use` when the number belongs to another account. A wrong or "
+        "expired code is a 401, as at sign-in."
+    ),
+    dependencies=[Depends(user_rate_limit(bucket="add_phone", limit=10, window_seconds=3600))],
+)
+async def add_phone(
+    payload: AddPhoneIn,
+    user: ActiveUser,
+    session: SessionDep,
+    redis: RedisDep,
+    settings: SettingsDep,
+    storage: StorageDep,
+) -> MeOut:
+    await auth_service.add_phone(
+        session,
+        redis,
+        user=user,
+        phone_number=normalise_phone_number(payload.phone_number),
+        code=payload.code,
+        settings=settings,
     )
     return await get_me(user, session, redis, settings, storage)
 

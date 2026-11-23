@@ -9,6 +9,7 @@ import 'package:myradius/core/providers.dart';
 import 'package:myradius/core/realtime.dart';
 import 'package:myradius/features/me/account_models.dart';
 import 'package:myradius/features/me/me_screen.dart';
+import 'package:myradius/features/me/screens/add_phone_screen.dart';
 import 'package:myradius/main.dart';
 
 import 'support/fake_adapter.dart';
@@ -236,6 +237,47 @@ void main() {
       expect(find.text('Restricted'), findsOneWidget);
       expect(find.textContaining('Several posts were reported as spam.'), findsOneWidget);
       expect(find.textContaining('1 neighbour has vouched for you'), findsOneWidget);
+    });
+
+    testWidgets('an account from Google adds a phone number (decision A.1)', (tester) async {
+      me = {...meJson(), 'phone_number': null, 'has_google_account': true};
+      extra = (request) {
+        if (request.path == '/auth/otp/request') {
+          return const FakeReply(200, {
+            'expires_in_seconds': 300,
+            'resend_after_seconds': 60,
+            'phone_number_masked': '+254 7•• ••• 678',
+          });
+        }
+        if (request.path == '/me/phone') {
+          me = {...me, 'phone_number': '+254712345678'};
+          return FakeReply(200, me);
+        }
+        return const FakeReply(0);
+      };
+      await openSettings(tester);
+      await reachInSettings(tester, find.textContaining('Signed in with Google'));
+
+      await reachInSettings(tester, find.text('Add a phone number'));
+      await tester.tap(find.text('Add a phone number'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('add-phone-number')), '0712 345 678');
+      await tester.tap(find.text('Send code'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter the code sent to +254 7•• ••• 678'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('add-phone-code')), '482093');
+      await tester.tap(find.text('Add number'));
+      await tester.pumpAndSettle();
+
+      final sent = adapter.requests.lastWhere((r) => r.path == '/me/phone').data as Map;
+      expect(sent, {'phone_number': '+254712345678', 'code': '482093'});
+      // Back in Settings, with the number and no longer the row to add one. The
+      // screen's own title says the same words, so this also proves it closed.
+      expect(find.text('Phone number added'), findsOneWidget);
+      expect(find.byType(AddPhoneScreen), findsNothing);
+      expect(find.text('Add a phone number'), findsNothing);
+      await reachInSettings(tester, find.textContaining('Signed in as +254712345678'));
     });
 
     testWidgets('deleting asks for understanding, then signs out here', (tester) async {

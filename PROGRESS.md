@@ -3911,3 +3911,118 @@ phones. The APK shared with testers stays 64-bit only. Decision M.13.
 - Setting `APP_LATEST_BUILD=4` on the server once the Play listing can be
   installed, not before: the banner would offer a build nobody can get yet.
 - Seeing the app on a real 32-bit phone.
+
+## Sign in with Google, or a phone number (2026-11-23)
+
+### Plan
+
+**Asked:** people sign up either with Google, or with a phone number verified by
+an SMS code through Africa's Talking.
+
+**Already built:** the phone route. Codes go out through Africa's Talking
+(`SMS_PROVIDER=africastalking`); staging still logs them instead
+(`SMS_PROVIDER=console`).
+
+**Decided with the product owner:**
+- **Google alone is enough to sign up.** The feed, market, chats and groups work
+  straight away.
+- **Jobs and the badge still need a phone.** Someone who signed up with Google
+  adds and verifies a number first, by SMS code. The trust rules don't change.
+- **New packages:** `google_sign_in` in the app. `google-auth` on the server,
+  already installed through `firebase-admin`, is now listed explicitly.
+
+**Server:**
+- **`GET /v1/auth/methods`:** whether Google sign-in is on, and the Google
+  client ID the app needs for it. Off until `GOOGLE_CLIENT_ID` is set.
+- **`POST /v1/auth/google`:** takes the ID token Google gives the app.
+  - Checked against Google's keys, the client ID and the issuer.
+  - A known Google account is signed in; a new one gets a sign-up token for
+    `POST /v1/auth/signup`, which then works as it does for a phone.
+- **`users.google_sub`:** Google's ID for the account, unique. Nothing else
+  from Google is kept: no email, name or photo.
+  - A live account must have a phone number, a Google account, or both. A
+    check constraint enforces it.
+- **`POST /v1/me/phone`:** adds and verifies a phone number, using a code from
+  `POST /v1/auth/otp/request`.
+- **Jobs:** an account with no phone is refused with `reason: phone_required`,
+  pointing at `POST /v1/me/phone`.
+- **Bans:** banning an account also bans its Google account (keyed hash,
+  `banned_google_accounts`), and unbanning lifts it. A banned Google account's
+  sign-in fails like an invalid token.
+- **Data rights:** the export includes the Google account ID, and the purge
+  clears it. DATA_MAP and the purge registry are updated.
+- **Migration 0021:** the column, the constraint, the ban table, and the
+  `phone_added` audit action.
+
+**App:**
+- **Sign-in screen:** "Continue with Google", shown only when the server says
+  it's on. Then the same sign-up screen, with the name filled in from Google;
+  the person can change it.
+- **Signing out** also signs out of Google, so the next person to use the phone
+  chooses an account.
+- **Me:** "Signed in with Google" or the number, and "Add a phone number" when
+  there isn't one.
+- **Posting a job without a phone** leads to adding one.
+- Google sign-in is native code, so it reaches phones in a new release, not a
+  Shorebird patch.
+
+**For the product owner, to switch Google on:**
+- In Firebase (`hoodora-c028f`), enable Google sign-in, and add the SHA-1
+  fingerprints of the debug, upload and Play App Signing keys.
+- Put the web client ID in the server's `GOOGLE_CLIENT_ID`.
+
+### Built (2026-11-23)
+
+**Server:**
+- **Endpoints:** `GET /v1/auth/methods`, `POST /v1/auth/google` and
+  `POST /v1/me/phone`. `POST /v1/auth/signup` accepts a Google signup token.
+- **Google's token** is checked by `app/core/providers/google.py`, a provider
+  like SMS and push. Tests use a fake; google-auth is stubbed for the real
+  verifier's own tests.
+- **Migration 0021:** `users.google_sub`, the `user_can_sign_in` check,
+  `banned_google_accounts`, and the `phone_added` audit action.
+- **Elsewhere:**
+  - Jobs answer `phone_required` when there's no phone number.
+  - A ban covers the Google account, and unbanning lifts it.
+  - The export names the Google account; the purge clears it.
+  - `GET /me` says `has_google_account`.
+- **Docs:** decision A.1, DATA_MAP, SECURITY, DEPLOYMENT, ARCHITECTURE, a brief
+  addendum, and the SMS and Google settings in `.env.example`, where the SMS
+  ones had been missing.
+
+**App:**
+- **Sign-in screen:** "Continue with Google" when the server says it's on.
+  Sign-up starts from the Google name.
+- **Signing out** also signs out of Google.
+- **Me:** "Signed in with Google", and **Add a phone number** (number, then the
+  SMS code).
+- **Job form:** a job refused for want of a phone offers the same screen.
+- **Found while testing:** updating the account before leaving the new screen
+  made the router put the screen back. It now leaves first.
+
+**Checked:**
+- **Server:** all 1,305 tests pass, 25 of them new.
+- **Migrations:** upgrade, downgrade to base and upgrade again on an empty
+  database, and `alembic check`.
+- **App:** all 131 tests pass, 5 of them new. ruff, mypy and `flutter analyze`
+  are clean.
+- **Not yet:** a real Google sign-in. It needs the setup below and a new
+  release.
+
+**For the product owner, to switch Google on:**
+1. **Firebase console** (`hoodora-c028f`): Authentication, Sign-in method,
+   enable **Google**. That creates the web OAuth client.
+2. **Project settings, Android app `app.hoodora`:** add the SHA-1
+   fingerprints.
+   - Debug key: `BB:BA:67:44:04:66:34:3A:3B:71:B1:07:1B:78:6A:2F:18:36:44:36`
+   - Upload key: `54:9C:4E:9C:E4:7F:78:D7:DE:B8:20:C1:4A:AB:C7:A4:CF:B4:C4:B1`
+   - Play App Signing key: from the Play Console, once the first bundle is
+     uploaded.
+3. **The server:** set `GOOGLE_CLIENT_ID` in `.env.production` to the web
+   client ID (Firebase: Authentication, Google, Web SDK configuration).
+4. **A new release** (`scripts/app_release.sh play`, with a new version),
+   because the Google plugin is native code.
+
+**For real SMS:** an Africa's Talking account, then `SMS_PROVIDER=africastalking`
+with `AFRICASTALKING_USERNAME` and `AFRICASTALKING_API_KEY` on the server.
+Staging still logs codes.

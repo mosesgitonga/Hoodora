@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/google_auth.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../auth_controller.dart';
+import '../auth_models.dart';
 import '../phone.dart';
 
 class PhoneScreen extends ConsumerStatefulWidget {
@@ -21,6 +23,7 @@ class PhoneScreen extends ConsumerStatefulWidget {
 class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   final _controller = TextEditingController();
   bool _busy = false;
+  bool _googleBusy = false;
   String? _error;
 
   @override
@@ -50,9 +53,42 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
     }
   }
 
+  /// Google's account picker, then the same two ways on as a code: signed in,
+  /// or on to sign-up with the Google name suggested (decision A.1).
+  Future<void> _continueWithGoogle(String serverClientId) async {
+    setState(() {
+      _googleBusy = true;
+      _error = null;
+    });
+    try {
+      final credential = await ref.read(googleAuthProvider).signIn(serverClientId: serverClientId);
+      if (credential == null) return; // Backed out of the picker: nothing to say.
+      final outcome = await ref.read(authRepositoryProvider).signInWithGoogle(credential.idToken);
+      switch (outcome) {
+        case SignedIn():
+          ref.read(signInFlowProvider.notifier).reset();
+          await ref.read(authControllerProvider.notifier).sessionStarted();
+        case SignupRequired(:final signupToken):
+          ref
+              .read(signInFlowProvider.notifier)
+              .googleSignupRequired(signupToken, suggestedName: credential.displayName);
+          if (mounted) context.go(Routes.signUp);
+      }
+    } on GoogleAuthFailure {
+      if (mounted) {
+        setState(() => _error = "Google sign-in didn't work. Try again, or use your phone number.");
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _googleBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final googleClientId = ref.watch(signInMethodsProvider).value?.googleClientId;
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
@@ -102,7 +138,36 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                     FormError(_error),
                     const Spacer(),
                     const SizedBox(height: 24),
-                    BusyButton(label: 'Send code', busy: _busy, onPressed: _sendCode),
+                    BusyButton(
+                      label: 'Send code',
+                      busy: _busy,
+                      onPressed: _googleBusy ? null : _sendCode,
+                    ),
+                    if (googleClientId != null) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Expanded(child: Divider()),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text('or', style: text.bodySmall),
+                          ),
+                          const Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: _busy || _googleBusy
+                            ? null
+                            : () => _continueWithGoogle(googleClientId),
+                        child: _googleBusy
+                            ? const SizedBox.square(
+                                dimension: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2.5),
+                              )
+                            : const Text('Continue with Google'),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     Text(
                       'For adults 18 and over. You will be asked to agree to the terms '

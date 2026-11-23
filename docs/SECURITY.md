@@ -45,6 +45,12 @@ Two properties cut across everything below:
   at once.
 - **Request answers:** a code request answers the same whether or not the number has
   an account.
+- **Google sign-in (decision A.1):** the app's ID token is checked against Google's
+  published keys, our client ID as the audience, Google as the issuer, and its
+  expiry, with 10 seconds of clock skew. Only the `sub` is kept. A banned Google
+  account or device gets the answer an invalid token gets. Off unless
+  `GOOGLE_CLIENT_ID` is set. Google accounts are free to create, so a Google-only
+  account can't post jobs or earn the badge until it proves a phone number.
 
 **Staff**
 - **Sign-in:** email, a scrypt password (N=2^15) and a TOTP code, all three in one
@@ -65,7 +71,8 @@ Two properties cut across everything below:
 - console SMS, in-memory storage, or the fake push provider.
 
 **Tests**
-- `test_auth_api.py`, `test_phone_and_security.py`, `test_config.py`.
+- `test_auth_api.py`, `test_phone_and_security.py`, `test_config.py`,
+  `test_google_sign_in.py`.
 - `test_staff.py`:
   - the RFC 6238 test vector, drift and replay;
   - one answer for every failure, lockout and audit;

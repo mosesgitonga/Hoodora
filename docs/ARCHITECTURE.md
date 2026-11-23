@@ -59,7 +59,8 @@ app/
     health.py        liveness and readiness
     observability.py Sentry, scrubbed with the log rules
     metrics.py       Prometheus: request and job metrics, /metrics
-    providers/       external services, each behind a Protocol: SMS, storage, push
+    providers/       external services, each behind a Protocol: SMS, storage, push,
+                     and checking Google sign-in tokens
   modules/
     auth/            phone.py, service.py, dependencies.py, router.py
     users/           service.py (incl. the shared blocking check), badge.py, standing.py,

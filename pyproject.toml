@@ -37,6 +37,10 @@ dependencies = [
     # local HMAC computation, and the worker transfers objects in a thread.
     "boto3>=1.35",
     "firebase-admin>=6.5",
+    # Checks the ID token Google gives the app at Google sign-in: signature,
+    # audience, issuer and expiry. Already installed by firebase-admin; listed
+    # because the auth module now uses it directly.
+    "google-auth>=2.36",
     "tzdata>=2026.5",
     "sentry-sdk>=2.72.0",
     "prometheus-client>=0.26.0",

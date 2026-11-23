@@ -32,6 +32,25 @@ class SignupRequired extends VerifyOutcome {
   final String signupToken;
 }
 
+/// How someone can sign in right now, as `GET /v1/auth/methods` says. Phone is
+/// always on; Google only once the server has a client ID (decision A.1).
+class SignInMethods {
+  const SignInMethods({this.googleClientId});
+
+  factory SignInMethods.fromJson(Map<String, dynamic> json) => SignInMethods(
+        googleClientId: json['google'] == true ? json['google_client_id'] as String? : null,
+      );
+
+  /// Phone only: what to assume when the server can't be asked.
+  static const phoneOnly = SignInMethods();
+
+  /// Handed to Google so the token it issues is for Hoodora's server. Null when
+  /// Google sign-in is off.
+  final String? googleClientId;
+
+  bool get google => googleClientId != null;
+}
+
 /// How a place is named: an area label, never a position.
 class AreaLabel {
   const AreaLabel({required this.label, required this.precision});
@@ -59,6 +78,7 @@ class Me {
     required this.isVerifiedNeighbour,
     this.areaLabel,
     this.phoneNumber,
+    this.hasGoogleAccount = false,
     this.memberSince,
     this.ratingAverage,
     this.ratingCount = 0,
@@ -87,6 +107,7 @@ class Me {
             ? null
             : AreaLabel.fromJson(Map<String, dynamic>.from(json['area_label'] as Map)),
         phoneNumber: json['phone_number'] as String?,
+        hasGoogleAccount: json['has_google_account'] as bool? ?? false,
         memberSince: _date(json['member_since']),
         ratingAverage: (json['rating_average'] as num?)?.toDouble(),
         ratingCount: json['rating_count'] as int? ?? 0,
@@ -117,7 +138,11 @@ class Me {
   final bool hasHomeLocation;
   final bool isVerifiedNeighbour;
   final AreaLabel? areaLabel;
+
+  /// Null for an account that signed up with Google and hasn't added one.
+  /// Posting jobs needs one (decision A.1).
   final String? phoneNumber;
+  final bool hasGoogleAccount;
   final DateTime? memberSince;
   final double? ratingAverage;
   final int ratingCount;

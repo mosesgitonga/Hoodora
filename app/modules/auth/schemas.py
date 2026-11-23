@@ -81,6 +81,39 @@ class OtpVerifyIn(PhoneNumberIn, DeviceIn):
     code: str = Field(min_length=4, max_length=8, examples=["123456"])
 
 
+class AddPhoneIn(PhoneNumberIn):
+    """A number and the code `POST /v1/auth/otp/request` sent to it."""
+
+    code: str = Field(min_length=4, max_length=8, examples=["123456"])
+
+
+class AuthMethodsOut(BaseModel):
+    """How someone can sign in or sign up right now."""
+
+    phone: bool = Field(default=True, description="Always available.")
+    google: bool = Field(description="Whether Google sign-in is switched on.")
+    google_client_id: str | None = Field(
+        default=None,
+        description=(
+            "The client ID to hand Google as the server client ID, so the ID token "
+            "it issues is for this server. Null when Google sign-in is off. Not a "
+            "secret: every copy of the app holds it."
+        ),
+        examples=["1234567890-abc123.apps.googleusercontent.com"],
+    )
+
+
+class GoogleSignInIn(DeviceIn):
+    id_token: str = Field(
+        min_length=20,
+        max_length=4096,
+        description=(
+            "The ID token Google gave the app at sign-in. Only the account's Google "
+            "ID is taken from it; its email, name and photo are not kept."
+        ),
+    )
+
+
 class TokenPairOut(BaseModel):
     access_token: str
     refresh_token: str
@@ -89,7 +122,8 @@ class TokenPairOut(BaseModel):
 
 
 class OtpVerifyOut(BaseModel):
-    """Either signed in, or cleared to sign up."""
+    """Either signed in, or cleared to sign up. Also the answer to
+    `POST /v1/auth/google`."""
 
     status: Literal["signed_in", "signup_required"]
     tokens: TokenPairOut | None = Field(
@@ -105,14 +139,16 @@ class OtpVerifyOut(BaseModel):
 
 
 class SignupIn(DeviceIn):
-    """Completing signup after the number is verified.
+    """Completing signup after a number or a Google account is verified.
 
     Consents are separate booleans rather than one "I agree" flag, because the
     Data Protection Act requires consent to be specific and freely given. Marketing
     is optional and defaults to false; bundling it in would make it not a choice.
     """
 
-    signup_token: str = Field(description="From `POST /v1/auth/otp/verify`.")
+    signup_token: str = Field(
+        description="From `POST /v1/auth/otp/verify` or `POST /v1/auth/google`."
+    )
     display_name: str = Field(min_length=2, max_length=50, examples=["Wanjiku M."])
 
     is_adult: Literal[True] = Field(

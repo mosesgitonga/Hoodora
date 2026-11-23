@@ -38,8 +38,10 @@ from app.core.errors import (
     ConflictError,
     ForbiddenError,
     RateLimitedError,
+    ServiceUnavailableError,
     UnauthenticatedError,
 )
+from app.core.providers.google import GoogleTokenVerifier
 from app.core.providers.sms import SmsProvider
 from app.core.ratelimit import RateLimiter
 from app.core.realtime import SESSION_REVOKED, publish_after_commit
@@ -58,13 +60,21 @@ from app.modules.moderation import banlist
 from app.modules.moderation.audit import record_audit_event
 from app.modules.moderation.models import AuditAction
 from app.modules.users.models import User, UserStatus
-from app.modules.users.service import touch_last_active
+from app.modules.users.service import get_user_by_google_sub, touch_last_active
 
 logger = logging.getLogger(__name__)
 
 OTP_KEY_PREFIX: Final = "otp"
 OTP_COOLDOWN_PREFIX: Final = "otp:cooldown"
 SIGNUP_TOKEN_PREFIX: Final = "signup"  # noqa: S105 — a key prefix, not a secret
+
+# What a signup token's Redis value starts with when it was earned with Google.
+# A phone number is stored bare (it always starts with "+"), as it was before
+# Google sign-in existed, so tokens issued across a deploy keep working.
+_GOOGLE_SIGNUP_PREFIX: Final = "google:"
+
+INVALID_CODE_MESSAGE: Final = "That code is not valid or has expired"
+GOOGLE_REFUSED_MESSAGE: Final = "Google sign-in didn't work. Please try again."
 
 # Fields inside the Redis hash holding a pending code.
 _FIELD_HASH: Final = "hash"
@@ -215,28 +225,18 @@ async def request_otp(
     )
 
 
-async def verify_otp(
-    session: AsyncSession,
-    redis: Redis,
-    *,
-    phone_number: str,
-    code: str,
-    settings: Settings,
-    device_name: str | None = None,
-    device_platform: str | None = None,
-    device_id: str | None = None,
-) -> VerifiedPhone:
-    """Check a code and either sign the user in or let them sign up.
+async def _consume_code(redis: Redis, *, phone_number: str, code: str, settings: Settings) -> None:
+    """Check a code for a number and use it up, or raise.
 
-    A banned device is refused after the code checks out, with the answer an
-    expired code gets, so a ban reads as nothing more than a failed sign-in.
+    Shared by signing in and by adding a number to an account, so both count
+    attempts and refuse a replayed code the same way.
     """
     key = _otp_key(phone_number, settings)
     stored = await hash_get_all(redis, key)
     if not stored:
         # One message for "never requested", "already used", and "expired". The
         # difference is only useful to someone probing numbers.
-        raise UnauthenticatedError("That code is not valid or has expired")
+        raise UnauthenticatedError(INVALID_CODE_MESSAGE)
 
     attempts = int(stored.get(_FIELD_ATTEMPTS, 0))
     if attempts >= settings.otp_max_attempts:
@@ -258,21 +258,35 @@ async def verify_otp(
     # Correct: consume it, so a captured code cannot be replayed.
     await redis.delete(key)
 
+
+async def verify_otp(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    phone_number: str,
+    code: str,
+    settings: Settings,
+    device_name: str | None = None,
+    device_platform: str | None = None,
+    device_id: str | None = None,
+) -> VerifiedPhone:
+    """Check a code and either sign the user in or let them sign up.
+
+    A banned device is refused after the code checks out, with the answer an
+    expired code gets, so a ban reads as nothing more than a failed sign-in.
+    """
+    await _consume_code(redis, phone_number=phone_number, code=code, settings=settings)
+
     device_id_hash = banlist.device_hash(device_id, settings) if device_id else None
     if await banlist.is_device_banned(session, device_id_hash) or await banlist.is_phone_banned(
         session, phone_number, settings
     ):
         logger.info("otp_verify_refused", extra={"reason": "banned"})
-        raise UnauthenticatedError("That code is not valid or has expired")
+        raise UnauthenticatedError(INVALID_CODE_MESSAGE)
 
     user = await _find_active_user(session, phone_number)
     if user is None:
-        signup_token = generate_opaque_token()
-        await redis.set(
-            _signup_key(signup_token, settings),
-            phone_number,
-            ex=settings.signup_token_ttl_seconds,
-        )
+        signup_token = await _start_signup(redis, phone_number, settings)
         return VerifiedPhone(phone_number=phone_number, tokens=None, signup_token=signup_token)
 
     _assert_can_sign_in(user)
@@ -288,21 +302,153 @@ async def verify_otp(
     return VerifiedPhone(phone_number=phone_number, tokens=tokens, signup_token=None)
 
 
-async def consume_signup_token(redis: Redis, *, token: str, settings: Settings) -> str:
-    """Exchange a signup token for the phone number it verified.
+async def _start_signup(redis: Redis, value: str, settings: Settings) -> str:
+    """Issue a signup token for a proved phone number, or `google:<sub>`."""
+    signup_token = generate_opaque_token()
+    await redis.set(
+        _signup_key(signup_token, settings), value, ex=settings.signup_token_ttl_seconds
+    )
+    return signup_token
+
+
+@dataclass(frozen=True, slots=True)
+class SignupIdentity:
+    """What a signup token proved: a phone number or a Google account, never
+    both."""
+
+    phone_number: str | None = None
+    google_sub: str | None = None
+
+
+async def consume_signup_token(redis: Redis, *, token: str, settings: Settings) -> SignupIdentity:
+    """Exchange a signup token for the phone number or Google account it proved.
 
     Single-use and deleted on read, so a replayed token cannot create a second
-    account. The number lives in Redis rather than inside the token because a JWT
-    is readable by anyone holding it, and there is no reason to put a phone number
-    in the client's hands in a form it can be lifted out of.
+    account. The identity lives in Redis rather than inside the token because a
+    JWT is readable by anyone holding it, and there is no reason to put a phone
+    number in the client's hands in a form it can be lifted out of.
     """
     key = _signup_key(token, settings)
-    phone_number = await redis.getdel(key)
-    if not phone_number:
-        raise UnauthenticatedError(
-            "That signup session has expired. Please verify your number again."
+    value = await redis.getdel(key)
+    if not value:
+        raise UnauthenticatedError("That signup session has expired. Please sign in again.")
+    value = str(value)
+    if value.startswith(_GOOGLE_SIGNUP_PREFIX):
+        return SignupIdentity(google_sub=value.removeprefix(_GOOGLE_SIGNUP_PREFIX))
+    return SignupIdentity(phone_number=value)
+
+
+# ---------------------------------------------------------------------------
+# Google sign-in
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class GoogleSignIn:
+    """Exactly one of `tokens` and `signup_token` is set, as for a code."""
+
+    tokens: TokenPair | None
+    signup_token: str | None
+
+
+async def sign_in_with_google(
+    session: AsyncSession,
+    redis: Redis,
+    verifier: GoogleTokenVerifier,
+    *,
+    id_token: str,
+    settings: Settings,
+    device_name: str | None = None,
+    device_platform: str | None = None,
+    device_id: str | None = None,
+) -> GoogleSignIn:
+    """Sign in with the ID token Google gave the app, or start a signup.
+
+    Like a code, the answer is either tokens or a signup token, and a ban is
+    refused with the answer an invalid token gets. Telling the caller whether
+    the Google account has a Hoodora account is safe here: only the account's
+    owner holds a valid token for it.
+    """
+    if not settings.google_client_id:
+        raise ServiceUnavailableError("Google sign-in is not available")
+
+    identity = await verifier.verify(id_token, audience=settings.google_client_id)
+    if identity is None:
+        raise UnauthenticatedError(GOOGLE_REFUSED_MESSAGE)
+
+    device_id_hash = banlist.device_hash(device_id, settings) if device_id else None
+    if await banlist.is_device_banned(session, device_id_hash) or await banlist.is_google_banned(
+        session, identity.sub, settings
+    ):
+        logger.info("google_sign_in_refused", extra={"reason": "banned"})
+        raise UnauthenticatedError(GOOGLE_REFUSED_MESSAGE)
+
+    user = await get_user_by_google_sub(session, identity.sub)
+    if user is None:
+        signup_token = await _start_signup(
+            redis, f"{_GOOGLE_SIGNUP_PREFIX}{identity.sub}", settings
         )
-    return str(phone_number)
+        return GoogleSignIn(tokens=None, signup_token=signup_token)
+
+    _assert_can_sign_in(user)
+    tokens = await issue_tokens(
+        session,
+        user=user,
+        settings=settings,
+        device_name=device_name,
+        device_platform=device_platform,
+        device_id_hash=device_id_hash,
+    )
+    await touch_last_active(session, user.id)
+    return GoogleSignIn(tokens=tokens, signup_token=None)
+
+
+# ---------------------------------------------------------------------------
+# Adding a phone number to an account that signed up with Google
+# ---------------------------------------------------------------------------
+async def add_phone(
+    session: AsyncSession,
+    redis: Redis,
+    *,
+    user: User,
+    phone_number: str,
+    code: str,
+    settings: Settings,
+) -> User:
+    """Prove a number with a code from `request_otp` and attach it to the account.
+
+    Jobs and the verified-neighbour badge need a proved number (decision A.1).
+    Changing a number already held is not offered here.
+
+    Saying that a number belongs to another account is safe once the code is
+    right: the caller has just proved the number is theirs. A banned number is
+    refused as an expired code would be, as at sign-in.
+    """
+    if user.phone_number is not None:
+        raise ConflictError(
+            "Your account already has a phone number",
+            details={"reason": "phone_already_set"},
+        )
+    await _consume_code(redis, phone_number=phone_number, code=code, settings=settings)
+    if await banlist.is_phone_banned(session, phone_number, settings):
+        logger.info("add_phone_refused", extra={"reason": "banned"})
+        raise UnauthenticatedError(INVALID_CODE_MESSAGE)
+    if await _find_active_user(session, phone_number) is not None:
+        raise ConflictError(
+            "That number belongs to another Hoodora account",
+            details={"reason": "phone_in_use"},
+        )
+
+    user.phone_number = phone_number
+    user.phone_verified_at = datetime.now(UTC)
+    await session.flush()
+    await record_audit_event(
+        session,
+        action=AuditAction.phone_added,
+        actor_id=user.id,
+        target_type="user",
+        target_id=user.id,
+    )
+    logger.info("phone_added", extra={"user_id": str(user.id)})
+    return user
 
 
 async def _find_active_user(session: AsyncSession, phone_number: str) -> User | None:

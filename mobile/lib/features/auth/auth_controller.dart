@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/google_auth.dart';
 import '../../core/providers.dart';
 import '../../core/push.dart';
 import 'auth_models.dart';
@@ -105,6 +106,8 @@ class AuthController extends Notifier<AuthState> {
   Future<void> signOut() async {
     // While the session still works: stop pushes to this phone first.
     await ref.read(pushServiceProvider).stop();
+    // So the next person to sign in with Google here chooses their own account.
+    await ref.read(googleAuthProvider).signOut();
     final refreshToken = await ref.read(tokenStoreProvider).readRefreshToken();
     try {
       await ref.read(authRepositoryProvider).signOut(refreshToken);
@@ -116,14 +119,24 @@ class AuthController extends Notifier<AuthState> {
   }
 }
 
-/// The sign-in flow's in-between values: the number, the code's challenge, and
-/// the sign-up token for a new number. Cleared when the flow ends.
+/// Whether Google sign-in is on, asked once per visit to the sign-in screen.
+final signInMethodsProvider = FutureProvider.autoDispose<SignInMethods>(
+  (ref) => ref.read(authRepositoryProvider).methods(),
+);
+
+/// The sign-in flow's in-between values: the number, the code's challenge, the
+/// sign-up token for a new number or Google account, and the name Google
+/// suggested. Cleared when the flow ends.
 class SignInFlow {
-  const SignInFlow({this.phoneNumber, this.challenge, this.signupToken});
+  const SignInFlow({this.phoneNumber, this.challenge, this.signupToken, this.suggestedName});
 
   final String? phoneNumber;
   final OtpChallenge? challenge;
   final String? signupToken;
+
+  /// The Google account's name, to start the sign-up form with. Kept only on
+  /// the phone, and sent only if the person keeps it as their display name.
+  final String? suggestedName;
 }
 
 final signInFlowProvider =
@@ -141,6 +154,9 @@ class SignInFlowController extends Notifier<SignInFlow> {
         challenge: state.challenge,
         signupToken: token,
       );
+
+  void googleSignupRequired(String token, {String? suggestedName}) =>
+      state = SignInFlow(signupToken: token, suggestedName: suggestedName);
 
   void reset() => state = const SignInFlow();
 }

@@ -360,3 +360,11 @@ Three sub-questions arising from these rules were answered with the recommended
 values: exploring users do not count toward density, changing home resets the
 badge's consistency window, and explore days are excluded from the badge count
 rather than counted as absence. Recorded in full as decision 1.1.
+
+### Sign in with Google (agreed 2026-11-23)
+
+People sign up either with a phone number verified by an SMS code (Africa's
+Talking) or with Google. A Google account alone is enough to sign up. Posting
+jobs and the verified-neighbour badge still need a proved phone number, which a
+Google account adds from the app. Only Google's account ID is kept: no email,
+name or photo. Recorded as decision A.1.

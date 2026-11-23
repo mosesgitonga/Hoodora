@@ -16,6 +16,7 @@ from redis.asyncio import Redis
 from app.core.config import Settings, get_settings
 from app.core.db import SessionDep
 from app.core.errors import ConflictError, UnauthenticatedError
+from app.core.providers.google import GoogleTokenVerifier, get_google_verifier
 from app.core.providers.sms import SmsProvider, get_sms_provider
 from app.core.ratelimit import RateLimiter, get_rate_limiter, rate_limit
 from app.core.redis import get_redis
@@ -23,6 +24,8 @@ from app.modules.auth import service as auth_service
 from app.modules.auth.dependencies import CurrentUser, current_session_id
 from app.modules.auth.phone import mask_for_display, normalise_phone_number
 from app.modules.auth.schemas import (
+    AuthMethodsOut,
+    GoogleSignInIn,
     LogoutAllIn,
     LogoutAllOut,
     LogoutIn,
@@ -48,6 +51,7 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 RedisDep = Annotated[Redis, Depends(get_redis)]
 SmsDep = Annotated[SmsProvider, Depends(get_sms_provider)]
 LimiterDep = Annotated[RateLimiter, Depends(get_rate_limiter)]
+GoogleDep = Annotated[GoogleTokenVerifier, Depends(get_google_verifier)]
 
 
 def _to_token_pair(pair: auth_service.TokenPair) -> TokenPairOut:
@@ -148,15 +152,74 @@ async def verify_otp(
     return OtpVerifyOut(status="signup_required", signup_token=verified.signup_token)
 
 
+@router.get(
+    "/methods",
+    response_model=AuthMethodsOut,
+    summary="How to sign in",
+    description=(
+        "Whether Google sign-in is on, and the client ID the app needs for it. "
+        "Phone sign-in is always on."
+    ),
+)
+async def sign_in_methods(settings: SettingsDep) -> AuthMethodsOut:
+    client_id = settings.google_client_id or None
+    return AuthMethodsOut(google=client_id is not None, google_client_id=client_id)
+
+
+@router.post(
+    "/google",
+    response_model=OtpVerifyOut,
+    summary="Sign in with Google",
+    description=(
+        "Takes the ID token Google gave the app. A Google account with a Hoodora "
+        "account receives tokens; a new one receives a single-use `signup_token` "
+        "for `POST /v1/auth/signup`, as a new phone number does. Only the "
+        "account's Google ID is kept. 503 when Google sign-in is off."
+    ),
+    dependencies=[
+        Depends(
+            rate_limit(
+                bucket="google_sign_in_ip",
+                limit=30,
+                window_seconds=3600,
+                scope="ip",
+                fail_open=False,
+            )
+        )
+    ],
+)
+async def sign_in_with_google(
+    payload: GoogleSignInIn,
+    session: SessionDep,
+    redis: RedisDep,
+    verifier: GoogleDep,
+    settings: SettingsDep,
+) -> OtpVerifyOut:
+    outcome = await auth_service.sign_in_with_google(
+        session,
+        redis,
+        verifier,
+        id_token=payload.id_token,
+        settings=settings,
+        device_name=payload.device_name,
+        device_platform=payload.device_platform,
+        device_id=payload.device_id,
+    )
+    if outcome.tokens is not None:
+        return OtpVerifyOut(status="signed_in", tokens=_to_token_pair(outcome.tokens))
+    return OtpVerifyOut(status="signup_required", signup_token=outcome.signup_token)
+
+
 @router.post(
     "/signup",
     response_model=SignupOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create an account",
     description=(
-        "Completes signup for a number already verified by OTP. Requires an 18+ "
-        "confirmation and explicit consent to the terms, privacy policy, and "
-        "location use; marketing consent is optional."
+        "Completes signup for a number verified by OTP, or a Google account "
+        "verified by `POST /v1/auth/google`. Requires an 18+ confirmation and "
+        "explicit consent to the terms, privacy policy, and location use; "
+        "marketing consent is optional."
     ),
     dependencies=[
         Depends(
@@ -176,20 +239,25 @@ async def signup(
     redis: RedisDep,
     settings: SettingsDep,
 ) -> SignupOut:
-    phone_number = await auth_service.consume_signup_token(
+    identity = await auth_service.consume_signup_token(
         redis, token=payload.signup_token, settings=settings
     )
     device_id_hash = banlist.device_hash(payload.device_id, settings) if payload.device_id else None
     if await banlist.is_device_banned(session, device_id_hash):
-        raise UnauthenticatedError(
-            "That signup session has expired. Please verify your number again."
-        )
+        raise UnauthenticatedError("That signup session has expired. Please sign in again.")
 
     # The token is single-use and already consumed, so a race between two
     # simultaneous signups cannot create two accounts. This covers the other
-    # order: a number that gained an account between verify and signup.
-    if await users_service.get_user_by_phone(session, phone_number) is not None:
+    # order: a number or Google account that gained an account between
+    # verifying and signing up.
+    if identity.phone_number is not None and (
+        await users_service.get_user_by_phone(session, identity.phone_number) is not None
+    ):
         raise ConflictError("An account already exists for that number")
+    if identity.google_sub is not None and (
+        await users_service.get_user_by_google_sub(session, identity.google_sub) is not None
+    ):
+        raise ConflictError("An account already exists for that Google account")
 
     granted = {
         ConsentType.terms,
@@ -201,7 +269,8 @@ async def signup(
 
     user = await users_service.create_user(
         session,
-        phone_number=phone_number,
+        phone_number=identity.phone_number,
+        google_sub=identity.google_sub,
         display_name=payload.display_name,
         settings=settings,
         granted_consents=granted,

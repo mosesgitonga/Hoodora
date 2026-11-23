@@ -103,4 +103,8 @@ PURGE_REGISTRY: dict[str, tuple[Handling, str]] = {
         Handling.retained,
         "A ban outlives the account it was for; only a keyed hash is held",
     ),
+    "banned_google_accounts.user_id": (
+        Handling.retained,
+        "A ban outlives the account it was for; only a keyed hash is held",
+    ),
 }

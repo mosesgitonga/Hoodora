@@ -80,7 +80,8 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     """A neighbour.
 
     There is no password. Identity is a phone number proved by a one-time code,
-    which is both the Kenyan norm and one less secret to store badly.
+    which is both the Kenyan norm and one less secret to store badly, or a Google
+    account proved by an ID token from Google (decision A.1).
     """
 
     __tablename__ = "users"
@@ -91,19 +92,28 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     because sign-in has to find an account from the number alone; there is no
     second factor to look it up by. Redaction keeps it out of logs.
 
-    **Nullable, and null means purged.** An erased account holds no number at all,
-    which is both the honest outcome of a Data Protection Act erasure and simpler
-    than the alternative: the first implementation wrote a `purged:<uuid>`
-    tombstone to keep the unique index satisfied, which did not fit the column and
-    made the nightly retention job fail silently. PostgreSQL permits many nulls in
-    a unique index, so nothing needs to be invented to keep rows distinct.
+    **Nullable,** for two reasons. An account that signed up with Google has no
+    number until it adds one (`POST /v1/me/phone`). And an erased account holds no
+    number at all, which is both the honest outcome of a Data Protection Act
+    erasure and simpler than the alternative: the first implementation wrote a
+    `purged:<uuid>` tombstone to keep the unique index satisfied, which did not
+    fit the column and made the nightly retention job fail silently. PostgreSQL
+    permits many nulls in a unique index, so nothing needs to be invented to keep
+    rows distinct.
 
-    Every live account has one. Null is unreachable through the API, because a
-    purged account cannot authenticate."""
+    `user_can_sign_in` keeps a live account from having neither this nor
+    `google_sub`."""
 
     phone_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    """Set whenever a number is held: every number is proved by a code. Jobs and
+    the verified-neighbour badge require it."""
+
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    """Google's ID for the account the person signs in with, from the `sub` claim
+    of a checked ID token. Nothing else from Google is kept: no email, name or
+    photo (decision A.1). Cleared at purge."""
 
     display_name: Mapped[str] = mapped_column(String(50))
 
@@ -242,6 +252,13 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     """Start of the grace period. The purge worker reads this, not `deleted_at`."""
 
     __table_args__ = (
+        # Every live account can sign in: with its phone number, its Google
+        # account, or both. Only a purged account (which has `deleted_at`) holds
+        # neither. Decision A.1.
+        CheckConstraint(
+            "deleted_at IS NOT NULL OR phone_number IS NOT NULL OR google_sub IS NOT NULL",
+            name="user_can_sign_in",
+        ),
         CheckConstraint(
             "home_presence_mask >= 0 AND home_presence_mask < 16384",
             name="user_home_presence_mask_is_14_bits",

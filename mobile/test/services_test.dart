@@ -271,5 +271,42 @@ void main() {
       expect(sent.containsKey('travel_km'), isFalse);
       expect(find.textContaining('Accounts can post jobs once they are 14 days old'), findsOneWidget);
     });
+
+    testWidgets('a job from an account with no phone leads to adding one (decision A.1)', (tester) async {
+      extra = (request) => request.path == '/services' && request.method == 'POST'
+          ? FakeReply(403, {
+              'error': {
+                'code': 'forbidden',
+                'message': 'Add your phone number to post jobs',
+                'details': {'reason': 'phone_required', 'action': 'POST /v1/me/phone'},
+              },
+            })
+          : const FakeReply(0);
+      await openServices(tester);
+      await tester.tap(find.text('Jobs'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Post'));
+      await tester.pumpAndSettle();
+
+      Finder inForm(Finder finder) => find.descendant(of: find.byType(ServiceComposeScreen), matching: finder);
+      final scrollable = inForm(find.byType(Scrollable)).first;
+      Future<Finder> reach(Finder finder) async {
+        await tester.scrollUntilVisible(inForm(finder), 150, scrollable: scrollable);
+        await tester.ensureVisible(inForm(finder));
+        await tester.pumpAndSettle();
+        return inForm(finder);
+      }
+
+      await tester.tap(await reach(find.text('Other')));
+      await tester.enterText(await reach(find.widgetWithText(TextField, 'Job title')), 'Shop attendant');
+      await tester.pump();
+      await tester.tap(await reach(find.widgetWithText(FilledButton, 'Post')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Add your phone number to post jobs'), findsOneWidget);
+      await tester.tap(await reach(find.widgetWithText(TextButton, 'Add a phone number')));
+      await tester.pumpAndSettle();
+      expect(find.text("We'll send a 6-digit code by SMS."), findsOneWidget);
+    });
   });
 }

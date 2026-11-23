@@ -9,9 +9,9 @@ import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../auth_controller.dart';
 
-/// Completing sign-up for a verified new number: a display name, and each
-/// consent asked for separately, as the Data Protection Act requires. Marketing
-/// is optional and starts unticked.
+/// Completing sign-up for a verified new number or Google account: a display
+/// name, and each consent asked for separately, as the Data Protection Act
+/// requires. Marketing is optional and starts unticked.
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
 
@@ -28,6 +28,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   bool _marketing = false;
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Signing up with Google suggests the account's name. It's only a start:
+    // neighbours see whatever the person leaves here.
+    final suggested = ref.read(signInFlowProvider).suggestedName?.trim();
+    if (suggested != null && suggested.isNotEmpty) {
+      _name.text = suggested.length > 50 ? suggested.substring(0, 50) : suggested;
+    }
+  }
 
   @override
   void dispose() {

@@ -40,6 +40,9 @@ class _ServiceComposeScreenState extends ConsumerState<ServiceComposeScreen> {
   bool _busy = false;
   String? _error;
 
+  /// The server refused a job because the account has no phone number.
+  bool _needsPhone = false;
+
   bool get _editing => widget.editing != null;
 
   @override
@@ -139,6 +142,7 @@ class _ServiceComposeScreenState extends ConsumerState<ServiceComposeScreen> {
       if (mounted) {
         setState(() {
           _busy = false;
+          _needsPhone = error.details['reason'] == 'phone_required';
           _error = _explain(error);
         });
       }
@@ -146,6 +150,10 @@ class _ServiceComposeScreenState extends ConsumerState<ServiceComposeScreen> {
   }
 
   static String _explain(ApiException error) {
+    if (error.details['reason'] == 'phone_required') {
+      // Signed up with Google and has no number yet (decision A.1).
+      return 'Add your phone number to post jobs. You can still offer a service or ask for help.';
+    }
     if (error.details['reason'] == 'hiring_trust_threshold') {
       final days = error.details['min_account_age_days'];
       return days == null
@@ -287,6 +295,14 @@ class _ServiceComposeScreenState extends ConsumerState<ServiceComposeScreen> {
               ],
           },
           FormError(_error),
+          if (_needsPhone)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => context.push(Routes.addPhone),
+                child: const Text('Add a phone number'),
+              ),
+            ),
           const SizedBox(height: 16),
           BusyButton(
             label: _editing ? 'Save' : 'Post',

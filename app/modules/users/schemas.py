@@ -50,9 +50,12 @@ class MeOut(BaseModel):
     display_name: str
     phone_number: str | None = Field(
         description=(
-            "The caller's own number. Null only for a purged account, which "
-            "cannot sign in, so in practice this is always present."
+            "The caller's own number. Null for an account that signed up with "
+            "Google and hasn't added one (`POST /v1/me/phone`)."
         )
+    )
+    has_google_account: bool = Field(
+        default=False, description="Whether the account signs in with Google."
     )
     status: UserStatus
     member_since: datetime

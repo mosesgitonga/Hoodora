@@ -70,6 +70,7 @@ copied into an image (`.dockerignore`). Settings that must change from the templ
 | `LOG_FORMAT` | `json` |
 | `CORS_ORIGINS` | Empty for the mobile app. Set it only for a browser client. |
 | `SMS_PROVIDER`, `AFRICASTALKING_*` | `africastalking`, with the account's credentials |
+| `GOOGLE_CLIENT_ID` | The Firebase project's **web** OAuth client ID, to turn Google sign-in on. Empty leaves it off (decision A.1) |
 | `STORAGE_PROVIDER`, `STORAGE_*` | `s3`, with R2's endpoint, bucket and keys |
 | `PUSH_PROVIDER`, `FCM_CREDENTIALS_FILE` | `fcm`, `/run/secrets/myradius/fcm.json` |
 | `SENTRY_DSN` | The project's DSN, or empty to leave error tracking off |

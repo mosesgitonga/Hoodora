@@ -65,6 +65,7 @@ from app.modules.moderation.models import (
     AuditActorType,
     AuditEvent,
     BannedDevice,
+    BannedGoogleAccount,
     BannedPhone,
     ContentStatus,
     ModerationWarning,
@@ -797,10 +798,12 @@ async def ban(
     ban_devices: bool,
     remove_content: bool,
     settings: Settings,
+    ban_google_account: bool = True,
 ) -> User:
     """Ban an account: signed out everywhere at once, and — unless told not to —
-    its number and every device it signed in from are added to the ban lists, so
-    a new account cannot simply be opened on the same phone."""
+    its number, its Google account and every device it signed in from are added
+    to the ban lists, so a new account cannot simply be opened on the same phone
+    or with the same Google account."""
     user = await _account(session, user_id)
     if user.status == UserStatus.banned:
         raise ConflictError("The account is already banned")
@@ -820,6 +823,19 @@ async def ban(
                 user_id=user_id,
             )
             .on_conflict_do_nothing(index_elements=["phone_hash"]),
+        )
+    google_accounts = 0
+    if ban_google_account and user.google_sub:
+        google_accounts = await execute_dml(
+            session,
+            insert(BannedGoogleAccount)
+            .values(
+                google_hash=banlist.google_hash(user.google_sub, settings),
+                reason=reason,
+                staff_id=staff.id,
+                user_id=user_id,
+            )
+            .on_conflict_do_nothing(index_elements=["google_hash"]),
         )
     devices = 0
     if ban_devices:
@@ -872,6 +888,7 @@ async def ban(
             "reason": reason,
             "sessions_revoked": revoked,
             "phone_banned": bool(phones),
+            "google_account_banned": bool(google_accounts),
             "devices_banned": devices,
             "content_removed": removed,
         },
@@ -880,12 +897,15 @@ async def ban(
 
 
 async def unban(session: AsyncSession, *, staff: StaffAccount, user_id: uuid.UUID) -> User:
-    """Lift a ban, and the phone and device bans that came with it."""
+    """Lift a ban, and the phone, Google-account and device bans that came with it."""
     user = await _account(session, user_id)
     if user.status != UserStatus.banned:
         raise ConflictError("The account is not banned")
     user.status = UserStatus.active
     phones = await execute_dml(session, delete(BannedPhone).where(BannedPhone.user_id == user_id))
+    google_accounts = await execute_dml(
+        session, delete(BannedGoogleAccount).where(BannedGoogleAccount.user_id == user_id)
+    )
     devices = await execute_dml(
         session, delete(BannedDevice).where(BannedDevice.user_id == user_id)
     )
@@ -894,7 +914,11 @@ async def unban(session: AsyncSession, *, staff: StaffAccount, user_id: uuid.UUI
         staff=staff,
         action=AuditAction.user_unbanned,
         user_id=user_id,
-        context={"phone_bans_lifted": phones, "device_bans_lifted": devices},
+        context={
+            "phone_bans_lifted": phones,
+            "google_account_bans_lifted": google_accounts,
+            "device_bans_lifted": devices,
+        },
     )
     return user
 

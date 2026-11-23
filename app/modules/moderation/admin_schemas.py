@@ -136,6 +136,10 @@ class RestrictIn(BaseModel):
 class BanIn(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
     ban_phone: bool = True
+    ban_google_account: bool = Field(
+        default=True,
+        description="Also ban the Google account they sign in with, if they have one.",
+    )
     ban_devices: bool = True
     remove_content: bool = Field(
         default=False, description="Also take down everything they have posted."

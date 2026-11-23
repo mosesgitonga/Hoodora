@@ -55,8 +55,9 @@ Nothing in Redis is a source of truth, and everything in it expires.
 
 | Field | Why | Retention | Notes |
 | --- | --- | --- | --- |
-| `phone_number` | The account identifier. Sign-in has to find an account from the number alone; there is no second factor to look it up by. | Until purge, then **null** | E.164, uniquely indexed, stored in the clear because it must be searchable. Redacted from logs by pattern. Null means the account was purged. |
-| `phone_verified_at` | Proof the number was controlled at signup; feeds the verified-neighbour rule | Until purge | |
+| `phone_number` | An account identifier. Sign-in has to find an account from the number alone; there is no second factor to look it up by. | Until purge, then **null** | E.164, uniquely indexed, stored in the clear because it must be searchable. Redacted from logs by pattern. Null for a purged account, and for one that signed up with Google and hasn't added a number (decision A.1). |
+| `phone_verified_at` | Proof the number was controlled, at signup or when added later; posting jobs and the verified-neighbour badge need it | Until purge | Set whenever a number is held. |
+| `google_sub` | For an account that signs in with Google: Google's ID for that Google account, from the checked ID token (decision A.1) | Until purge, then **null** | Uniquely indexed. **Nothing else from Google is kept:** no email, name or photo, though Google's token carries them. A live account must have this, a phone number, or both. In the export. |
 | `display_name` | Shown to neighbours | Until purge, then "Deleted user" | Free text; the user chooses how identifiable to be. |
 | `status` | Account state: active, suspended, banned, deletion_pending | Until purge | |
 | `adult_confirmed_at` | Evidence of the 18+ declaration, and when it was made | Until purge | A timestamp rather than a boolean: the Act asks *when* a declaration was made. |
@@ -567,15 +568,16 @@ Staff are not users. Their data is about employment, not the community.
 | --- | --- | --- |
 | `user_id`, `reason`, `staff_id`, `report_id`, `created_at` | A moderator's warning. The person sees it in `GET /v1/me/standing`, and it counts in their history | 2 years, or until the account is purged. The audit log keeps the fact of a warning; the wording goes |
 
-### `banned_phones` and `banned_devices`
+### `banned_phones`, `banned_google_accounts` and `banned_devices`
 
 | Field | Why | Retention |
 | --- | --- | --- |
-| `phone_hash` / `device_hash` | **A keyed HMAC, never the number or the installation ID.** Checked at sign-in | Until a moderator lifts the ban. Survives the account's purge: a ban outlives the account it was for |
+| `phone_hash` / `google_hash` / `device_hash` | **A keyed HMAC, never the number, the Google account ID or the installation ID.** Checked at sign-in | Until a moderator lifts the ban. Survives the account's purge: a ban outlives the account it was for |
 | `user_id`, `staff_id`, `reason` | Which account the ban came from, who imposed it and why | As the entry. `user_id` points at the anonymised row after a purge |
 
 The hash is keyed with `BAN_LIST_KEY`, so a leaked table cannot be checked against
-a list of numbers without the key.
+a list of numbers or Google accounts without the key. A Google account is banned,
+and unbanned, with the account that signs in with it (decision A.1).
 
 ### `vouches`
 

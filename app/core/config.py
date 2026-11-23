@@ -190,6 +190,15 @@ class Settings(BaseSettings):
     africastalking_base_url: str = "https://api.africastalking.com"
     sms_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 
+    # -- Google sign-in ------------------------------------------------------
+    google_client_id: str = ""
+    """The OAuth client Google issues ID tokens for: the *web* client of the
+    Firebase project, which the app hands Google as its server client ID. Empty
+    turns Google sign-in off. Not a secret: every copy of the app holds it."""
+
+    google_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    """For fetching Google's signing keys, which are cached between sign-ins."""
+
     # -- Location and H3 -----------------------------------------------------
     h3_storage_resolution: int = Field(default=9, ge=7, le=12)
     """Resolution 9 spans a few hundred metres: fine enough to be useful, coarse
