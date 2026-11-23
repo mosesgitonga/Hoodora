@@ -3892,8 +3892,22 @@ phones. The APK shared with testers stays 64-bit only. Decision M.13.
     (CN=Hoodora, SHA-256 `5A:D1:22:10:…:8A:78`).
   - Shorebird stopped at the existing 1.1.0+3, as expected.
 
+### Release 1.2.0+4 for the Play Store (2026-11-23)
+
+- **Published** on Shorebird with `scripts/app_release.sh play`, on Shorebird's
+  Flutter 3.47.9. The app's code is the same as 1.1.0+3; what's new is the
+  build: 32-bit phones and Chromebooks, and the upload key.
+- **The bundle** (`mobile/build/app/outputs/bundle/release/app-release.aab`,
+  62.2 MB) is signed by the upload key (CN=Hoodora, SHA-256
+  `5A:D1:22:10:…:8A:78`). It carries the engine and the app's code for
+  `armeabi-v7a`, `arm64-v8a` and `x86_64`.
+- **Patches** from now on go to 1.2.0+4, the version in `pubspec.yaml`. Phones
+  still on the 1.1.0+3 APK get none of them.
+
 **Still to do for the Play Store:**
-- A new version and a Shorebird release signed with the upload key. Testers
-  uninstall the old app once, since Android refuses an update signed with a
-  different key.
+- Uploading the bundle to the internal testing track, accepting Play App
+  Signing. Testers uninstall the 1.1.0+3 APK first: it is signed with the debug
+  key, and Android refuses an update signed with a different one.
+- Setting `APP_LATEST_BUILD=4` on the server once the Play listing can be
+  installed, not before: the banner would offer a build nobody can get yet.
 - Seeing the app on a real 32-bit phone.
