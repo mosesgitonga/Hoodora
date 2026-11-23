@@ -180,7 +180,7 @@ void main() {
     await tester.tap(find.text('Share story'));
     await tester.pumpAndSettle();
     final post = adapter.requests.singleWhere((r) => r.path == '/stories' && r.method == 'POST');
-    expect(post.data, {'kind': 'text', 'text': 'Mandazi at the stage'});
+    expect(post.data, {'kind': 'text', 'text': 'Mandazi at the stage', 'audience': 'neighbours_and_circle'});
     expect(find.text('New story'), findsNothing);
   });
 }

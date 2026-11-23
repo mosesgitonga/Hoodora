@@ -19,6 +19,10 @@ class AccountRepository {
   Future<Me> setShowInNearby(bool show) async =>
       Me.fromJson(Map<String, dynamic>.from(await _api.patch('/me', body: {'show_in_nearby': show}) as Map));
 
+  /// Who may send me Circle requests. Whoever is refused isn't told why.
+  Future<Me> setCircleRequestPolicy(String policy) async => Me.fromJson(
+      Map<String, dynamic>.from(await _api.patch('/me', body: {'circle_request_policy': policy}) as Map));
+
   /// Neighbours who chose to be listed, newest members first. Only proven
   /// neighbours may look: anyone else gets `contact_locked`.
   Future<(List<Profile>, String?)> peopleNearby({String? cursor}) async {

@@ -906,3 +906,27 @@ async def test_the_purge_erases_the_circle(
     assert await db_session.scalar(select(func.count()).select_from(CircleRequest)) == 0
     await db_session.refresh(leaving)
     assert leaving.circle_request_policy == CircleRequestPolicy.everyone
+
+
+async def test_a_profile_carries_the_request_to_answer_or_withdraw(
+    db_session: AsyncSession, authenticate: Authenticate
+) -> None:
+    """So the app can accept, decline or withdraw from the profile itself."""
+    amina = await person(db_session, display_name="Amina")
+    baraka = await person(db_session, at=NAIROBI, display_name="Baraka")
+    stranger = await person(db_session, display_name="Chebet")
+    request_id = (await ask(authenticate, amina, baraka)).json()["request"]["id"]
+
+    async def profile(viewer: User, other: User) -> dict[str, Any]:
+        response = await (await authenticate(viewer)).get(f"/v1/users/{other.id}")
+        return dict(response.json())
+
+    assert (await profile(amina, baraka))["circle_request_id"] == request_id
+    assert (await profile(baraka, amina))["circle_request_id"] == request_id
+    assert (await profile(amina, stranger))["circle_request_id"] is None
+
+    accepted = await (await authenticate(baraka)).post(f"/v1/circle/requests/{request_id}/accept")
+    assert accepted.status_code == 204, accepted.text
+    now = await profile(amina, baraka)
+    assert now["relationship"] == "in_circle"
+    assert now["circle_request_id"] is None

@@ -8,6 +8,7 @@ import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
+import '../circle/audience_choice.dart';
 import 'stories_controller.dart';
 import 'story_models.dart';
 
@@ -26,6 +27,9 @@ class _StoryComposeScreenState extends ConsumerState<StoryComposeScreen> {
   final _text = TextEditingController();
   Uint8List? _photo;
   bool _busy = false;
+
+  /// My Circle sees it too, unless I say not (decision C.4).
+  bool _withCircle = true;
   String? _error;
   String? _progress;
 
@@ -67,9 +71,9 @@ class _StoryComposeScreenState extends ConsumerState<StoryComposeScreen> {
       if (photo != null) {
         setState(() => _progress = 'Uploading photo…');
         final mediaId = await ref.read(mediaUploaderProvider).uploadPhoto(photo, purpose: 'story');
-        story = await stories.postImage(mediaId);
+        story = await stories.postImage(mediaId, withCircle: _withCircle);
       } else {
-        story = await stories.postText(_text.text);
+        story = await stories.postText(_text.text, withCircle: _withCircle);
       }
       ref.read(storiesControllerProvider.notifier).added(story);
       if (mounted) Navigator.of(context).pop();
@@ -144,9 +148,14 @@ class _StoryComposeScreenState extends ConsumerState<StoryComposeScreen> {
                 icon: const Icon(Icons.photo_outlined),
                 label: const Text('Use a photo instead'),
               ),
+            const SizedBox(height: 16),
+            AudienceChoice(
+              withCircle: _withCircle,
+              onChanged: _busy ? null : (value) => setState(() => _withCircle = value),
+            ),
             const SizedBox(height: 8),
             Text(
-              'Neighbours around your home see it for 24 hours. Photos have their location data removed.',
+              "Seen for 24 hours around where you are now. Photos have their location data removed.",
               style: text.bodySmall,
             ),
             if (_progress != null) ...[const SizedBox(height: 8), Text(_progress!, style: text.bodySmall)],

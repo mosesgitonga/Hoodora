@@ -25,6 +25,7 @@ import '../features/market/screens/listing_list_screen.dart';
 import '../features/market/screens/listing_screen.dart';
 import '../features/market/screens/market_screen.dart';
 import '../features/market/screens/sell_screen.dart';
+import '../features/circle/circle_screen.dart';
 import '../features/me/me_screen.dart';
 import '../features/me/screens/add_phone_screen.dart';
 import '../features/me/screens/data_screens.dart';
@@ -76,6 +77,7 @@ class Routes {
   static const myData = '/me/data';
   static const deleteAccount = '/me/delete';
   static const services = '/feed/services';
+  static const circle = '/feed/circle';
   static const peopleNearby = '/feed/people';
   static const groups = '/feed/groups';
   static const newGroup = '/groups/new';
@@ -204,6 +206,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                     ),
                   ],
                 ),
+                GoRoute(path: 'circle', builder: (_, _) => const CircleScreen()),
                 GoRoute(
                   path: 'services',
                   builder: (_, _) => const ServicesScreen(),

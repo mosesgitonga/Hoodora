@@ -39,17 +39,23 @@ class StoryRepository {
     return stories;
   }
 
-  Future<Story> postText(String text) async => Story.fromJson(
+  /// [withCircle] false keeps a story to neighbours; by default my Circle sees
+  /// it too (decision C.4).
+  Future<Story> postText(String text, {bool withCircle = true}) async => Story.fromJson(
     Map<String, dynamic>.from(
-      await _api.post('/stories', body: {'kind': 'text', 'text': text.trim()}, idempotent: true) as Map,
+      await _api.post('/stories',
+          body: {'kind': 'text', 'text': text.trim(), 'audience': _audience(withCircle)}, idempotent: true) as Map,
     ),
   );
 
-  Future<Story> postImage(String mediaId) async => Story.fromJson(
+  Future<Story> postImage(String mediaId, {bool withCircle = true}) async => Story.fromJson(
     Map<String, dynamic>.from(
-      await _api.post('/stories', body: {'kind': 'image', 'media_id': mediaId}, idempotent: true) as Map,
+      await _api.post('/stories',
+          body: {'kind': 'image', 'media_id': mediaId, 'audience': _audience(withCircle)}, idempotent: true) as Map,
     ),
   );
+
+  static String _audience(bool withCircle) => withCircle ? 'neighbours_and_circle' : 'neighbours_only';
 
   /// Marks a story watched. Harmless to repeat; the author is never counted.
   Future<void> markSeen(String storyId) => _api.post('/stories/$storyId/view');

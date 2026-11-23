@@ -309,13 +309,14 @@ async def get_public_profile(
     within = own or await feed_service.author_within_feed(
         session, redis, viewer=viewer, author=target, settings=settings
     )
-    relationship = (
-        circle_service.Relationship.none
+    standing = (
+        circle_service.Standing(circle_service.Relationship.none)
         if own
-        else await circle_service.relationship(
+        else await circle_service.standing_with(
             session, viewer_id=viewer.id, other_id=target.id, settings=settings
         )
     )
+    relationship = standing.relationship
 
     bucket = None
     # No distance to yourself, nor to anyone beyond your feed radius (decision C.6).
@@ -347,6 +348,7 @@ async def get_public_profile(
         cover=await _cover(session, storage, target),
         posts_visible=within or relationship == circle_service.Relationship.in_circle,
         relationship=relationship.value,
+        circle_request_id=standing.request_id,
     )
 
 

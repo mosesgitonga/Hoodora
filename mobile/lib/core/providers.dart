@@ -7,6 +7,7 @@ import '../features/groups/group_repository.dart';
 import '../features/guest/guest_repository.dart';
 import '../features/market/listing_repository.dart';
 import '../features/me/account_repository.dart';
+import '../features/circle/circle_repository.dart';
 import '../features/profile/profile_repository.dart';
 import '../features/reviews/review_repository.dart';
 import '../features/services/service_repository.dart';
@@ -54,6 +55,10 @@ final accountRepositoryProvider = Provider<AccountRepository>(
 
 final profileRepositoryProvider = Provider<ProfileRepository>(
   (ref) => ProfileRepository(ref.watch(apiClientProvider)),
+);
+
+final circleRepositoryProvider = Provider<CircleRepository>(
+  (ref) => CircleRepository(ref.watch(apiClientProvider)),
 );
 
 final reviewRepositoryProvider = Provider<ReviewRepository>(

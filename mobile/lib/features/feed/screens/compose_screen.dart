@@ -9,6 +9,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
+import '../../circle/audience_choice.dart';
 import '../../auth/auth_controller.dart';
 import '../../groups/group_models.dart' show groupPostPostedMessage;
 import '../feed_controller.dart';
@@ -36,6 +37,9 @@ class ComposeScreen extends ConsumerStatefulWidget {
 class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   late final _body = TextEditingController(text: widget.editing?.body);
   late String _category = widget.editing?.category ?? 'general';
+
+  /// Who sees it besides neighbours: my Circle too, unless I say not.
+  bool _withCircle = true;
   final List<Uint8List> _photos = [];
   bool _busy = false;
   String? _progress;
@@ -107,7 +111,8 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(groupPostPostedMessage(post))));
         return;
       }
-      final (post, reach) = await repo.createPost(body: body, category: _category, mediaIds: mediaIds);
+      final (post, reach) =
+          await repo.createPost(body: body, category: _category, mediaIds: mediaIds, withCircle: _withCircle);
       ref.read(feedControllerProvider.notifier).prepend(post);
       if (!mounted) return;
       context.pop();
@@ -257,12 +262,18 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                 text: "Posted in the group only; it doesn't reach the neighbourhood feed. "
                     'Photo location data is removed.',
               )
-            else
+            else ...[
+              AudienceChoice(
+                withCircle: _withCircle,
+                onChanged: _busy ? null : (value) => setState(() => _withCircle = value),
+              ),
+              const SizedBox(height: 12),
               const NotePanel(
                 icon: Icons.location_on_outlined,
                 text: "Posted to the area you're in now. Neighbours see the area and a rough "
                     'distance, never exactly where you are. Photo location data is removed.',
               ),
+            ],
             if (_progress != null) ...[
               const SizedBox(height: 16),
               Row(

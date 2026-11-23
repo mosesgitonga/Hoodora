@@ -4219,3 +4219,92 @@ The four tests that encoded posting without days were updated. App tests pass,
 including new ones for the sign-up question and the chat marker.
 
 **Not yet:** seen on the phone. It needs a new app release.
+
+## Mobile app: Circle (2026-11-23)
+
+### Plan
+
+**Asked:** the Circle feature, as the product owner described it:
+- adding someone from their profile, mutual, with crossing requests accepting
+  each other;
+- posts reaching your Circle beyond the radius, and a Circle feed and stories;
+- messaging without a request;
+- who can send you requests, and each post's audience;
+- silent declines and removals, expiry and a 30-day cooldown;
+- the spam limits.
+
+**Already built on the server** (Circle and Follows, 2026-11-01, decisions
+C.1–C.6), all of it, with its tests:
+- requests, accept and decline, crossing requests;
+- silent declines and removals, expiry, the cooldown, and blocks ending a link;
+- 20 a day (5 for accounts under a week), 50 pending, 1,000 members, and the
+  newcomer rule;
+- `circle_request_policy`;
+- `/feed/circle` and `/stories/circle`;
+- Circle members skipping message requests (C.3);
+- `audience` on posts and stories;
+- the town without a distance beyond the radius (C.6).
+
+**Missing: the app.** It has no Circle screens at all.
+
+**Server addition:** the profile gives `circle_request_id` with
+`request_sent` and `request_received`, so the app can answer or withdraw a
+request from the profile.
+
+**App:**
+- **Profile:**
+  - **Add to Circle** sends a request;
+  - **Request sent** can be withdrawn;
+  - **Accept** or **Decline** when they asked you;
+  - **In your Circle**, with Remove.
+- **Your Circle** (Home menu), three tabs:
+  - **Posts:** the Circle feed;
+  - **People:** members, with their area and a distance band, or the town
+    beyond the radius;
+  - **Requests:** received, to accept or decline; sent, to withdraw.
+- **Who sees a post:** "Neighbours and Circle" (default) or "Neighbours only"
+  when writing a post or a story.
+- **Settings › Privacy:** who can send you Circle requests (everyone, people
+  nearby, people you've chatted with, nobody).
+- **Refusals** read the server's words. Every refusal looks the same, so the
+  app can't and doesn't say why.
+
+### Built (2026-11-23)
+
+**Server:** one addition. `GET /v1/users/{id}` gives `circle_request_id`:
+- the caller's own request with `request_sent`, to withdraw;
+- the other person's with `request_received`, to accept or decline.
+
+`circle.service.standing_with` returns both. A declined request still reads as
+sent, and its id is the sender's own, so the decline stays silent. One new
+test; all Circle tests pass.
+
+**App** (`lib/features/circle/`):
+- **Profile:**
+  - **Add to Circle**;
+  - **Request sent**, tap to withdraw;
+  - **Accept Circle request** or **Decline**;
+  - **In your Circle**, tap to remove, with a note that they won't be told.
+  - A request that crosses theirs says "You and Kamau are in each other's
+    Circle".
+- **Your Circle** (Home menu), with three tabs:
+  - **Posts:** the Circle feed, with Circle stories on top;
+  - **People:** each with their area and a distance band, or only the town
+    beyond the radius;
+  - **Requests:** "Asking you" (Accept, Decline) and "You asked" (Withdraw).
+- **New posts and stories:** "Who sees this", either "Neighbours and Circle"
+  (the default) or "Neighbours only".
+- **Settings › Privacy:** "Who can send you Circle requests": Everyone, People
+  nearby, People I've chatted with, or Nobody.
+- **Refusals** show the server's words, which never say why.
+- **Found while testing:** the app's full-width button style breaks buttons
+  placed side by side. The Circle rows size theirs explicitly.
+
+**Checked:**
+- **App:** 5 new tests in `test/circle_test.dart`: the profile button in each
+  state, the Circle screen's tabs, the audience choice, and the Privacy
+  setting. All 139 app tests pass.
+- **Server:** the Circle, profile, privacy-schema and API-docs tests pass.
+  Lint, types and the analyzer are clean.
+
+**Not yet:** seen on the phone. It needs a new app release.

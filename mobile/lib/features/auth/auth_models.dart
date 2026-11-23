@@ -93,6 +93,7 @@ class Me {
     this.contactUnlockWindowDays = 7,
     this.presenceCheckDue = false,
     this.showInNearby = false,
+    this.circleRequestPolicy = 'everyone',
     this.homeProvisional = false,
     this.homeConfirmBy,
   });
@@ -122,6 +123,7 @@ class Me {
         contactUnlockWindowDays: json['contact_unlock_window_days'] as int? ?? 7,
         presenceCheckDue: json['presence_check_due'] as bool? ?? false,
         showInNearby: json['show_in_nearby'] as bool? ?? false,
+        circleRequestPolicy: json['circle_request_policy'] as String? ?? 'everyone',
         homeProvisional: json['home_provisional'] as bool? ?? false,
         homeConfirmBy: _date(json['home_confirm_by']),
       );
@@ -172,6 +174,10 @@ class Me {
 
   /// Whether I chose to be listed in People nearby (decision M.8).
   final bool showInNearby;
+
+  /// Who may send me Circle requests: `everyone`, `nearby_only`,
+  /// `contacts_only` or `nobody`.
+  final String circleRequestPolicy;
 
   /// Home was set away from home at sign-up; set the real one by [homeConfirmBy]
   /// (decision M.10).

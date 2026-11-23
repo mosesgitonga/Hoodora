@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../auth/auth_controller.dart';
 import '../chats/start_chat.dart';
+import '../circle/circle_button.dart';
 import '../feed/feed_models.dart';
 import '../feed/widgets/own_post_actions.dart';
 import '../feed/widgets/post_card.dart';
@@ -231,10 +232,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         icon: const Icon(Icons.edit_outlined, size: 18),
                         label: const Text('Edit profile'),
                       )
-                    : FilledButton.icon(
-                        onPressed: () => openDirectChat(context, ref, profile.id),
-                        icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                        label: Text('Message ${profile.displayName.split(' ').first}'),
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: () => openDirectChat(context, ref, profile.id),
+                            icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                            label: Text('Message ${profile.displayName.split(' ').first}'),
+                          ),
+                          const SizedBox(height: 8),
+                          CircleButton(
+                            userId: profile.id,
+                            firstName: profile.displayName.split(' ').first,
+                            relationship: profile.relationship,
+                            requestId: profile.circleRequestId,
+                            onChanged: _load,
+                          ),
+                        ],
                       ),
               ),
             ),

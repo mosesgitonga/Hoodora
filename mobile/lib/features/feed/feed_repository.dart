@@ -125,13 +125,23 @@ class FeedRepository {
 
   /// Posts to the area the phone is in. Returns the post and roughly how many
   /// neighbours can see it.
+  ///
+  /// [withCircle] false keeps it to neighbours; by default the author's Circle
+  /// sees it too, wherever they live (decision C.4).
   Future<(Post, int)> createPost({
     required String body,
     required String category,
     List<String> mediaIds = const [],
+    bool withCircle = true,
   }) async {
     final data = Map<String, dynamic>.from(await _api.post('/posts',
-        body: {'body': body, 'category': category, 'media_ids': mediaIds}, idempotent: true) as Map);
+        body: {
+          'body': body,
+          'category': category,
+          'media_ids': mediaIds,
+          'audience': withCircle ? 'neighbours_and_circle' : 'neighbours_only',
+        },
+        idempotent: true) as Map);
     // Shown at the top of the feed straight away, so it joins the saved copy too.
     unawaited(_savePosted(data['post']));
     return (

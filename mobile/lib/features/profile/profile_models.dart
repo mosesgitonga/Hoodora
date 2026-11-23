@@ -1,4 +1,5 @@
 import '../auth/auth_models.dart';
+import '../circle/circle_models.dart';
 import '../feed/feed_models.dart';
 
 /// Someone's profile, as `GET /v1/users/{id}` gives it: an area label and a
@@ -17,6 +18,8 @@ class Profile {
     this.distanceBucket,
     this.memberSince,
     this.ratingAverage,
+    this.relationship = CircleRelationship.none,
+    this.circleRequestId,
   });
 
   factory Profile.fromJson(Map<String, dynamic> json) => Profile(
@@ -34,6 +37,8 @@ class Profile {
         : AreaLabel.fromJson(Map<String, dynamic>.from(json['area_label'] as Map)),
     distanceBucket: json['distance_bucket'] as String?,
     memberSince: json['member_since'] == null ? null : DateTime.parse(json['member_since'] as String),
+    relationship: CircleRelationship.parse(json['relationship'] as String?),
+    circleRequestId: json['circle_request_id'] as String?,
   );
 
   final String id;
@@ -51,6 +56,10 @@ class Profile {
   final AreaLabel? areaLabel;
   final String? distanceBucket;
   final DateTime? memberSince;
+
+  /// Where I stand with their Circle, and the request behind it, if any.
+  final CircleRelationship relationship;
+  final String? circleRequestId;
 
   Author get asAuthor =>
       Author(id: id, displayName: displayName, isVerifiedNeighbour: isVerifiedNeighbour, avatar: avatar);

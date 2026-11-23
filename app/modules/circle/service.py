@@ -131,18 +131,29 @@ async def _person(session: AsyncSession, *, viewer: User, user_id: uuid.UUID) ->
 # ---------------------------------------------------------------------------
 # Where two people stand
 # ---------------------------------------------------------------------------
-async def relationship(
+@dataclass(frozen=True, slots=True)
+class Standing:
+    """Where the viewer stands with someone's circle, and the pending request
+    behind it, so a profile can answer or withdraw it."""
+
+    relationship: Relationship
+    request_id: uuid.UUID | None = None
+
+
+async def standing_with(
     session: AsyncSession,
     *,
     viewer_id: uuid.UUID,
     other_id: uuid.UUID,
     settings: Settings,
     now: datetime | None = None,
-) -> Relationship:
+) -> Standing:
+    """A declined request still reads as sent until it expires (decision C.2):
+    its id is the sender's own, to withdraw, and says nothing about the decline."""
     if viewer_id == other_id:
-        return Relationship.none
+        return Standing(Relationship.none)
     if await links.in_circle(session, viewer_id, other_id):
-        return Relationship.in_circle
+        return Standing(Relationship.in_circle)
     moment = now or datetime.now(UTC)
     sent = await session.scalar(
         select(CircleRequest.id)
@@ -153,13 +164,29 @@ async def relationship(
         .limit(1)
     )
     if sent is not None:
-        return Relationship.request_sent
+        return Standing(Relationship.request_sent, sent)
     received = await session.scalar(
         select(CircleRequest.id)
         .where(_awaiting(viewer_id, settings, moment), CircleRequest.requester_id == other_id)
         .limit(1)
     )
-    return Relationship.request_received if received is not None else Relationship.none
+    if received is not None:
+        return Standing(Relationship.request_received, received)
+    return Standing(Relationship.none)
+
+
+async def relationship(
+    session: AsyncSession,
+    *,
+    viewer_id: uuid.UUID,
+    other_id: uuid.UUID,
+    settings: Settings,
+    now: datetime | None = None,
+) -> Relationship:
+    found = await standing_with(
+        session, viewer_id=viewer_id, other_id=other_id, settings=settings, now=now
+    )
+    return found.relationship
 
 
 # ---------------------------------------------------------------------------

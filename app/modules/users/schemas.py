@@ -188,6 +188,13 @@ class PublicProfileOut(BaseModel):
             "still reads `request_sent` until it expires; there is no `declined`."
         ),
     )
+    circle_request_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "With `request_sent`, the caller's own request, to withdraw; with "
+            "`request_received`, theirs, to accept or decline. Otherwise null."
+        ),
+    )
 
 
 class ProfileUpdateIn(BaseModel):

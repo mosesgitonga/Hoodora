@@ -6,6 +6,7 @@ import '../../../core/providers.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
+import '../../circle/circle_models.dart';
 import '../account_models.dart';
 import '../me_screen.dart';
 
@@ -183,6 +184,44 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
     }
   }
 
+  String get _circlePolicy {
+    final auth = ref.watch(authControllerProvider);
+    return auth is AuthSignedIn ? auth.me.circleRequestPolicy : 'everyone';
+  }
+
+  Future<void> _chooseCirclePolicy() async {
+    final auth = ref.read(authControllerProvider);
+    final current = CirclePolicy.parse(auth is AuthSignedIn ? auth.me.circleRequestPolicy : null);
+    final chosen = await showModalBottomSheet<CirclePolicy>(
+      context: context,
+      backgroundColor: Palette.cream,
+      builder: (sheet) => SafeArea(
+        child: RadioGroup<CirclePolicy>(
+          groupValue: current,
+          onChanged: (value) => Navigator.of(sheet).pop(value),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text('Who can send you Circle requests'),
+                subtitle: Text("Anyone else is refused, and isn't told why."),
+              ),
+              for (final policy in CirclePolicy.values)
+                RadioListTile<CirclePolicy>(value: policy, title: Text(policy.label)),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (chosen == null || chosen == current) return;
+    try {
+      final me = await ref.read(accountRepositoryProvider).setCircleRequestPolicy(chosen.value);
+      ref.read(authControllerProvider.notifier).replaceMe(me);
+    } on ApiException catch (error) {
+      if (mounted) _toast(context, error.message);
+    }
+  }
+
   Future<void> _setMarketing(bool granted) async {
     try {
       final updated = await ref.read(accountRepositoryProvider).setMarketing(granted);
@@ -245,6 +284,13 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                 ),
                 value: _showInNearby,
                 onChanged: _setShowInNearby,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Who can send you Circle requests'),
+                subtitle: Text(CirclePolicy.parse(_circlePolicy).label),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: _chooseCirclePolicy,
               ),
               const SizedBox(height: 24),
               Text(

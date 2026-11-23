@@ -54,6 +54,12 @@ class HomeMenu extends StatelessWidget {
               onTap: () => open(Routes.services),
             ),
             ListTile(
+              leading: Icon(Icons.diversity_3_outlined, color: Palette.ink),
+              title: const Text('Your Circle'),
+              subtitle: const Text('People you keep up with, wherever they live'),
+              onTap: () => open(Routes.circle),
+            ),
+            ListTile(
               leading: Icon(Icons.people_outline_rounded, color: Palette.ink),
               title: const Text('People nearby'),
               subtitle: const Text('Neighbours who chose to be listed'),
