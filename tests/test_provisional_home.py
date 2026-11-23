@@ -14,7 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.modules.users.models import User
-from tests.factories import KARATINA, NAIROBI, NYERI_TOWN, Coordinates, make_user
+from tests.factories import (
+    KARATINA,
+    NAIROBI,
+    NYERI_TOWN,
+    Coordinates,
+    give_zone_days,
+    make_user,
+)
 
 Authenticate = Callable[[User], Awaitable[httpx.AsyncClient]]
 
@@ -28,7 +35,7 @@ async def newcomer(db_session: AsyncSession) -> User:
     return await make_user(db_session, created_days_ago=0, contact_unlocked=False)
 
 
-async def test_away_from_home_gives_a_provisional_home_with_full_use(
+async def test_away_from_home_gives_a_provisional_home_and_the_days_to_post(
     db_session: AsyncSession, authenticate: Authenticate, settings: Settings
 ) -> None:
     user = await newcomer(db_session)
@@ -42,10 +49,13 @@ async def test_away_from_home_gives_a_provisional_home_with_full_use(
     confirm_by = datetime.fromisoformat(me["home_confirm_by"])
     assert timedelta(days=settings.provisional_home_days - 1) < confirm_by - datetime.now(UTC)
 
-    posted = await (await authenticate(user)).post(
+    # Not home, so no sign-up shortcut: posting there waits for the days (L.2).
+    refused = await (await authenticate(user)).post(
         "/v1/posts", json={"body": "Visiting for the week", "category": "general"}
     )
-    assert posted.status_code == 201, posted.text
+    assert refused.status_code == 403
+    assert refused.json()["error"]["details"]["reason"] == "new_to_area"
+    assert refused.json()["error"]["details"]["days"] == 1
     # Nothing was proven by being there.
     await db_session.refresh(user)
     assert user.home_presence_mask == 0
@@ -82,24 +92,19 @@ async def test_the_real_home_replaces_it_without_a_cooldown(
     assert user.home_presence_mask & 1 == 1
 
 
-async def test_after_the_deadline_nothing_new_is_placed(
+async def test_after_the_deadline_posting_still_works(
     db_session: AsyncSession, authenticate: Authenticate, settings: Settings
 ) -> None:
+    """Decision M.10, amended by L.1: the deadline no longer stops posting. The
+    days in the zone are what count (L.2)."""
     user = await newcomer(db_session)
     await (await authenticate(user)).put("/v1/me/location", json=reading(NAIROBI, at_home=False))
     await db_session.refresh(user)
     user.home_set_at = datetime.now(UTC) - timedelta(days=settings.provisional_home_days + 1)
-    await db_session.flush()
+    await give_zone_days(db_session, user, NAIROBI)
 
-    refused = await (await authenticate(user)).post(
-        "/v1/posts", json={"body": "Still visiting", "category": "general"}
-    )
-    assert refused.status_code == 409
-    assert refused.json()["error"]["details"]["reason"] == "confirm_home"
-
-    await (await authenticate(user)).put("/v1/me/location", json=reading(NYERI_TOWN))
     posted = await (await authenticate(user)).post(
-        "/v1/posts", json={"body": "Home at last", "category": "general"}
+        "/v1/posts", json={"body": "Still visiting", "category": "general"}
     )
     assert posted.status_code == 201, posted.text
 

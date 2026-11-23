@@ -143,7 +143,7 @@ void main() {
       // Kamakwa shows once, under your groups, not again under Nearby.
       expect(find.text('Kamakwa Residents'), findsOneWidget);
       expect(find.text('Ruringu Football'), findsOneWidget);
-      expect(find.text('Within 6 km of home'), findsOneWidget);
+      expect(find.text('Within 6 km of you'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Accept'));
       await tester.pumpAndSettle();

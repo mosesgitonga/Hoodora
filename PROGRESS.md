@@ -4058,3 +4058,164 @@ away.
   clean.
 - **Around Nyeri town** the feed's reach moves in rings of about 0.87 km: 1.49,
   2.33, 3.19, 4.06 km… These now read 1.5, 2.5, 3.5 and 4.5 km.
+
+## Everything follows the phone; home works in the background (2026-11-23)
+
+### Plan
+
+**Asked:** no setting a home. People see, take part in and post to what's
+around them, wherever they are.
+
+**Decided with the product owner:** home stays, out of sight. It still decides
+four things:
+- the verified-neighbour badge;
+- the newcomer rule for messaging strangers;
+- People nearby;
+- the area on a profile.
+
+Those keep working as they do now.
+
+**What changes:**
+- **Where content goes:** posts, stories, listings, service posts and public
+  groups are placed where the phone is, not at home. Home is the fallback when
+  the app has no location for the person. This reverses rule 1 of decision 1.1
+  and decision 2.4.
+- **What lists read from:** the feed, stories, market, services, events, groups
+  and `GET /v1/me/radius` read from where the phone is by default
+  (`anchor=explore` is now the default; `home` can still be asked for).
+- **The current location** is what "Use my location now" already keeps:
+  - the phone's hexagon, in Redis for two hours, never in PostgreSQL;
+  - held only while the phone is away from home's hexagon; at home, home is the
+    same place.
+  - The app now sends it by itself at launch and on coming back to the app, at
+    most once every two minutes. The per-person limit goes from 30 to 120 an
+    hour.
+- **Signing up:** no "Are you at home right now?". Home is set from GPS where
+  the person signs up, and can be moved in Settings.
+- **The provisional-home deadline goes:** a home set away from home no longer
+  stops posting after `PROVISIONAL_HOME_DAYS`. Decision M.10 is amended.
+- **App:**
+  - the "Showing what's around you until 14:30 / Show home area" strip goes;
+  - headers read "Within X km of you";
+  - the location button stays, to refresh by hand.
+- **Unchanged:**
+  - comments made away from home still carry the "visiting" mark;
+  - a profile shows a person's posts only to someone whose feed reaches the
+    profile owner's home;
+  - density is still counted by home.
+
+**Risk accepted:** anyone can post into a neighbourhood by going there, or by
+faking GPS. Reports and moderators are the check.
+
+### Built (2026-11-23)
+
+**Server:**
+- **Where content goes:** `location.service.content_location_columns` places
+  posts, stories, listings, service posts and public groups where the phone is,
+  with home as the fallback. `create_story`, `services.create_post`,
+  `groups.create_group` and `groups.update_group` now take Redis to read it.
+- **What lists read from:** every `anchor` parameter defaults to `explore`
+  (where the phone is, falling back to home).
+- **Smaller changes:**
+  - `POST /v1/me/explore` allows 120 an hour.
+  - The provisional-home deadline no longer refuses posts.
+- **Tests:** "posting while exploring still posts at home" became "a post goes
+  where the phone is". There are new tests for the home fallback and for lists
+  defaulting to the phone, and the deadline test now checks posting still
+  works.
+
+**App:**
+- **Location sent by itself:** the shell sends where the phone is at launch and
+  on resume, at most every two minutes, without asking for permission. It
+  re-sends when the server's two-hour hold lapses.
+- **Removed:**
+  - the "Showing what's around you until… / Show home area" strip;
+  - the provisional-home card, and "posts still go home" on an empty feed.
+- **Headers** read "Within X km of you".
+- **Sign-up:** "Are you at home right now?" became one step, "See what's around
+  you", which records home where the person is.
+- **Text:** the post, story and group screens say content goes to the area
+  you're in. The location consent reads "Use my location to show what is
+  nearby". Me › Home area says what home is still for.
+
+**Checked:**
+- **Server:** the full suite passes, and ruff and mypy are clean.
+- **App:** all 132 tests pass, and `flutter analyze` is clean.
+- **Not yet:** seen on the phone. It needs a new app release, because the
+  sign-up screen and the automatic location are app changes. The server changes
+  reach staging with the next push. The app on the phone already reads lists
+  from home unless it sends a location, so it keeps working meanwhile.
+
+**Still to do:**
+- The privacy policy should say the app sends the phone's location while in
+  use. A new consent document version would ask existing users to agree again.
+
+## Posting needs days in a place (2026-11-23)
+
+**Asked:** the product owner clarified the previous change. Seeing is open
+everywhere, but posting in a place needs several days there within a week.
+- **Sign-up:** ask "Is this your home area?", and say that only zones are kept,
+  never coordinates.
+- **Comments:** open to everyone, but no links from someone new to the area.
+- **Chats:**
+  - mark a request when the sender is new to the area;
+  - no links in the sender's first few messages;
+  - one message until a reply;
+  - no read status for the sender before the request is accepted.
+
+**Decided with the product owner:**
+- 4 of the last 7 days, in zones of about 2.5 km (H3 res 7), with touching
+  zones counting.
+- **One shortcut:** at first sign-up, with a verified phone and "this is my
+  home area", they may post around home straight away.
+- **Everything else** needs the days, including a home that later moves.
+
+Decision L.2.
+
+### Built (2026-11-23)
+
+**Server:**
+- **`location.zones`:** records which zones someone was in on each of the last
+  seven days, when the app reports the phone. It decides whether they may post
+  in a zone, and prunes and purges.
+  - **Table:** `user_zone_days` (migration 0022), seven bits per zone.
+  - **Refusal:** 403 `new_to_area` with the days so far.
+- **Where the check applies:** posts (not group posts), stories, listings,
+  services and jobs, public groups, and public events by their venue.
+- **The shortcut:** `users.home_claimed_at_signup`, set by answering yes at
+  sign-up and cleared when home moves. Migration 0022 gives it to existing
+  accounts with a confirmed, never-moved home and a verified phone.
+- **Comments:** someone new where they are gets 403 `links_not_allowed_yet` for
+  a link. `core.links.contains_link` spots links, `.co.ke`, `wa.me` and
+  `bit.ly` included.
+- **Chats:**
+  - whoever starts a two-person chat can't send a link in their first 3
+    messages (`INITIATOR_LINK_FREE_MESSAGES`);
+  - a request records `request_sender_new_to_area`, shown to the recipient as
+    `requester_new_to_area`.
+- **Already in place, unchanged:** one message until a reply (3.7), and no read
+  status for the sender before acceptance.
+- **Data rights:** nightly pruning with the presence roll; deleted at purge;
+  exported as days per zone. Covered in DATA_MAP and the purge registry.
+
+**App:**
+- **Sign-up:** "Is this your home area?", with "Yes, this is my home area" and
+  "No, I'm just visiting". It says only the zone is kept, about 2.5 km across.
+  - **Found while testing:** the screen was 34 px too tall for a mid-range
+    phone. It now scrolls when space is short.
+- **"New to this area"** shows on a request in the Requests list and in the
+  chat itself.
+- **Refusals** (posting, links) show the server's words, as before.
+
+**Checked:** 35 new tests in `tests/test_zones.py`. They cover:
+- recording, the 4-day line, touching zones and the week's edge;
+- every kind of posting, the group-post and private-event exemptions;
+- the shortcut, and losing it;
+- comment and chat links, and the request marker;
+- pruning, export and purge;
+- the link detector.
+
+The four tests that encoded posting without days were updated. App tests pass,
+including new ones for the sign-up question and the chat marker.
+
+**Not yet:** seen on the phone. It needs a new app release.

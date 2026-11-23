@@ -43,6 +43,7 @@ from app.core.errors import (
     InvalidCursorError,
     NotFoundError,
 )
+from app.core.links import contains_link
 from app.core.pagination import PageParams, decode_cursor, encode_cursor, paginate
 from app.modules.circle import links as circle_links
 from app.modules.feed.models import (
@@ -61,13 +62,14 @@ from app.modules.follows import links as follow_links
 from app.modules.follows.models import FollowEntityType
 from app.modules.groups import access as group_access
 from app.modules.groups.models import ROLE_RANK, Group, GroupRole
-from app.modules.location import bands
+from app.modules.location import bands, zones
 from app.modules.location.radius import RadiusEngine, RadiusResult
 from app.modules.location.service import (
     Anchor,
     AnchorMode,
-    home_location_columns,
+    content_location_columns,
     is_exploring,
+    new_to_area,
     resolve_anchor,
 )
 from app.modules.media.models import MediaPurpose
@@ -115,11 +117,12 @@ def visible_to(status: ContentStatus, *, author_id: uuid.UUID, viewer_id: uuid.U
     return False
 
 
-def _require_home(author: User) -> dict[str, object]:
-    location = home_location_columns(author)
+async def _require_location(session: AsyncSession, redis: Redis, author: User) -> dict[str, object]:
+    """Where new content goes: where the author's phone is (decision L.1)."""
+    location = await content_location_columns(session, redis, user=author)
     if location is None:
         raise ConflictError(
-            "Set your home area before posting",
+            "Turn on location to post what's around you",
             details={"action": "PUT /v1/me/location"},
         )
     return location
@@ -164,7 +167,11 @@ async def create_post(
     author's offerings, which is what reaches that offering's followers
     (decision C.5).
     """
-    location = _require_home(author)
+    location = await _require_location(session, redis, author)
+    if group is None:
+        # Posting in a place means having been there (decision L.2). A group
+        # post reaches only the group's members, so it isn't placed.
+        await zones.require_may_post_at(session, user=author, location=location, settings=settings)
     if service_post_id is not None:
         if group is not None:
             raise BadRequestError("A post in a group cannot be made as a service")
@@ -599,6 +606,13 @@ async def add_comment(
             f"Comments are limited to {settings.comment_max_length} characters",
             details={"max_length": settings.comment_max_length},
         )
+    if contains_link(cleaned) and await new_to_area(session, redis, user=author, settings=settings):
+        # Anyone may comment anywhere, but links wait until someone has been
+        # around long enough to post there (decision L.2).
+        raise ForbiddenError(
+            "You can share links in comments once you've been around here for a few days.",
+            details={"reason": "links_not_allowed_yet"},
+        )
 
     parent: Comment | None = None
     if parent_id is not None:
@@ -975,6 +989,7 @@ async def reactions_by(
 # ---------------------------------------------------------------------------
 async def create_story(
     session: AsyncSession,
+    redis: Redis,
     *,
     author: User,
     kind: StoryKind,
@@ -983,7 +998,8 @@ async def create_story(
     settings: Settings,
     audience: Audience = Audience.neighbours_and_circle,
 ) -> Story:
-    location = _require_home(author)
+    location = await _require_location(session, redis, author)
+    await zones.require_may_post_at(session, user=author, location=location, settings=settings)
 
     if kind == StoryKind.image:
         if media_id is None or text:

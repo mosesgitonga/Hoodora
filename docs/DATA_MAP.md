@@ -139,17 +139,18 @@ log redaction filter uses, rather than trusting callers.
 | `otp:<hash>` | Hashed one-time code and its attempt counter | Phone verification | 5 minutes |
 | `otp:cooldown:<hash>` | Resend cooldown marker | Cost control: each send is a real SMS | 60 seconds |
 | `signup:<hash>` | Phone number awaiting signup completion | Single-use ticket between verify and signup | 15 minutes |
-| `explore:<user id>` | **An explore-mode location, as cells** | Browsing elsewhere temporarily | ~2 hours |
+| `explore:<user id>` | **Where the phone is, as cells**, while it's away from home | Lists read from it, and new content is placed in it (decision L.1). The app sends it at launch and on coming back to the app | ~2 hours, renewed while the app is in use |
 | `arealabel:<cell>` | A resolved area label | Avoids recomputing k-anonymity per profile render | 1 hour |
 | `radius:feed:<cell>` | A cached feed radius | Stability and cost | 15 minutes |
 | `rl:<bucket>:<identity>` | Rate-limit counters | Abuse and cost control | Window length |
 
 Two things to note. OTP keys are keyed by a **hash** of the phone number, not the
 number, because Redis keys appear in slow logs and `MONITOR` output. And the
-explore location is the most sensitive item in the system — where somebody is
+current location is the most sensitive item in the system — where somebody is
 right now — which is exactly why it lives only here, expires by itself, and is
 never written to PostgreSQL. It is not in the data export, because there is
-nothing at rest to export.
+nothing at rest to export. Since decision L.1 the app sends it by itself rather
+than on a tap, so it is held whenever someone is using the app away from home.
 
 ---
 
@@ -188,9 +189,12 @@ references it, and nothing servable remains.
 | `edited_at` | Shows readers the post was edited (decision 2.22) | With the post |
 | `post_edits`: `post_id`, previous `body` and `category`, `edited_at` | What the post said before each edit, so an edit can't hide reported abuse. Seen only by moderators, and by the author in their export | Deleted with the post (cascade), so the retention job's hard delete takes them too |
 
-The location is the **author's home cell at posting time** — a cell centre, never a
-coordinate — and stays with the post if the author later moves. Authored content
-never takes an explore-mode location (decision 1.1, rule 1).
+The location is the **cell the author was in when posting** — a cell centre, never
+a coordinate — taken from the current location the app last sent, or from home when
+there is none (decision L.1, which reversed rule 1 of decision 1.1). It stays with
+the post. So a post does say roughly where its author was when they wrote it, which
+is what posting to what's around you means; neighbours see only its area label and
+a distance band.
 
 ### `stories` and `story_views`
 
@@ -269,6 +273,7 @@ apply to all of it:
 | --- | --- | --- |
 | `kind`, `title`, `state` | What the conversation is; group chat name; request state | Life of the conversation |
 | `created_by_id`, `request_sender_id` | Who started it, and who asked first: context for a harassment report | Life of the conversation |
+| `request_sender_new_to_area` | Whether whoever asked was new to the area they wrote from, shown to the recipient (decision L.2). A yes/no, not where | Life of the conversation |
 | `direct_key` | One direct conversation per pair (two user IDs) | Life of the conversation |
 | `last_seq`, `last_message_at` | Sync and inbox order | Life of the conversation |
 | `listing_id`, `group_id` | Phases 5 and 4 | — |
@@ -394,7 +399,7 @@ not to the people it is exercised on.
 ### `posts` (changes)
 
 `group_id` (now a foreign key), `approval_status` and `pinned_at`. A group post is
-otherwise an ordinary post: the same location rule (the author's home cell), the
+otherwise an ordinary post: the same location rule (where the author was), the
 same export, the same purge. It never appears in the neighbourhood feed.
 
 ### Audit
@@ -464,7 +469,7 @@ them.
 | --- | --- | --- |
 | `author_id`, `kind`, `category`, `title`, `description` | The post | Soft-deleted by the author or on purge |
 | `rate_info`, `availability_info`, `travel_km` (offering); `budget_info` (seeking); `job_type`, `pay_min_kes`, `pay_max_kes`, `pay_period` (hiring) | What each kind needs | As the post |
-| `cell_res9`…`cell_res6`, `centroid`, `area_id`, `coarse_centroid` | The author's home cell when posted, for the radius filter and band sorting | As the post. Never in a response |
+| `cell_res9`…`cell_res6`, `centroid`, `area_id`, `coarse_centroid` | The cell the author was in when posting (decision L.1), for the radius filter and band sorting | As the post. Never in a response |
 | `expires_at`, `closed_at` | 30-day seeking and hiring posts; closing when filled | As the post |
 | `status`, `hidden_at`, `flagged_phrases` | Moderation, and the fee-demand phrases that held a job post | As the post. `flagged_phrases` are shown to the author and to moderators |
 
@@ -783,6 +788,31 @@ response, export or admin screen.
 
 ---
 
+## Zones and posting (2026-11-23)
+
+Decision L.2: posting in a place needs days spent there.
+
+### `user_zone_days`
+
+| Field | Why | Retention |
+| --- | --- | --- |
+| `user_id`, `zone` | Which zones (H3 res 7, about 2.5 km across) the person's phone was in this week | **7 days.** The nightly roll deletes a row once its days have aged out. Deleted at purge |
+| `days_mask`, `updated_on` | One yes/no per day for the last seven: enough to count "4 of the last 7" | As the row |
+
+**What is deliberately absent:**
+- no coordinates, and no position inside a zone;
+- no time of day, and no order of visits;
+- nothing older than a week.
+
+A day is recorded when the app reports the phone there: at launch and on coming
+back to the app. Exported as the number of days per zone, without the cells.
+
+### `users` (changes)
+
+| Field | Why | Retention |
+| --- | --- | --- |
+| `home_claimed_at_signup` | The person said "this is my home area" at sign-up and hasn't moved it. With a verified phone, they may post around home from day one | Until home moves, or purge |
+
 ## The mobile app — what stays on the phone
 
 | What | Where | Why | Kept until |
@@ -842,7 +872,8 @@ becomes a worker job in the phase that owns the data.
 | Soft-deleted user content | 90 days, then hard-deleted with its images (Phase 8 `run_retention`); held while a report about it, or about anything it would cascade to, is pending |
 | Stories | 24 hours, then hard-deleted with their images — held only while a report is pending |
 | Home location | Only the current H3 cell and its centroid. No history: a change overwrites. |
-| Explore-mode location | **Redis only, ~2 hour TTL. Never written to PostgreSQL.** Not in the export, because it is never at rest. |
+| Current location (away from home) | **Redis only, ~2 hour TTL. Never written to PostgreSQL.** Not in the export, because it is never at rest. |
+| Zone days | **7 days**, one yes/no per zone per day, then deleted by the nightly roll. No coordinates. |
 | Home-presence history | A 14-bit rolling mask of daily yes/no answers to "was this user in their home area". Not the locations it came from. Self-purging. |
 | Moderation reports and warnings | 2 years after resolution (Phase 8 `run_retention`); pending reports are never deleted |
 | Audit log | 2 years (Phase 8 `run_retention`) |

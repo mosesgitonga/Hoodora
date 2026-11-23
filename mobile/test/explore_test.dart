@@ -17,8 +17,8 @@ import 'support/fake_socket.dart';
 void main() {
   late List<RequestOptions> sent;
 
-  /// Signed in at home in Nyeri Town. [explore] is the server's answer to the
-  /// button; the feed differs by where it is read from.
+  /// Signed in, with home in Nyeri Town. [explore] is the server's answer when the
+  /// app sends where the phone is; the feed differs by where it is read from.
   Future<void> open(WidgetTester tester, {required Map<String, dynamic> explore, FakeReader? reader}) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.75;
@@ -64,30 +64,22 @@ void main() {
 
   String later() => DateTime.now().toUtc().add(const Duration(hours: 2)).toIso8601String();
 
-  testWidgets('away from home, the feed moves to where the phone is, and back', (tester) async {
+  testWidgets('away from home, the app says where it is by itself, and the feed follows', (tester) async {
     await open(tester, explore: {
       'area_label': {'label': 'Kingongo', 'precision': 'area'},
       'expires_at': later(),
       'same_area_as_home': false,
     });
-    expect(find.text('Water off on Saturday'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Use my location now'));
-    await tester.pumpAndSettle();
-
+    // Sent at launch, with no tap (decision L.1).
     final asked = sent.singleWhere((r) => r.method == 'POST' && r.path == '/me/explore');
     expect((asked.data as Map).keys, containsAll(['latitude', 'longitude']));
     expect(find.text('Kingongo'), findsOneWidget);
-    expect(find.textContaining('What you post still goes to Nyeri Town'), findsOneWidget);
     expect(find.text('Matatu stage moved'), findsOneWidget);
     expect(find.text('Water off on Saturday'), findsNothing);
-
-    await tester.tap(find.text('Show home area'));
-    await tester.pumpAndSettle();
-
-    expect(sent.where((r) => r.method == 'DELETE' && r.path == '/me/explore'), hasLength(1));
-    expect(find.text('Water off on Saturday'), findsOneWidget);
+    // No strip, and no way "back home": what's around the phone is the app.
     expect(find.text('Show home area'), findsNothing);
+    expect(find.textContaining('still goes to'), findsNothing);
   });
 
   testWidgets('the market and services and jobs follow too', (tester) async {
@@ -96,45 +88,55 @@ void main() {
       'expires_at': later(),
       'same_area_as_home': false,
     });
-    await tester.tap(find.byTooltip('Use my location now'));
-    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Market'));
     await tester.pumpAndSettle();
     final listings = sent.where((r) => r.path == '/listings').toList();
     expect(listings.last.queryParameters['anchor'], 'explore');
-    expect(find.textContaining("Showing what's around you now"), findsOneWidget);
-
-    // Back home from the market: it reloads around home.
-    await tester.tap(find.text('Show home area'));
-    await tester.pumpAndSettle();
-    expect(sent.where((r) => r.path == '/listings').last.queryParameters.containsKey('anchor'), isFalse);
-    expect(find.textContaining("Showing what's around you now"), findsNothing);
   });
 
-  testWidgets('still in the home hexagon, nothing changes and the app says so', (tester) async {
+  testWidgets('in the home hexagon, the feed is home, and the button confirms', (tester) async {
     await open(tester, explore: {
       'area_label': {'label': 'Nyeri Town', 'precision': 'town'},
       'expires_at': later(),
       'same_area_as_home': true,
     });
+    expect(find.text('Nyeri Town'), findsOneWidget);
+    expect(find.text('Water off on Saturday'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Use my location now'));
+    await tester.tap(find.byTooltip('Update my location'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining("You're in your home area"), findsOneWidget);
-    expect(find.text('Show home area'), findsNothing);
+    expect(find.text("Showing what's around you now."), findsOneWidget);
     expect(find.text('Water off on Saturday'), findsOneWidget);
   });
 
-  testWidgets('no location: the reason is shown and the feed stays', (tester) async {
+  testWidgets('with no location, the feed stays on home and the button says why', (tester) async {
     await open(tester, explore: const {}, reader: const FakeReader(problem: 'Location is off. Turn it on to use this.'));
+    expect(find.text('Water off on Saturday'), findsOneWidget);
+    expect(sent.where((r) => r.path == '/me/explore'), isEmpty);
 
-    await tester.tap(find.byTooltip('Use my location now'));
+    await tester.tap(find.byTooltip('Update my location'));
     await tester.pumpAndSettle();
 
     expect(find.text('Location is off. Turn it on to use this.'), findsOneWidget);
     expect(sent.where((r) => r.path == '/me/explore'), isEmpty);
+  });
+
+  testWidgets('coming back to the app soon after sends nothing more', (tester) async {
+    await open(tester, explore: {
+      'area_label': {'label': 'Kingongo', 'precision': 'area'},
+      'expires_at': later(),
+      'same_area_as_home': false,
+    });
+
+    // Away for a moment and back (resumed → inactive → resumed is a legal path).
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    // Within two minutes of the last: still one.
+    expect(sent.where((r) => r.method == 'POST' && r.path == '/me/explore'), hasLength(1));
   });
 }
 

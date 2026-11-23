@@ -14,6 +14,7 @@ from app.core.db import SessionDep
 from app.core.redis import get_redis
 from app.modules.auth.dependencies import ActiveUser, CurrentUser, user_rate_limit
 from app.modules.location import service as location_service
+from app.modules.location import zones
 from app.modules.location.models import Area
 from app.modules.location.radius import RadiusEngine
 from app.modules.location.schemas import (
@@ -140,17 +141,19 @@ async def check_presence(
 @router.post(
     "/me/explore",
     response_model=ExploreOut,
-    summary="Explore somewhere else",
+    summary="Where the phone is now",
     description=(
-        "Temporarily anchors browsing to another location. The anchor lives in "
-        "memory for about two hours and is never written to the database.\n\n"
-        "This changes only what the caller sees. Anything they post still carries "
-        "their home area, and other people still see their home area — so explore "
-        "mode cannot be used to post into a neighbourhood somebody does not live in.\n\n"
-        "From the home hexagon itself, nothing starts: the answer says "
-        "`same_area_as_home`."
+        "The app sends this when it opens and when it comes back to the foreground "
+        "(decision L.1). It becomes the place every list reads from by default "
+        "(`anchor=explore`), and where new posts, stories, listings, service posts "
+        "and public groups are placed. Held in memory for about two hours and never "
+        "written to the database.\n\n"
+        "Other people still see the caller's home area on their profile, and the "
+        "badge, the newcomer rule and People nearby still go by home.\n\n"
+        "From the home hexagon itself, nothing is held, since home is the same "
+        "place: the answer says `same_area_as_home`."
     ),
-    dependencies=[Depends(user_rate_limit(bucket="start_explore", limit=30, window_seconds=3600))],
+    dependencies=[Depends(user_rate_limit(bucket="start_explore", limit=120, window_seconds=3600))],
 )
 async def start_explore(
     payload: LocationIn,
@@ -166,6 +169,8 @@ async def start_explore(
         longitude=payload.longitude,
         settings=settings,
     )
+    # A day in this zone, towards being allowed to post here (decision L.2).
+    await zones.record(session, user_id=user.id, cell=explored.cell_res9, today=zones.today_utc())
     label = await location_service.area_label_for_cell(
         session, redis, cell_res9=explored.cell_res9, settings=settings
     )
@@ -212,9 +217,12 @@ async def get_my_radius(
         str,
         Query(
             pattern="^(home|explore)$",
-            description="Measure from the home area, or from an active explore session.",
+            description=(
+                "`explore`, the default: from where the phone is, falling back to "
+                "home. `home`: from the home area (decision L.1)."
+            ),
         ),
-    ] = "home",
+    ] = "explore",
 ) -> MyRadiusOut:
     anchor_cell = await location_service.resolve_anchor_cell(
         redis, user=user, mode="explore" if anchor == "explore" else "home"

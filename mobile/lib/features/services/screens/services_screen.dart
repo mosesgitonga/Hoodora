@@ -154,15 +154,13 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   }
 
   Widget _list(ServicesState state, TextTheme text) {
-    final exploring = ref.read(exploreProvider);
     final header = <Widget>[
-      if (exploring != null) ExploringStrip(exploring: exploring, offerMove: false),
       if (state.kind == ServiceKind.hiring) const JobSafetyNote(),
       if (state.radiusKm != null)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
-            reachLabel(state.radiusKm!, aroundNow: ref.read(exploreProvider) != null),
+            reachLabel(state.radiusKm!),
             style: text.bodySmall,
           ),
         ),

@@ -123,7 +123,7 @@ class FeedRepository {
         if (details != null && details.trim().isNotEmpty) 'details': details.trim(),
       });
 
-  /// Posts to the caller's home area. Returns the post and roughly how many
+  /// Posts to the area the phone is in. Returns the post and roughly how many
   /// neighbours can see it.
   Future<(Post, int)> createPost({
     required String body,

@@ -47,12 +47,12 @@ from app.modules.groups.models import (
     GroupVisibility,
 )
 from app.modules.groups.permissions import GroupAction, require, require_outranks
-from app.modules.location import bands
+from app.modules.location import bands, zones
 from app.modules.location.radius import RadiusEngine, RadiusResult
 from app.modules.location.service import (
     Anchor,
     AnchorMode,
-    home_location_columns,
+    content_location_columns,
     resolve_anchor,
 )
 from app.modules.media.models import MediaPurpose
@@ -182,13 +182,18 @@ def _check_category(category: str, settings: Settings) -> str:
     return category
 
 
-def _location_for(user: User) -> dict[str, object]:
-    location = home_location_columns(user)
+async def _location_for(
+    session: AsyncSession, redis: Redis, user: User, settings: Settings
+) -> dict[str, object]:
+    """Where a public group is placed: where the person making it public is
+    (decision L.1), and only where they've been long enough to post (L.2)."""
+    location = await content_location_columns(session, redis, user=user)
     if location is None:
         raise ConflictError(
-            "Set your home area before making a public group",
+            "Turn on location to make a public group",
             details={"action": "PUT /v1/me/location"},
         )
+    await zones.require_may_post_at(session, user=user, location=location, settings=settings)
     return location
 
 
@@ -210,6 +215,7 @@ async def _claim_cover(
 
 async def create_group(
     session: AsyncSession,
+    redis: Redis,
     *,
     creator: User,
     name: str,
@@ -250,7 +256,12 @@ async def create_group(
         member_count=0,
         cover_media_id=await _claim_cover(session, owner=creator, media_id=cover_media_id),
     )
-    _place(group, _location_for(creator) if visibility == GroupVisibility.public else None)
+    _place(
+        group,
+        await _location_for(session, redis, creator, settings)
+        if visibility == GroupVisibility.public
+        else None,
+    )
 
     limit = (
         settings.new_account_groups_per_day
@@ -276,6 +287,7 @@ async def create_group(
 
 async def update_group(
     session: AsyncSession,
+    redis: Redis,
     *,
     actor: User,
     group_id: uuid.UUID,
@@ -331,7 +343,12 @@ async def update_group(
     if "visibility" in changes:
         visibility = GroupVisibility(changes["visibility"])
         if visibility != group.visibility:
-            _place(group, _location_for(actor) if visibility == GroupVisibility.public else None)
+            _place(
+                group,
+                await _location_for(session, redis, actor, settings)
+                if visibility == GroupVisibility.public
+                else None,
+            )
             group.visibility = visibility
     await session.flush()
     return await _refresh_group(session, group)

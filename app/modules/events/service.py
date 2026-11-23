@@ -45,7 +45,7 @@ from app.modules.events.models import (
 )
 from app.modules.groups import access as group_access
 from app.modules.groups.permissions import GroupAction, require
-from app.modules.location import bands, cells
+from app.modules.location import bands, cells, zones
 from app.modules.location.radius import RadiusEngine
 from app.modules.location.service import AnchorMode, resolve_anchor
 from app.modules.marketplace.models import Listing, ListingAvailability
@@ -199,6 +199,13 @@ async def create_event(
         ),
     )
     _place(event, fields["venue"]["latitude"], fields["venue"]["longitude"])
+    if visibility == EventVisibility.public:
+        # A public event is placed at its venue, so the organiser must have been
+        # around there long enough to post (decision L.2). Group and private events
+        # reach only the people invited.
+        await zones.require_may_post(
+            session, user=organiser, cell=event.cell_res9, settings=settings
+        )
     if fields.get("cover_media_id") is not None:
         (asset,) = await claim_assets_for(
             session,
@@ -338,6 +345,10 @@ async def update_event(
         )
     if changes.get("venue") is not None:
         _place(event, changes["venue"]["latitude"], changes["venue"]["longitude"])
+        if event.visibility == EventVisibility.public:
+            await zones.require_may_post(
+                session, user=user, cell=event.cell_res9, settings=settings
+            )
     if changes.get("event_type") is not None:
         event.event_type = EventType(changes["event_type"])
     if "capacity" in changes:

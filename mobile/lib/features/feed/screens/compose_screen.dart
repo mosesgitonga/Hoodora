@@ -17,7 +17,8 @@ import '../feed_models.dart';
 const _maxPhotos = 6;
 const _maxLength = 2000;
 
-/// Writing a post: a category, words, and up to six photos. To the home area, or
+/// Writing a post: a category, words, and up to six photos. To the area the
+/// phone is in (decision L.1), or
 /// with [groupId] to that group, in which case the new post is handed back to
 /// the group screen when this closes. With [editing], it changes one of your
 /// posts instead: text and category only (decision 2.22).
@@ -259,8 +260,8 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
             else
               const NotePanel(
                 icon: Icons.location_on_outlined,
-                text: 'Posted to your home area. Neighbours see the area and a rough '
-                    'distance, never where you are. Photo location data is removed.',
+                text: "Posted to the area you're in now. Neighbours see the area and a rough "
+                    'distance, never exactly where you are. Photo location data is removed.',
               ),
             if (_progress != null) ...[
               const SizedBox(height: 16),

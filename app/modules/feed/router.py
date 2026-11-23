@@ -61,7 +61,12 @@ StorageDep = Annotated[StorageProvider, Depends(get_storage_provider)]
 PageDep = Annotated[PageParams, Depends(page_params)]
 AnchorQuery = Annotated[
     Literal["home", "explore"],
-    Query(description="Browse from the home area, or from an active explore session."),
+    Query(
+        description=(
+            "`explore`, the default: from where the phone is, as the app last sent it, "
+            "falling back to home. `home`: from the home area (decision L.1)."
+        )
+    ),
 ]
 
 IDEMPOTENCY_DOC = (
@@ -199,7 +204,7 @@ async def get_feed(
     storage: StorageDep,
     settings: SettingsDep,
     params: PageDep,
-    anchor: AnchorQuery = "home",
+    anchor: AnchorQuery = "explore",
 ) -> FeedOut:
     page = await feed_service.feed_page(
         session, redis, viewer=user, params=params, settings=settings, mode=anchor
@@ -648,6 +653,7 @@ async def create_story(
     async def action() -> StoryOut:
         story = await feed_service.create_story(
             session,
+            redis,
             author=user,
             kind=StoryKind(payload.kind),
             media_id=payload.media_id,
@@ -691,7 +697,7 @@ async def list_stories(
     storage: StorageDep,
     settings: SettingsDep,
     params: PageDep,
-    anchor: AnchorQuery = "home",
+    anchor: AnchorQuery = "explore",
 ) -> StoryPageOut:
     page = await feed_service.stories_page(
         session, redis, viewer=user, params=params, settings=settings, mode=anchor

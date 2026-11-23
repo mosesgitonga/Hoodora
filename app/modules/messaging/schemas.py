@@ -138,6 +138,14 @@ class ConversationOut(BaseModel):
         default=None,
         description="Direct, accepted conversations: how far the other person has read.",
     )
+    requester_new_to_area: bool = Field(
+        default=False,
+        description=(
+            "To the person who received a request: whether whoever sent it was new to "
+            "the area they wrote from, not yet allowed to post there (decision L.2). "
+            "Always false for the sender."
+        ),
+    )
     member_count: int
     last_seq: int
     last_read_seq: int

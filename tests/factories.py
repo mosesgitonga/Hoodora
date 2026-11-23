@@ -167,6 +167,7 @@ async def make_user(
     storage_resolution: int = 9,
     created_days_ago: float | None = None,
     contact_unlocked: bool = True,
+    claimed_home: bool | None = None,
 ) -> User:
     """A user, optionally with a home location already set.
 
@@ -186,6 +187,10 @@ async def make_user(
         # Most tests are about something other than proving a home area, so their
         # people may contact each other. Tests of decision M.7 pass False.
         contact_unlocked_at=now if contact_unlocked else None,
+        # Someone made at a place is a local who said "this is my home area" at
+        # sign-up, so they may post around home (decision L.2). Tests of the zone
+        # rules pass False.
+        home_claimed_at_signup=(at is not None) if claimed_home is None else claimed_home,
     )
     if created_days_ago is not None:
         # Account age drives new-account rate limits and reporter trust, so tests
@@ -472,3 +477,21 @@ async def staff_token(session: AsyncSession, account: StaffAccount) -> str:
         expires_at=staff_session.expires_at,
         settings=settings,
     )
+
+
+async def give_zone_days(
+    session: AsyncSession, user: User, at: Coordinates, *, days: int = 4
+) -> None:
+    """Record `days` of the last week in the zone around `at` (decision L.2), as
+    though the app had reported the phone there on each."""
+    from app.modules.location import zones
+    from app.modules.location.models import UserZoneDay
+
+    zone = zones.zone_of(cells.locate(at.latitude, at.longitude).cell_res9)
+    row = await session.get(UserZoneDay, (user.id, zone))
+    if row is None:
+        row = UserZoneDay(user_id=user.id, zone=zone)
+        session.add(row)
+    row.days_mask = (1 << days) - 1
+    row.updated_on = zones.today_utc()
+    await session.flush()

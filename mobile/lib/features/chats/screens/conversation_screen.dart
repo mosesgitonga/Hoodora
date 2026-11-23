@@ -9,6 +9,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
 import '../../../core/theme.dart';
+import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
 import '../../feed/widgets/report_sheet.dart';
 import '../../market/listing_models.dart';
@@ -385,6 +386,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                 : '${conversation.name} wants to message you. They won\'t know if you decline.',
             style: text.bodyMedium,
           ),
+          if (conversation.requesterNewToArea) ...[
+            const SizedBox(height: 8),
+            const NewToAreaChip(),
+          ],
           const SizedBox(height: 10),
           Row(
             children: [

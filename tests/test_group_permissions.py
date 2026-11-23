@@ -73,6 +73,7 @@ async def make_cast(
     owner = await make_user(db_session, at=NYERI_TOWN, created_days_ago=30)
     group = await groups_service.create_group(
         db_session,
+        redis,
         creator=owner,
         name="Kamakwa Estate Residents",
         description="Our estate",

@@ -50,6 +50,7 @@ PURGE_REGISTRY: dict[str, tuple[Handling, str]] = {
     "vouches.voucher_id": (Handling.erased, "Both directions"),
     "vouches.vouchee_id": (Handling.erased, "Both directions"),
     "user_warnings.user_id": (Handling.erased, "The audit log keeps that a warning was given"),
+    "user_zone_days.user_id": (Handling.erased, "Which zones, on which days of the last week"),
     # -- Soft-deleted, then hard-deleted by retention -------------------------
     "posts.author_id": (Handling.soft_deleted, "Evidence for pending reports"),
     "comments.author_id": (Handling.soft_deleted, "Evidence for pending reports"),

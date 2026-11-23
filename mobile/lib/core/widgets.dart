@@ -198,3 +198,26 @@ class NotePanel extends StatelessWidget {
     );
   }
 }
+
+/// On a message request: the person asking is new to the area they wrote from,
+/// not yet allowed to post there (decision L.2). A cue to take a little care,
+/// not an accusation.
+class NewToAreaChip extends StatelessWidget {
+  const NewToAreaChip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.explore_outlined, size: 15, color: Palette.muted),
+          const SizedBox(width: 4),
+          Text('New to this area', style: text.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}

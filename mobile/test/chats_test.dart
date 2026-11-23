@@ -356,5 +356,30 @@ void main() {
           isTrue);
       expect(find.byType(TextField), findsOneWidget);
     });
+
+    testWidgets('a request from someone new to the area says so (decision L.2)', (tester) async {
+      conversation = {
+        ...conversationJson(state: 'request_received', lastSeq: 1, unread: 1, lastRead: 0, lastBody: 'Hello'),
+        'requester_new_to_area': true,
+      };
+      messages = [messageJson(1, body: 'Hello')];
+      adapter = FakeAdapter((request) {
+        if (request.path == '/conversations') {
+          final folder = request.queryParameters['folder'];
+          return FakeReply(200, {'items': folder == 'requests' ? [conversation] : [], 'next_cursor': null});
+        }
+        return handle(request);
+      });
+      await openApp(tester);
+      await tester.tap(find.text('Chats').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Requests · 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('New to this area'), findsOneWidget);
+
+      await tester.tap(find.text('Wanjiku M.'));
+      await tester.pumpAndSettle();
+      expect(find.text('New to this area'), findsOneWidget);
+    });
   });
 }

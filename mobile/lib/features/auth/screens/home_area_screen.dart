@@ -8,11 +8,15 @@ import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../auth_controller.dart';
 
-/// Setting the home area. Home is found only by GPS, never chosen (decision M.7),
-/// so the app first asks whether the phone is at home. Someone signing up away
-/// from home starts from where they are, provisionally, and sets the real home
-/// when they get there (decision M.10). The position is read once and sent once;
-/// the server keeps only the area's cell, and the app keeps nothing.
+/// The last step of signing up: is the area the phone is in now the person's
+/// home area? The app reads the location once and the server keeps only the
+/// zone it falls in, never the coordinates (decision L.2).
+///
+/// - **Yes:** it's their home area. With a verified phone they can post around
+///   it straight away.
+/// - **No:** they can look around and comment from day one, and post in an area
+///   once they've been there on four days of a week. They set their home area
+///   later, from Me › Home area.
 class HomeAreaScreen extends ConsumerStatefulWidget {
   const HomeAreaScreen({super.key});
 
@@ -21,103 +25,87 @@ class HomeAreaScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeAreaScreenState extends ConsumerState<HomeAreaScreen> {
-  bool _busy = false;
+  bool? _choice;
   String? _error;
-  String? _areaName;
-  bool? _atHome;
 
-  Future<void> _useMyLocation({required bool atHome}) async {
+  Future<void> _answer({required bool homeArea}) async {
     setState(() {
-      _busy = true;
+      _choice = homeArea;
       _error = null;
-      _atHome = atHome;
     });
     try {
       final reading = await ref.read(locationReaderProvider).readHere();
-      final area = await ref.read(authRepositoryProvider).setHome(reading, atHome: atHome);
-      // Too few neighbours yet to name the place safely: say "your area" instead.
-      setState(() => _areaName = area.precision == 'generic' ? 'your area' : area.label);
+      await ref.read(authRepositoryProvider).setHome(reading, atHome: homeArea);
+      await ref.read(authControllerProvider.notifier).refreshMe();
     } on LocationProblem catch (problem) {
-      setState(() => _error = problem.message);
+      if (mounted) setState(() => _error = problem.message);
     } on ApiException catch (error) {
-      setState(() => _error = error.message);
+      if (mounted) setState(() => _error = error.message);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _choice = null);
     }
   }
-
-  Future<void> _continue() => ref.read(authControllerProvider.notifier).refreshMe();
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final found = _areaName != null;
-    final away = _atHome == false;
+    final busy = _choice != null;
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Align(alignment: Alignment.centerLeft, child: HoodoraMark(size: 56)),
-              const SizedBox(height: 28),
-              Text(
-                !found
-                    ? 'Are you at home right now?'
-                    : away
-                        ? "You're in $_areaName for now"
-                        : 'Welcome to $_areaName',
-                style: text.headlineMedium,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                !found
-                    ? "Hoodora finds your area from where your phone is. If you're at home, we'll "
-                        "set it now. If you're away, you can start from where you are and set your "
-                        'home when you get there.'
-                    : away
-                        ? 'You can use everything from here for the next week. When you get home, set it '
-                            'from Me › Home area. Until then nothing you do here counts '
-                            'towards proving where you live.'
-                        : 'Your feed, the marketplace and events are built around $_areaName.',
-                style: text.bodyLarge?.copyWith(color: Palette.muted),
-              ),
-              const SizedBox(height: 20),
-              const NotePanel(
-                icon: Icons.shield_outlined,
-                text: 'We keep only the area, never your exact spot. Neighbours see '
-                    'its name and a rough distance like "1–3 km".',
-              ),
-              FormError(_error),
-              const Spacer(),
-              if (found)
-                FilledButton(onPressed: _continue, child: Text(away ? 'Continue' : 'This is home'))
-              else ...[
-                BusyButton(
-                  label: "Yes, I'm at home",
-                  busy: _busy && _atHome == true,
-                  onPressed: _busy ? null : () => _useMyLocation(atHome: true),
+        // Scrolls when there isn't room (a small phone, or large text), and
+        // otherwise keeps the buttons at the bottom.
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight - 56),
+              child: IntrinsicHeight(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Align(alignment: Alignment.centerLeft, child: HoodoraMark(size: 48)),
+                    const SizedBox(height: 20),
+                    Text('Is this your home area?', style: text.headlineMedium),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Hoodora shows what is happening around wherever you are. If the area '
+                      "you're in now is where you live, you can start posting here straight away.",
+                      style: text.bodyLarge?.copyWith(color: Palette.muted),
+                    ),
+                    const SizedBox(height: 20),
+                    const NotePanel(
+                      icon: Icons.shield_outlined,
+                      text:
+                          "We don't save your exact location. We only keep the zone you're in, "
+                          'about 2.5 km across, and neighbours see its name and a rough distance '
+                          'like "1–3 km".',
+                    ),
+                    FormError(_error),
+                    const Spacer(),
+                    const SizedBox(height: 20),
+                    BusyButton(
+                      label: 'Yes, this is my home area',
+                      busy: _choice == true,
+                      onPressed: busy ? null : () => _answer(homeArea: true),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: busy ? null : () => _answer(homeArea: false),
+                      child: _choice == false
+                          ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+                          : const Text("No, I'm just visiting"),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Not home? You can look around and comment anywhere. You can post in an area "
+                      "once you've been there on 4 days in a week.",
+                      textAlign: TextAlign.center,
+                      style: text.bodySmall?.copyWith(fontSize: 12),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 10),
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _useMyLocation(atHome: false),
-                  child: const Text("No, I'm away from home"),
-                ),
-              ],
-              if (found) ...[
-                const SizedBox(height: 10),
-                OutlinedButton(
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() {
-                            _areaName = null;
-                            _atHome = null;
-                          }),
-                  child: const Text('Start again'),
-                ),
-              ],
-            ],
+              ),
+            ),
           ),
         ),
       ),

@@ -27,9 +27,14 @@ from app.core.db import execute_dml
 from app.core.errors import BadRequestError, ConflictError, ForbiddenError
 from app.core.pagination import PageParams, decode_cursor, encode_cursor, paginate
 from app.core.search import TEXT_SEARCH_CONFIG, matching_phrases, prefix_tsquery
-from app.modules.location import bands, cells
+from app.modules.location import bands, cells, zones
 from app.modules.location.radius import RadiusEngine
-from app.modules.location.service import Anchor, AnchorMode, home_location_columns, resolve_anchor
+from app.modules.location.service import (
+    Anchor,
+    AnchorMode,
+    content_location_columns,
+    resolve_anchor,
+)
 from app.modules.messaging import service as messaging_service
 from app.modules.messaging.models import Conversation, ConversationKind
 from app.modules.moderation.audit import record_audit_event
@@ -185,18 +190,21 @@ async def _hold_if_suspicious(session: AsyncSession, post: ServicePost, settings
 # ---------------------------------------------------------------------------
 async def create_post(
     session: AsyncSession,
+    redis: Redis,
     *,
     author: User,
     kind: ServiceKind,
     fields: dict[str, Any],
     settings: Settings,
 ) -> ServicePost:
-    location = home_location_columns(author)
+    # Placed where the author is (decision L.1).
+    location = await content_location_columns(session, redis, user=author)
     if location is None:
         raise ConflictError(
-            "Set your home area before posting",
+            "Turn on location to post what's around you",
             details={"action": "PUT /v1/me/location"},
         )
+    await zones.require_may_post_at(session, user=author, location=location, settings=settings)
     if (
         kind == ServiceKind.hiring
         and author.phone_verified_at is None

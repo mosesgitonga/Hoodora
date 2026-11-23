@@ -27,6 +27,7 @@ from tests.factories import (
     KARATINA,
     NAIROBI,
     NYERI_TOWN,
+    give_zone_days,
     make_post,
     make_ready_image,
     make_user,
@@ -161,26 +162,61 @@ async def test_explore_mode_shows_the_explored_area(
     assert "Karatina market news" in [item["body"] for item in explored.json()["items"]]
 
 
-async def test_posting_while_exploring_still_posts_at_home(
+async def test_a_post_goes_where_the_phone_is(
     db_session: AsyncSession, redis_client: Redis, authenticate: Authenticate
 ) -> None:
-    """Decision 1.1, rule 1 — the rule that stops someone dropping posts into a
-    neighbourhood they do not live in."""
+    """Decision L.1, which reverses rule 1 of decision 1.1: someone from Nyeri
+    who has spent the days in Karatina (L.2) posts to Karatina, and Karatina sees it."""
     author = await make_user(db_session, at=NYERI_TOWN)
     karatina_local = await make_user(db_session, at=KARATINA)
+    nyeri_local = await make_user(db_session, at=offset_km(NYERI_TOWN, north=0.5))
+    await give_zone_days(db_session, author, KARATINA)
     client = await authenticate(author)
 
     await client.post("/v1/me/explore", json=KARATINA.as_payload())
     created = await client.post(
-        "/v1/posts", json={"body": "Posted while exploring", "category": "general"}
+        "/v1/posts", json={"body": "Posted from Karatina", "category": "general"}
     )
     assert created.status_code == 201
 
     post = (
-        await db_session.execute(select(Post).where(Post.body == "Posted while exploring"))
+        await db_session.execute(select(Post).where(Post.body == "Posted from Karatina"))
+    ).scalar_one()
+    assert post.cell_res9 != author.home_cell_res9
+    assert "Posted from Karatina" in await feed_bodies(await authenticate(karatina_local))
+    assert "Posted from Karatina" not in await feed_bodies(await authenticate(nyeri_local))
+
+
+async def test_with_no_location_from_the_app_a_post_goes_home(
+    db_session: AsyncSession, redis_client: Redis, authenticate: Authenticate
+) -> None:
+    author = await make_user(db_session, at=NYERI_TOWN)
+
+    created = await (await authenticate(author)).post(
+        "/v1/posts", json={"body": "Posted with no location sent", "category": "general"}
+    )
+
+    assert created.status_code == 201
+    post = (
+        await db_session.execute(select(Post).where(Post.body == "Posted with no location sent"))
     ).scalar_one()
     assert post.cell_res9 == author.home_cell_res9
-    assert "Posted while exploring" not in await feed_bodies(await authenticate(karatina_local))
+
+
+async def test_lists_read_from_where_the_phone_is_by_default(
+    db_session: AsyncSession, redis_client: Redis, authenticate: Authenticate
+) -> None:
+    """No `anchor` needed: the feed, the market and services all follow the phone."""
+    nyeri = await make_user(db_session, at=NYERI_TOWN)
+    karatina = await make_user(db_session, at=KARATINA)
+    await make_post(db_session, redis_client, author=karatina, body="Karatina market news")
+    client = await authenticate(nyeri)
+
+    await client.post("/v1/me/explore", json=KARATINA.as_payload())
+
+    assert "Karatina market news" in await feed_bodies(client)
+    for path in ("/v1/listings", "/v1/services"):
+        assert (await client.get(path)).status_code == 200
 
 
 # ---------------------------------------------------------------------------

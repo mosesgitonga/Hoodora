@@ -177,6 +177,14 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     It counts for nothing towards the contact rule or the badge, and is replaced,
     without a cooldown, when they set their real home. Decision M.10."""
 
+    home_claimed_at_signup: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    """The person said "this is my home area" when they signed up, and has not
+    moved it since. With a verified phone, that lets them post around home from
+    day one, without the days anywhere else needs (decision L.2). Cleared when
+    home moves."""
+
     show_in_nearby: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )

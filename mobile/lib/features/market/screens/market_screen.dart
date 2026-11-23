@@ -76,7 +76,8 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final state = ref.watch(marketControllerProvider);
-    final exploring = ref.watch(exploreProvider);
+    // Rebuilt when the phone's location arrives, so the reach below is current.
+    ref.watch(exploreProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -111,11 +112,6 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                 ],
               ),
             ),
-            if (exploring != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: ExploringStrip(exploring: exploring, offerMove: false),
-              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
@@ -208,7 +204,7 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
             padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
             sliver: SliverToBoxAdapter(
               child: Text(
-                reachLabel(state.radiusKm!, aroundNow: ref.read(exploreProvider) != null),
+                reachLabel(state.radiusKm!),
                 style: text.bodySmall,
               ),
             ),

@@ -115,6 +115,13 @@ class Conversation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Who started a message request. Kept after acceptance, since "who reached out
     first" is useful context for a moderator looking at a harassment report."""
 
+    request_sender_new_to_area: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    """Whether the person who started the request was new to the area they wrote
+    from: not yet allowed to post there. Taken when the request is sent and shown
+    to the recipient (decision L.2)."""
+
     direct_key: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
 
     listing_id: Mapped[uuid.UUID | None] = mapped_column(

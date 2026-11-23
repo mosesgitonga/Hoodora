@@ -154,7 +154,7 @@ async def browse(
     max_price: Annotated[int | None, Query(ge=0)] = None,
     sort: Literal["relevance", "newest", "nearest", "price_asc", "price_desc"] | None = None,
     distance_km: Annotated[float | None, Query(gt=0, le=100)] = None,
-    anchor: Annotated[Literal["home", "explore"], Query()] = "home",
+    anchor: Annotated[Literal["home", "explore"], Query()] = "explore",
 ) -> BrowseOut:
     result = await marketplace_service.browse(
         session,

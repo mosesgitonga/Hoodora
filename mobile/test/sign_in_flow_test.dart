@@ -115,7 +115,7 @@ void main() {
       'I am 18 or older',
       'I agree to the terms of use',
       'I agree to the privacy policy',
-      'Use my home area to show what is nearby',
+      'Use my location to show what is nearby',
     ]) {
       await tester.ensureVisible(find.text(label));
       await tester.tap(find.text(label));
@@ -133,7 +133,7 @@ void main() {
     expect(store.refreshToken, 'r1');
 
     // Signed in without a home: the home-area screen.
-    expect(find.text('Are you at home right now?'), findsOneWidget);
+    expect(find.text('Is this your home area?'), findsOneWidget);
   });
 
   testWidgets('a stored session that is no longer valid lands on the guest Home', (tester) async {
@@ -218,7 +218,7 @@ void main() {
         'I am 18 or older',
         'I agree to the terms of use',
         'I agree to the privacy policy',
-        'Use my home area to show what is nearby',
+        'Use my location to show what is nearby',
       ]) {
         await tester.ensureVisible(find.text(label));
         await tester.tap(find.text(label));
@@ -232,7 +232,7 @@ void main() {
       final signup = adapter.requests.firstWhere((r) => r.path == '/auth/signup').data as Map;
       expect(signup['signup_token'], 'st-g');
       expect(signup['display_name'], 'Amina Kamau');
-      expect(find.text('Are you at home right now?'), findsOneWidget);
+      expect(find.text('Is this your home area?'), findsOneWidget);
     });
 
     testWidgets('backing out of the Google picker changes nothing', (tester) async {
@@ -258,7 +258,7 @@ void main() {
 
       expect(store.refreshToken, 'r2');
       expect(adapter.requests.map((r) => r.path), isNot(contains('/auth/signup')));
-      expect(find.text('Are you at home right now?'), findsOneWidget);
+      expect(find.text('Is this your home area?'), findsOneWidget);
     });
   });
 }

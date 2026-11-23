@@ -35,10 +35,10 @@ from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings
 from app.core.errors import BadRequestError, ConflictError
 from app.core.redis import CACHE_ERRORS
-from app.modules.location import cells
+from app.modules.location import cells, zones
 from app.modules.location.cells import CellLocation, InvalidCoordinatesError
 from app.modules.location.models import Area, AreaKind, CellActivity
 from app.modules.moderation.audit import record_audit_event
@@ -191,6 +191,12 @@ async def set_home_location(
     )
     user.home_set_at = now
     user.home_provisional = not at_home
+    # The posting shortcut is for a home claimed at sign-up and never moved
+    # (decision L.2). Re-confirming the same place keeps it.
+    if is_first_time:
+        user.home_claimed_at_signup = at_home
+    elif was_provisional or not unchanged:
+        user.home_claimed_at_signup = False
     if was_provisional:
         # The real home replaces a provisional one as a first home would: no
         # cooldown starts, and nothing was proven there to carry over.
@@ -216,6 +222,9 @@ async def set_home_location(
         target_id=user.id,
         context={"first_time": is_first_time, "changed": not unchanged, "provisional": not at_home},
     )
+
+    # They are there now, whatever they call it: a day in this zone.
+    await zones.record(session, user_id=user.id, cell=location.cell_res9, today=now.date())
 
     user.presence_checked_on = now.date()
     if at_home:
@@ -286,6 +295,7 @@ async def check_presence(
         raise ConflictError("Set your home area first", details={"action": "PUT /v1/me/location"})
     location = _to_cell_location(latitude, longitude, settings)
     now = datetime.now(UTC)
+    await zones.record(session, user_id=user.id, cell=location.cell_res9, today=now.date())
     if user.home_provisional:
         # Being where you signed up proves nothing about where you live.
         user.presence_checked_on = now.date()
@@ -584,12 +594,12 @@ async def start_explore(
     longitude: float,
     settings: Settings,
 ) -> ExploreLocation:
-    """Begin exploring somewhere else.
+    """Record where the phone is now, while it is away from home.
 
     Redis only, with a TTL, and never written to PostgreSQL — so there is nothing
-    to export, nothing to purge, and nothing to breach. Authored content still
-    carries the user's home area, so exploring cannot be used to post into a
-    neighbourhood the user does not live in.
+    to export, nothing to purge, and nothing to breach. The app sends it by
+    itself when it opens (decision L.1). Lists read from it by default, and new
+    content is placed in it (`content_location_columns`).
     """
     location = _to_cell_location(latitude, longitude, settings)
     expires_at = datetime.now(UTC) + timedelta(seconds=settings.explore_ttl_seconds)
@@ -752,6 +762,19 @@ async def resolve_anchor(redis: Redis, *, user: User, mode: AnchorMode = "home")
     return Anchor(mode="home", cell_res9=user.home_cell_res9, cell_res8=user.home_cell_res8)
 
 
+async def new_to_area(
+    session: AsyncSession, redis: Redis, *, user: User, settings: Settings
+) -> bool:
+    """Whether someone is new to the zone they are in now: not yet allowed to post
+    there (decision L.2). "Now" is the current location the app last sent, or home.
+    Someone with neither is new everywhere."""
+    anchor = await resolve_anchor(redis, user=user, mode="explore")
+    if anchor is None:
+        return True
+    standing = await zones.standing(session, user=user, cell=anchor.cell_res9, settings=settings)
+    return not standing.may_post
+
+
 async def is_exploring(redis: Redis, *, user_id: uuid.UUID) -> bool:
     return await get_explore(redis, user_id=user_id) is not None
 
@@ -763,24 +786,44 @@ def provisional_deadline(user: User, settings: Settings) -> datetime | None:
     return user.home_set_at + timedelta(days=settings.provisional_home_days)
 
 
-def home_location_columns(user: User) -> dict[str, object] | None:
-    """The location columns for content authored by this user.
+async def content_location_columns(
+    session: AsyncSession, redis: Redis, *, user: User
+) -> dict[str, object] | None:
+    """The location columns for content this user creates: where the phone is.
 
-    Always the **home** area, even while exploring — decision 1.1, rule 1. That is
-    what stops someone dropping posts into a neighbourhood they do not live in.
+    Content goes where its author is when they make it (decision L.1, which
+    reverses rule 1 of decision 1.1): the current location the app last sent,
+    held in Redis while the phone is away from home. At home, or when the app
+    has sent no location lately, it is the home area, which is then the same
+    place or the best there is.
+
+    None when the person has neither, which only a brand-new account can be.
+    """
+    here = await get_explore(redis, user_id=user.id)
+    if here is None:
+        return home_location_columns(user)
+    latitude, longitude = cells.cell_centroid(here.cell_res9)
+    return {
+        "cell_res9": here.cell_res9,
+        "cell_res8": here.cell_res8,
+        "cell_res7": cells.parent_cell(here.cell_res9, 7),
+        "cell_res6": cells.parent_cell(here.cell_res9, 6),
+        "centroid": f"SRID=4326;POINT({longitude} {latitude})",
+        "area_id": await _resolve_area_id(session, latitude, longitude),
+    }
+
+
+def home_location_columns(user: User) -> dict[str, object] | None:
+    """The home area as location columns: where content goes when the app has
+    sent no current location (see `content_location_columns`).
+
     Derived from the stored cells rather than copied from the user's centroid
     column, so it is identical whether or not the user row was just loaded.
 
-    A provisional home places content for `PROVISIONAL_HOME_DAYS`; after that,
-    nothing new until the real home is set (decision M.10).
+    A provisional home places content like any other. It used to stop doing so
+    after `PROVISIONAL_HOME_DAYS`; with content following the phone, nobody needs
+    to set a home to post (decision M.10, amended by L.1).
     """
-    if user.home_provisional and user.home_set_at is not None:
-        deadline = provisional_deadline(user, get_settings())
-        if deadline is not None and datetime.now(UTC) > deadline:
-            raise ConflictError(
-                "Set your home from home before posting again",
-                details={"reason": "confirm_home", "action": "PUT /v1/me/location"},
-            )
     if (
         user.home_cell_res9 is None
         or user.home_cell_res8 is None

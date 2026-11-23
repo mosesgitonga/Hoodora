@@ -340,6 +340,11 @@ system would otherwise have to defend against or store:
   only *active* days, and penalising a deliberate, temporary mode would make the
   badge measure "did not travel" rather than "lives here".
 
+**Amended by L.1 (2026-11-23).** Rule 1 is reversed: content now goes where the
+phone is. And lists read from where the phone is by default, with the app sending
+it by itself, so "explore here" is no longer a mode someone turns on. Home stays,
+for the badge, the newcomer rule, People nearby and the profile.
+
 ### 1.2 Verification does not reveal whether an account exists
 
 **Context.** `POST /v1/auth/otp/request` could usefully tell the client whether
@@ -660,6 +665,10 @@ expanding into gigabytes — is caught from its dimensions before any allocation
 join against the users table, which changes constantly. And it keeps a post where
 it was made: a user who moves does not drag two years of posts into a
 neighbourhood that never saw them.
+
+**Amended by L.1 (2026-11-23).** The cells are where the author was when posting:
+the current location the app last sent, or home when there is none. A post still
+keeps its place when its author moves on.
 
 ### 2.5 Reach is estimated from the post's own cell radius
 
@@ -2271,6 +2280,12 @@ someone may sign up far from home.
 - **Accepted trade-off:** posts made in that first week land in a neighbourhood
   that may not be the person's own.
 
+**Amended by L.1 (2026-11-23).**
+- **No deadline:** a provisional home no longer stops new content after
+  `PROVISIONAL_HOME_DAYS`, since content follows the phone.
+- **No question at sign-up:** the app doesn't ask whether the person is at home.
+  It records home where they sign up, which they can move in Settings.
+
 ### M.11 Offline reading: recent chats and feed, encrypted on the phone (amends M.2)
 
 **Context.** The product owner asked on 2026-11-06 for the app to open offline and
@@ -2700,3 +2715,119 @@ a phone number, which is scarcer and is banned with the account.
   guideline 4.8 asks apps offering Google sign-in to offer an equivalent
   privacy-focused option too, such as Sign in with Apple. To check when the iOS
   app ships.
+
+## Location after launch
+
+### L.1 Everything follows the phone; home works in the background (2026-11-23)
+
+**Context.** The product owner asked for no home to set: people see, take part in
+and post to what is around them, wherever they are. Asked what that meant for the
+badge, the newcomer rule, People nearby and the profile's area, all of which are
+built on home, they chose to keep those features, with home kept out of sight.
+
+**Choice.**
+- **Content goes where the phone is.** Posts, stories, listings, service posts
+  and public groups take the cell the author is in. That's the current location
+  the app last sent, falling back to home.
+  `location.service.content_location_columns` is the one rule. This reverses
+  rule 1 of decision 1.1, and decision 2.4.
+- **Lists read from where the phone is.** `anchor=explore` is the default for
+  the feed, stories, the market, services, events, groups and
+  `GET /v1/me/radius`, falling back to home. `home` can still be asked for.
+- **The app sends its location by itself:** at launch and on coming back to the
+  app, at most once every two minutes, never asking for permission there. The
+  per-person limit on `POST /v1/me/explore` goes from 30 to 120 an hour.
+- **The current location stays as private as before:**
+  - it is the phone's hexagon, in Redis for about two hours, never in
+    PostgreSQL;
+  - it is held only while the phone is away from home's hexagon.
+- **Home is asked as "Is this your home area?"** (as revised by L.2). The place
+  the person signs up becomes home, provisional if they say no. They can move it
+  in Settings, under the existing cooldown. No provisional-home deadline.
+- **Home still decides:**
+  - the badge and the newcomer rule (days at home);
+  - People nearby;
+  - the profile's area;
+  - whether a profile shows someone's posts;
+  - who counts towards density.
+- **Comments made away from home** still carry the "visiting" mark.
+
+**Reasoning.** It is what the product owner asked for. The trust features stay
+meaningful because they measure something hard to fake over days, rather than
+where someone happens to be. Keeping the current location in Redis only means
+following the phone adds no location history.
+
+**Risk accepted, then answered by L.2.** Anyone could post into a neighbourhood
+by going there, or by faking GPS, which is easy on Android. The home rule
+existed to stop that. L.2 now requires days spent in a place before posting
+there.
+
+**Alternatives.**
+- **No home at all:** the badge, the newcomer rule, People nearby and the
+  profile's area would have had to change or go.
+- **Keep posts at home:** the opposite of the request.
+
+**Still to do.** The location consent at sign-up now reads "Use my location to
+show what is nearby". The privacy policy should say that the app sends the
+phone's location while in use. A new consent document version would ask
+existing users to agree again.
+
+### L.2 Posting in a place means having been there (2026-11-23)
+
+**Context.** Following the phone (L.1) let anyone post into a neighbourhood just
+by going there, or by faking GPS. The product owner clarified what they meant:
+see anywhere, but post in a place only after spending several days there within
+a week.
+
+**Choice, decided with the product owner.**
+- **Zones:** H3 resolution 7, about 2.5 km across (5 km²). Days in a touching
+  zone count too, so living near an edge isn't a handicap.
+- **The rule:** posting in a zone needs 4 of the last 7 days there
+  (`POSTING_PRESENCE_DAYS`). It covers posts, stories, listings, services and
+  jobs, public groups, and public events, which use their venue's zone. A
+  refusal is 403 `new_to_area`, with `days`, `needed` and `window_days`. Group
+  posts and group or private events reach only invited people, so they are not
+  checked.
+- **The sign-up shortcut:** someone who answers "Yes, this is my home area" at
+  sign-up, and has a verified phone, may post around that home from day one
+  (`users.home_claimed_at_signup`). Moving home, or answering no, means the days
+  like anywhere else. Accounts that existed before this, with a confirmed home
+  never moved and a verified phone, got the shortcut in migration 0022.
+- **What counts as a day:** the app reported the phone in the zone that day
+  (`POST /v1/me/explore`, `PUT /v1/me/location`, `POST /v1/me/presence`), which
+  it does at launch and on coming back to the app.
+- **What is kept:** `user_zone_days`, seven bits per zone per person. No
+  coordinates, no times, and nothing older than a week: the nightly roll
+  deletes rows whose days have aged out. Exported as days per zone without the
+  cells, and deleted at purge.
+- **"New to the area":** someone who may not post in the zone they are in now
+  (the current location the app last sent, or home).
+  - **Comments:** they may comment anywhere, but not with a link (403
+    `links_not_allowed_yet`).
+  - **Message requests:** marked `requester_new_to_area` to the recipient,
+    shown as "New to this area".
+- **Links in chats:** whoever starts a two-person chat may not send a link in
+  their first `INITIATOR_LINK_FREE_MESSAGES` (3) messages, new to the area or
+  not.
+- **Already in place, so unchanged:**
+  - one message until the recipient replies or accepts (decision 3.7);
+  - no read receipts for the sender before acceptance (`mark_read` publishes
+    to others only in active conversations, and `other_last_read_seq` is null
+    until then).
+- **Sign-up wording:** "Is this your home area?", with "We don't save your
+  exact location. We only keep the zone you're in."
+
+**Reasoning.** Days are hard to fake for a spammer and easy for someone who
+lives or works in a place. Counting by zone, not by distance from home, means
+the rule works the same wherever someone is. The shortcut keeps the first day
+useful for the people a neighbourhood app is for, and costs a phone number,
+which is scarce and bannable.
+
+**Privacy.** The zone record is a coarse trail of the last week, which the
+product owner accepted in exchange for the rule. It is kept as small as the
+rule allows: one bit per zone per day, 7 days, no positions within a zone.
+
+**Links are detected generously** (`core.links.contains_link`): schemes,
+`www.`, short links (`bit.ly`, `wa.me`, `t.me`), and words ending in common
+suffixes, `.co.ke` included. A false alarm costs a rewording.
+

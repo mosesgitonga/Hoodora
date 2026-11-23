@@ -9,7 +9,7 @@ choice, not an oversight — see decision 1.1 and `docs/DATA_MAP.md`.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from geoalchemy2 import Geography
@@ -17,6 +17,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -154,3 +155,31 @@ class CellActivity(Base):
 
     def __repr__(self) -> str:  # pragma: no cover — debugging aid
         return f"<CellActivity r{self.resolution}/{self.cell} active={self.active_user_count}>"
+
+
+class UserZoneDay(Base):
+    """On which of the last seven days someone was in a zone (decision L.2).
+
+    A zone is an H3 resolution-7 cell, about 2.5 km across. One row per person
+    per zone they were in this week, holding seven bits, one per day: bit 0 is
+    `updated_on`, higher bits are earlier days. Recorded whenever the app reports
+    where the phone is. No coordinates, no times of day, and nothing older than a
+    week: a row whose days have all aged out is deleted by the nightly roll.
+
+    Posting in a zone needs `POSTING_PRESENCE_DAYS` of the last seven there or in
+    a touching zone.
+    """
+
+    __tablename__ = "user_zone_days"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    zone: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    days_mask: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    updated_on: Mapped[date] = mapped_column(Date)
+
+    __table_args__ = (
+        CheckConstraint("days_mask >= 0 AND days_mask < 128", name="user_zone_days_mask_is_7_bits"),
+        Index("ix_user_zone_days_updated_on", "updated_on"),
+    )

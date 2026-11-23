@@ -589,6 +589,7 @@ async def purge_user(session: AsyncSession, *, user: User) -> None:
     user.circle_request_policy = CircleRequestPolicy.everyone
     user.show_in_nearby = False
     user.home_provisional = False
+    user.home_claimed_at_signup = False
     user.contact_unlocked_at = None
     user.presence_checked_on = None
     user.home_cell_res9 = None

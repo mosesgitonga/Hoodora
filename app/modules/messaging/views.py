@@ -255,6 +255,11 @@ async def conversation_views(
                     if other is not None and conversation.state == ConversationState.active
                     else None
                 ),
+                requester_new_to_area=(
+                    conversation.request_sender_new_to_area
+                    and conversation.request_sender_id is not None
+                    and conversation.request_sender_id != viewer.id
+                ),
                 member_count=int(counts.get(conversation.id, 0)),
                 last_seq=conversation.last_seq,
                 last_read_seq=member.last_read_seq,

@@ -41,6 +41,7 @@ from app.core.errors import (
     NotFoundError,
     RateLimitedError,
 )
+from app.core.links import contains_link
 from app.core.pagination import PageParams, paginate
 from app.core.providers.push import PushProvider
 from app.core.providers.storage import StorageProvider
@@ -49,6 +50,7 @@ from app.core.ratelimit import get_rate_limiter
 from app.core.realtime import publish_after_commit
 from app.modules.auth.dependencies import is_new_account
 from app.modules.circle import links as circle_links
+from app.modules.location.service import new_to_area
 from app.modules.media import service as media_service
 from app.modules.media.models import MediaAsset, MediaPurpose
 from app.modules.messaging.models import (
@@ -681,6 +683,7 @@ async def block_and_report(
 # ---------------------------------------------------------------------------
 async def send_message(
     session: AsyncSession,
+    redis: Redis,
     *,
     sender: User,
     conversation_id: uuid.UUID,
@@ -725,6 +728,11 @@ async def send_message(
                 conversation.request_sender_id = sender.id
                 conversation.state = ConversationState.request_pending
                 is_request = True
+                # Shown to the recipient: whether the person asking is new where
+                # they are writing from (decision L.2).
+                conversation.request_sender_new_to_area = await new_to_area(
+                    session, redis, user=sender, settings=settings
+                )
             elif conversation.request_sender_id == sender.id:
                 # Pending and declined look identical from this side, on purpose.
                 raise ConflictError(AWAITING_REPLY, details={"reason": "awaiting_reply"})
@@ -732,6 +740,30 @@ async def send_message(
                 # The recipient replying is the acceptance.
                 conversation.state = ConversationState.active
                 _announce_conversation(session, [sender.id, recipient_id], conversation)
+
+    if (
+        conversation.kind in TWO_PARTY
+        and conversation.request_sender_id == sender.id
+        and contains_link(text)
+    ):
+        # Whoever starts a chat sends no links in their first few messages: links
+        # are how most scams reach people (decision L.2).
+        sent_before = int(
+            await session.scalar(
+                select(func.count(Message.id)).where(
+                    Message.conversation_id == conversation.id, Message.sender_id == sender.id
+                )
+            )
+            or 0
+        )
+        if sent_before < settings.initiator_link_free_messages:
+            raise ForbiddenError(
+                "Links can't be sent in the first few messages of a chat you started.",
+                details={
+                    "reason": "links_not_allowed_yet",
+                    "link_free_messages": settings.initiator_link_free_messages,
+                },
+            )
 
     if is_request:
         await _check_request_allowance(sender, settings, kind=conversation.kind)

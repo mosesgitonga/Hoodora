@@ -67,34 +67,42 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('away from home: a provisional home, then a reminder on Home', (tester) async {
+  testWidgets('"Is this your home area?" Yes: home is set where they are (decision L.2)', (tester) async {
     account = me();
     await openApp(tester);
-    expect(find.text('Are you at home right now?'), findsOneWidget);
+    expect(find.text('Is this your home area?'), findsOneWidget);
+    expect(find.textContaining("We don't save your exact location"), findsOneWidget);
 
-    await tester.tap(find.text("No, I'm away from home"));
+    await tester.tap(find.text('Yes, this is my home area'));
     await tester.pumpAndSettle();
-    final put = adapter.requests.singleWhere((r) => r.path == '/me/location');
-    expect((put.data as Map)['at_home'], isFalse);
-    expect(find.text("You're in Rware for now"), findsOneWidget);
 
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
-    expect(find.text("You're using Hoodora from Rware for now"), findsOneWidget);
-    expect(find.text("I'm at home now"), findsOneWidget);
-  });
-
-  testWidgets('at home: the home is set as it always was', (tester) async {
-    account = me();
-    await openApp(tester);
-    await tester.tap(find.text("Yes, I'm at home"));
-    await tester.pumpAndSettle();
     final put = adapter.requests.singleWhere((r) => r.path == '/me/location');
     expect((put.data as Map)['at_home'], isTrue);
-    expect(find.text('Welcome to Rware'), findsOneWidget);
+    expect(find.text('Rware'), findsOneWidget);
+  });
 
-    await tester.tap(find.text('This is home'));
+  testWidgets('No: they still go straight in, without home claimed', (tester) async {
+    account = me();
+    await openApp(tester);
+
+    await tester.tap(find.text("No, I'm just visiting"));
     await tester.pumpAndSettle();
-    expect(find.textContaining('for now'), findsNothing);
+
+    final put = adapter.requests.singleWhere((r) => r.path == '/me/location');
+    expect((put.data as Map)['at_home'], isFalse);
+    expect(find.text('Is this your home area?'), findsNothing);
+  });
+
+  testWidgets('an old provisional home gets no reminder on Home', (tester) async {
+    account = me(
+      hasHome: true,
+      provisional: true,
+      confirmBy: DateTime.now().toUtc().subtract(const Duration(days: 1)).toIso8601String(),
+    );
+    await openApp(tester);
+
+    expect(find.text('Rware'), findsOneWidget);
+    expect(find.text("I'm at home now"), findsNothing);
+    expect(find.text('Set your home to post again'), findsNothing);
   });
 }

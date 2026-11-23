@@ -12,6 +12,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -20,6 +21,7 @@ from app.core.errors import ErrorEnvelope
 from app.core.idempotency import IDEMPOTENCY_HEADER, execute_idempotently
 from app.core.pagination import PageParams, page_params
 from app.core.providers.storage import StorageProvider, get_storage_provider
+from app.core.redis import get_redis
 from app.modules.auth.dependencies import ActiveUser, CurrentUser, tiered_user_rate_limit
 from app.modules.messaging import service as messaging_service
 from app.modules.messaging import views
@@ -47,6 +49,7 @@ from app.modules.users.models import User
 router = APIRouter(tags=["messaging"])
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+RedisDep = Annotated[Redis, Depends(get_redis)]
 StorageDep = Annotated[StorageProvider, Depends(get_storage_provider)]
 PageDep = Annotated[PageParams, Depends(page_params)]
 
@@ -462,12 +465,14 @@ async def send_message(
     request: Request,
     user: ActiveUser,
     session: SessionDep,
+    redis: RedisDep,
     storage: StorageDep,
     settings: SettingsDep,
 ) -> JSONResponse:
     async def action() -> MessageOut:
         message = await messaging_service.send_message(
             session,
+            redis,
             sender=user,
             conversation_id=conversation_id,
             body=payload.body,

@@ -26,6 +26,7 @@ from app.modules.feed import service as feed_service
 from app.modules.feed import votes as feed_votes
 from app.modules.follows import service as follows_service
 from app.modules.groups import service as groups_service
+from app.modules.location import zones
 from app.modules.marketplace import service as marketplace_service
 from app.modules.media import service as media_service
 from app.modules.messaging import service as messaging_service
@@ -99,6 +100,7 @@ async def purge_deleted_accounts(
         await circle_service.purge_user_circle(session, user_id=user.id)
         await follows_service.purge_user_follows(session, user_id=user.id)
         await moderation_retention.purge_user_moderation(session, user_id=user.id)
+        await zones.purge_user_zones(session, user_id=user.id)
         if storage is not None:
             await media_service.purge_owner_media(session, storage, owner_id=user.id)
         await purge_user(session, user=user)

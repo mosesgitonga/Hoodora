@@ -368,3 +368,28 @@ Talking) or with Google. A Google account alone is enough to sign up. Posting
 jobs and the verified-neighbour badge still need a proved phone number, which a
 Google account adds from the app. Only Google's account ID is kept: no email,
 name or photo. Recorded as decision A.1.
+
+### Everything follows the phone (agreed 2026-11-23)
+
+The feed, the market, services, events and groups show what is around wherever
+the phone is, and whatever someone posts goes there too. Nobody is asked to set
+a home. The area where they sign up is recorded as home, out of sight, and keeps
+deciding the verified-neighbour badge, the newcomer rule for messaging strangers,
+People nearby and the area on a profile. This reverses rule 1 of the feed-anchoring
+addendum above. Recorded as decision L.1.
+
+### Posting needs days in a place (agreed 2026-11-23)
+
+Seeing is open everywhere; posting is not. Someone may post in a zone (about
+2.5 km across) once they have been there on 4 days of the last 7, with one
+shortcut: answering "Yes, this is my home area" at sign-up, with a verified
+phone, lets them post around home from day one.
+
+Someone new to the area they are in:
+- may comment, but not with links;
+- is marked "New to this area" on message requests they send.
+
+Whoever starts a chat sends no links in their first few messages. Only zones and
+days are kept, never coordinates, and nothing older than a week. Recorded as
+decision L.2.
+

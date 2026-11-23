@@ -204,7 +204,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Nyeri Town'), findsWidgets);
-      expect(find.text('Within 15 km of home'), findsOneWidget);
+      expect(find.text('Within 15 km of you'), findsOneWidget);
       expect(find.text('Does anyone know a fundi for a leaking tank?'), findsOneWidget);
       expect(find.text('Question'), findsOneWidget);
       expect(find.textContaining('under 1 km'), findsOneWidget);

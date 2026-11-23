@@ -13,6 +13,7 @@ import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../auth/auth_controller.dart';
 import '../chats/chats_controller.dart';
+import '../feed/explore.dart';
 import '../feed/feed_controller.dart';
 import '../stories/stories_controller.dart';
 
@@ -42,6 +43,10 @@ class _ShellScreenState extends ConsumerState<ShellScreen> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _realtime = ref.read(realtimeProvider)..start();
+    // Where the phone is, held for as long as someone is signed in: the lists and
+    // anything posted follow it (decision L.1).
+    ref.listenManual(exploreProvider, (_, _) {});
+    Future.microtask(_locate);
     Future.microtask(_dailyCheck);
     Future.microtask(() => ref.read(pushServiceProvider).start(ref.read(routerProvider)));
     ref.listenManual<bool>(onlineProvider, (was, online) {
@@ -51,6 +56,10 @@ class _ShellScreenState extends ConsumerState<ShellScreen> with WidgetsBindingOb
       if (!online) _reconnect = Timer.periodic(const Duration(seconds: 20), (_) => _tryServer());
     }, fireImmediately: true);
   }
+
+  /// Tells the server where the phone is, so everything shown and posted is
+  /// around it. Quiet, and never asks for permission.
+  Future<void> _locate() => ref.read(exploreProvider.notifier).refreshQuietly();
 
   /// Once a day, while the app is open: is the phone at home? Only when location
   /// is already allowed — it never asks — and silent on any failure, trying again
@@ -101,6 +110,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> with WidgetsBindingOb
     if (state == AppLifecycleState.resumed) {
       if (!ref.read(onlineProvider)) _tryServer();
       _realtime.resume();
+      _locate();
       _dailyCheck();
     }
   }

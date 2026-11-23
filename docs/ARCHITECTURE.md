@@ -98,6 +98,8 @@ Three rules keep the monolith from congealing:
    `users.service.blocked_user_ids` is the only blocking rule,
    `location.cells.locate` is the only way coordinates become storable,
    `location.service.area_label_for_cell` is the only way a place gets a name,
+   `location.service.content_location_columns` is the only way new content gets a
+   place (where the phone is, since decision L.1),
    `moderation.audit.record_audit_event` is the only way anything is audited,
    `media.images.process_image` is the only way an image becomes servable, and
    `feed.service.visible_to` is the only definition of who may see moderated
@@ -161,8 +163,10 @@ index, alongside its centroid as `geography(Point, 4326)` with a GiST index, and
 the res 8, 7 and 6 parents that density aggregation and k-anonymity need. Raw
 coordinates are never persisted and never logged.
 
-**No location history exists.** A home change overwrites. Explore-mode locations
-live in Redis for about two hours and never reach PostgreSQL. The fourteen days of
+**No location history exists.** A home change overwrites. The current location,
+which the app sends by itself while away from home and which lists and new content
+follow (decision L.1), lives in Redis for about two hours and never reaches
+PostgreSQL. The fourteen days of
 "was this user in their home area" that the verified badge needs is a 14-bit
 integer on the user row — a fact, not a movement profile. See decision 1.1.
 

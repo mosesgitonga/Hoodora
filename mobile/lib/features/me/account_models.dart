@@ -68,7 +68,7 @@ class Consent {
 const consentNames = <String, String>{
   'terms': 'Terms of use',
   'privacy_policy': 'Privacy policy',
-  'location_use': 'Using my home area to show what is nearby',
+  'location_use': 'Using my location to show what is nearby',
   'marketing': 'News and offers from Hoodora',
 };
 

@@ -110,6 +110,7 @@ async def create_post(
 ) -> ServicePostOut:
     post = await services_service.create_post(
         session,
+        redis,
         author=user,
         kind=payload.kind,
         fields=payload.model_dump(exclude={"kind"}, exclude_unset=True),
@@ -141,7 +142,7 @@ async def browse(
     q: Annotated[str | None, Query(max_length=200)] = None,
     sort: Literal["relevance", "newest", "nearest"] | None = None,
     distance_km: Annotated[float | None, Query(gt=0, le=100)] = None,
-    anchor: Annotated[Literal["home", "explore"], Query()] = "home",
+    anchor: Annotated[Literal["home", "explore"], Query()] = "explore",
 ) -> ServiceBrowseOut:
     result = await services_service.browse(
         session,

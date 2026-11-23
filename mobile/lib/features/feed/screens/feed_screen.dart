@@ -9,7 +9,6 @@ import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
 import '../../chats/start_chat.dart';
-import '../../me/me_screen.dart';
 import '../../profile/profile_screen.dart';
 import '../../stories/stories_controller.dart';
 import '../../stories/stories_strip.dart';
@@ -114,17 +113,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final me = auth is AuthSignedIn ? auth.me : null;
     final home = me?.areaLabel?.heading ?? 'Your area';
     final exploring = ref.watch(exploreProvider);
-    // While exploring, the header names where the feed is from now.
+    // The header names where the phone is: away from home, the place the app
+    // last sent; at home, home (decision L.1).
     final area = exploring == null
         ? home
         // An area too quiet to be named yet reads as "Around here", not "Around you".
         : exploring.area.precision == 'generic'
             ? 'Around here'
             : exploring.area.label;
-    // Home, as words that fit mid-sentence.
-    final homeName = me?.areaLabel == null || me!.areaLabel!.precision == 'generic'
-        ? 'your home area'
-        : me.areaLabel!.label;
     final radius = feed.radiusKm;
 
     return Scaffold(
@@ -172,12 +168,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                 Text(area, style: text.headlineSmall),
                                 const SizedBox(height: 2),
                                 Text(
-                                  exploring != null
-                                      ? (radius == null ? 'Around you now' : reachLabel(radius, aroundNow: true))
-                                      : radius == null
-                                          // An unnamed home is already headed "Around you".
-                                          ? (area == 'Around you' ? 'Your neighbourhood' : 'Around you')
-                                          : 'Within ${_km(radius)} km of home',
+                                  radius != null
+                                      ? reachLabel(radius)
+                                      // An unnamed area is already headed "Around you".
+                                      : (area == 'Around you' ? 'Your neighbourhood' : 'Around you'),
                                   style: text.bodySmall,
                                 ),
                               ],
@@ -186,16 +180,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           const LocateButton(),
                         ],
                       ),
-                      if (exploring != null) ...[
-                        const SizedBox(height: 10),
-                        ExploringStrip(exploring: exploring),
-                      ],
                       const SizedBox(height: 12),
                       const StoriesStrip(),
-                      if (me != null && me.homeProvisional) ...[
-                        const SizedBox(height: 12),
-                        _ProvisionalHomeCard(area: home, confirmBy: me.homeConfirmBy),
-                      ],
                     ],
                   ),
                 ),
@@ -219,25 +205,18 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               else if (feed.posts.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  // Exploring: a post would go to home, so the way out is home, not
-                  // "Write a post".
-                  child: exploring != null
-                      ? _Message(
-                          icon: Icons.explore_outlined,
-                          title: 'Nothing posted around here yet',
-                          body: "Neighbours here haven't posted recently. Your own posts still go to "
-                              '$homeName.',
-                          action: 'Show home area',
-                          onAction: () => ref.read(exploreProvider.notifier).backHome(),
-                        )
-                      : _Message(
-                          icon: Icons.forum_outlined,
-                          title: 'Nothing here yet',
-                          body: 'Be the first to post in $area: a question, a recommendation, '
-                              'something lost or found.',
-                          action: 'Write a post',
-                          onAction: () => context.push(Routes.compose),
-                        ),
+                  // Wherever the phone is, a post goes there: so the way on is to write one.
+                  child: _Message(
+                    icon: Icons.forum_outlined,
+                    title: 'Nothing here yet',
+                    body: exploring != null && exploring.area.precision == 'generic'
+                        ? 'Be the first to post around here: a question, a recommendation, '
+                            'something lost or found.'
+                        : 'Be the first to post in $area: a question, a recommendation, '
+                            'something lost or found.',
+                    action: 'Write a post',
+                    onAction: () => context.push(Routes.compose),
+                  ),
                 )
               else ...[
                 SliverList.separated(
@@ -273,56 +252,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  static String _km(double value) =>
-      value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
-}
-
-/// Shown while home is provisional: the person signed up away from home and
-/// should set the real one when they get there (decision M.10).
-class _ProvisionalHomeCard extends StatelessWidget {
-  const _ProvisionalHomeCard({required this.area, required this.confirmBy});
-
-  final String area;
-  final DateTime? confirmBy;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final by = confirmBy;
-    final overdue = by != null && by.isBefore(DateTime.now());
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-      decoration: BoxDecoration(
-        color: Palette.surface,
-        border: Border.all(color: Palette.line),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            overdue ? 'Set your home to post again' : "You're using Hoodora from $area for now",
-            style: text.titleSmall,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            overdue
-                ? "When you're at home, set it and you can post, sell and offer services again."
-                : "Set your home when you're there${by == null ? '' : ', by ${shortDate(by)}'}.",
-            style: text.bodySmall?.copyWith(color: Palette.ink),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => context.go(Routes.moveHome),
-              child: const Text("I'm at home now"),
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -27,7 +27,7 @@ from app.modules.feed import service as feed_service
 from app.modules.feed import votes as feed_votes
 from app.modules.follows import service as follows_service
 from app.modules.groups import service as groups_service
-from app.modules.location import cells
+from app.modules.location import cells, zones
 from app.modules.location import service as location_service
 from app.modules.marketplace import service as marketplace_service
 from app.modules.media import service as media_service
@@ -556,6 +556,7 @@ async def export_my_data(
     export["services"] = await services_service.export_user_posts(session, user_id=user.id)
     export["events"] = await events_service.export_user_events(session, user_id=user.id)
     export["reviews"] = await reviews_service.export_user_reviews(session, user_id=user.id)
+    export["zones"] = await zones.export_user_zones(session, user_id=user.id)
     export["messaging"] = await messaging_service.export_user_messages(session, user_id=user.id)
     export["notifications"] = await notifications_service.export_user_notifications(
         session, user_id=user.id

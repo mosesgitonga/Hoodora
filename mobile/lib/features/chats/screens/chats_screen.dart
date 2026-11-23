@@ -309,6 +309,7 @@ class _Requests extends ConsumerWidget {
                                       : timeAgo(c.activeAt),
                                   style: text.bodySmall?.copyWith(fontSize: 12.5),
                                 ),
+                                if (c.requesterNewToArea) const NewToAreaChip(),
                               ],
                             ),
                           ),

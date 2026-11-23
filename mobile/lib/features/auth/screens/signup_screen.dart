@@ -116,7 +116,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             _Consent(
               value: _location,
               onChanged: (v) => setState(() => _location = v),
-              label: 'Use my home area to show what is nearby',
+              label: 'Use my location to show what is nearby',
               detail: 'Only the area is kept, never your exact location.',
             ),
             _Consent(

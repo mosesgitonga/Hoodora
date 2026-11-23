@@ -209,8 +209,8 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
               const SizedBox(height: 8),
               const NotePanel(
                 icon: Icons.location_on_outlined,
-                text: 'A public group is placed at your home area, and found by neighbours around it. '
-                    'People see the area name, never where you live.',
+                text: "A public group is placed in the area you're in now, and found by people "
+                    'around it. They see the area name, never exactly where you are.',
               ),
             ],
             FormError(_error),

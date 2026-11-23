@@ -249,11 +249,14 @@ class _MoveHomeScreenState extends ConsumerState<MoveHomeScreen> {
           const SizedBox(height: 6),
           Text(
             _moved != null
-                ? 'Home is now $_moved. Your feed, the marketplace and services follow it.'
+                ? 'Home is now $_moved.'
                 : provisional
-                    ? "You're using Hoodora from here for now. When you're at home, set it here"
-                        "${me?.homeConfirmBy == null ? '' : ' by ${shortDate(me!.homeConfirmBy!)}'}."
-                    : 'Your feed, the marketplace and services are built around your home area.',
+                    ? "Your home was set where you signed up, away from home. When you're at home, "
+                        'set it here.'
+                    // Decision L.1: what home is still for, now that everything else follows the phone.
+                    : 'Your home area is shown on your profile, and counts towards the verified-neighbour '
+                        'badge, People nearby and messaging new people. Your feed and what you post '
+                        'follow wherever you are.',
             style: text.bodyLarge?.copyWith(color: Palette.muted),
           ),
           const SizedBox(height: 16),

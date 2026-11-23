@@ -235,6 +235,14 @@ class Settings(BaseSettings):
     contact_unlock_window_days: int = Field(default=7, ge=1, le=14)
     """The window those days are counted in: 4 of the last 7 by default."""
 
+    posting_presence_days: int = Field(default=4, ge=1, le=7)
+    """Days of the last seven someone must have been in a zone, or a zone touching
+    it, before they may post there. Decision L.2."""
+
+    initiator_link_free_messages: int = Field(default=3, ge=0, le=20)
+    """How many of their first messages in a chat they started someone may not put
+    a link in. Decision L.2."""
+
     provisional_home_days: int = Field(default=7, ge=1, le=60)
     """Someone who signs up away from home gets a provisional home where they are,
     and full use, for this long. After it they place nothing new until they set

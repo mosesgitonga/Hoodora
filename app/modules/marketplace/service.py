@@ -27,12 +27,12 @@ from app.core.errors import BadRequestError, ConflictError
 from app.core.pagination import PageParams, decode_cursor, encode_cursor, paginate
 from app.core.search import matching_phrases, normalise, prefix_tsquery
 from app.modules.feed.service import estimate_reach
-from app.modules.location import bands, cells
+from app.modules.location import bands, cells, zones
 from app.modules.location.radius import RadiusEngine
 from app.modules.location.service import (
     Anchor,
     AnchorMode,
-    home_location_columns,
+    content_location_columns,
     resolve_anchor,
 )
 from app.modules.marketplace import access
@@ -168,13 +168,14 @@ async def create_listing(
     media_ids: list[uuid.UUID],
     settings: Settings,
 ) -> tuple[Listing, int]:
-    """List an item at the seller's home area, and estimate who will see it."""
-    location = home_location_columns(seller)
+    """List an item where the seller is (decision L.1), and estimate who will see it."""
+    location = await content_location_columns(session, redis, user=seller)
     if location is None:
         raise ConflictError(
-            "Set your home area before listing something",
+            "Turn on location to list something",
             details={"action": "PUT /v1/me/location"},
         )
+    await zones.require_may_post_at(session, user=seller, location=location, settings=settings)
     cleaned_title = _clean(
         title, field="title", max_length=settings.listing_title_max_length, required=True
     )

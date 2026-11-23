@@ -38,7 +38,7 @@ from app.modules.moderation.models import (
 from app.modules.staff.models import StaffRole
 from app.modules.users import service as users_service
 from app.modules.users.models import User
-from tests.factories import NYERI_TOWN, make_staff, make_user, unique_phone
+from tests.factories import NYERI_TOWN, give_zone_days, make_staff, make_user, unique_phone
 from tests.test_auth_api import SIGNUP_CONSENTS, last_code
 
 Authenticate = Callable[[User], Awaitable[httpx.AsyncClient]]
@@ -389,6 +389,8 @@ async def test_posting_a_job_without_a_phone_asks_for_one(
     db_session: AsyncSession, authenticate: Authenticate, sms: ConsoleSmsProvider
 ) -> None:
     user = await google_user(db_session, "g-hires")
+    # Around long enough to post here (decision L.2): only the phone is missing.
+    await give_zone_days(db_session, user, NYERI_TOWN)
     client = await authenticate(user)
 
     refused = await client.post("/v1/services", json=JOB)

@@ -133,6 +133,7 @@ class Conversation {
     this.servicePostId,
     this.otherUser,
     this.otherLastReadSeq,
+    this.requesterNewToArea = false,
     this.safetyNotice,
     this.lastMessage,
     this.lastMessageAt,
@@ -152,6 +153,7 @@ class Conversation {
             ? null
             : Author.fromJson(Map<String, dynamic>.from(json['other_user'] as Map)),
         otherLastReadSeq: json['other_last_read_seq'] as int?,
+        requesterNewToArea: json['requester_new_to_area'] as bool? ?? false,
         safetyNotice: json['safety_notice'] as String?,
         memberCount: json['member_count'] as int,
         lastSeq: json['last_seq'] as int,
@@ -184,6 +186,10 @@ class Conversation {
   final bool muted;
   final Author? otherUser;
   final int? otherLastReadSeq;
+
+  /// To me, receiving a request: whoever sent it was new to the area they wrote
+  /// from, not yet allowed to post there (decision L.2).
+  final bool requesterNewToArea;
   final String? safetyNotice;
   final int memberCount;
   final int lastSeq;
@@ -224,6 +230,7 @@ class Conversation {
         muted: muted ?? this.muted,
         otherUser: otherUser,
         otherLastReadSeq: otherLastReadSeq ?? this.otherLastReadSeq,
+        requesterNewToArea: requesterNewToArea,
         safetyNotice: safetyNotice,
         memberCount: memberCount,
         lastSeq: lastSeq,

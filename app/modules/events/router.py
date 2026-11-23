@@ -141,7 +141,7 @@ async def browse(
     starts_from: datetime | None = None,
     starts_before: datetime | None = None,
     distance_km: Annotated[float | None, Query(gt=0, le=100)] = None,
-    anchor: Annotated[Literal["home", "explore"], Query()] = "home",
+    anchor: Annotated[Literal["home", "explore"], Query()] = "explore",
 ) -> EventBrowseOut:
     result = await events_service.browse(
         session,

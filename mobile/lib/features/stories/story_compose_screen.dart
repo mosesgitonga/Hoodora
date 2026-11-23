@@ -11,8 +11,8 @@ import '../../core/widgets.dart';
 import 'stories_controller.dart';
 import 'story_models.dart';
 
-/// Posting a story: a photo, or a line of text on a coloured card. It goes to my
-/// home area, like a post, and is gone in a day.
+/// Posting a story: a photo, or a line of text on a coloured card. It goes to the
+/// area the phone is in, like a post, and is gone in a day.
 class StoryComposeScreen extends ConsumerStatefulWidget {
   const StoryComposeScreen({super.key});
 

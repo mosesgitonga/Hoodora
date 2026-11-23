@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.db import execute_dml
+from app.modules.location import zones
 from app.modules.users.models import HOME_PRESENCE_WINDOW_DAYS
 
 logger = logging.getLogger(__name__)
@@ -162,4 +163,7 @@ async def roll_home_presence(session: AsyncSession, *, today: date | None = None
         },
     )
     logger.info("home_presence_rolled", extra={"users_updated": rolled})
+    # Zone days older than a week go at the same time (decision L.2).
+    pruned = await zones.prune(session, today=target_day)
+    logger.info("zone_days_pruned", extra={"rows_deleted": pruned})
     return rolled

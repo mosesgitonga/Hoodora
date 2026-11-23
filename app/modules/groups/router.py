@@ -136,6 +136,7 @@ async def create_group(
 ) -> GroupOut:
     group = await groups_service.create_group(
         session,
+        redis,
         creator=user,
         name=payload.name,
         description=payload.description,
@@ -172,7 +173,7 @@ async def discover(
     q: Annotated[str | None, Query(max_length=100)] = None,
     category: str | None = None,
     distance_km: Annotated[float | None, Query(gt=0, le=100)] = None,
-    anchor: Annotated[Literal["home", "explore"], Query()] = "home",
+    anchor: Annotated[Literal["home", "explore"], Query()] = "explore",
 ) -> DiscoveryOut:
     result = await groups_service.discover(
         session,
@@ -325,6 +326,7 @@ async def update_group(
 ) -> GroupOut:
     group = await groups_service.update_group(
         session,
+        redis,
         actor=user,
         group_id=group_id,
         changes=payload.model_dump(exclude_unset=True),
