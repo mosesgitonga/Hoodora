@@ -10,8 +10,9 @@ Every user has their own radius, which adapts to how many active users are nearb
 shrinks in dense areas so the feed stays genuinely local, and widens in quiet ones so
 there is always something to see. Exact locations are never stored, shown, or logged.
 
-The mobile clients (Flutter, Android and iOS) live in a separate repository. This service
-is a modular monolith: FastAPI, PostgreSQL with PostGIS, Redis, and an arq worker.
+The mobile app (Flutter, Android and iOS) lives in [`mobile/`](mobile/README.md), in this
+repository. This service is a modular monolith: FastAPI, PostgreSQL with PostGIS, Redis,
+and an arq worker.
 
 ## Requirements
 
@@ -76,6 +77,7 @@ app/
   modules/         one package per feature area: models, schemas, service, router
   workers/         arq settings and background tasks
 migrations/        Alembic
+mobile/            the Flutter app (see mobile/README.md)
 tests/
 docs/              ARCHITECTURE.md, DECISIONS.md, DATA_MAP.md
 ```
