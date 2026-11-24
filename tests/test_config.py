@@ -266,3 +266,15 @@ def test_unknown_environment_variables_are_ignored_not_fatal() -> None:
     settings = Settings(_env_file=None, secret_key="x", some_unrelated_var="y")
 
     assert settings.secret_key.get_secret_value() == "x"
+
+
+def test_a_post_offers_the_reaction_its_category_maps_to() -> None:
+    settings = _settings(post_reactions="general:like, alert:sad", post_reaction_default="helpful")
+    assert settings.post_reaction_for("general") == "like"
+    assert settings.post_reaction_for("alert") == "sad"
+    assert settings.post_reaction_for("question") == "helpful"
+
+
+def test_post_reactions_must_use_known_kinds() -> None:
+    with pytest.raises(ValueError, match="POST_REACTIONS"):
+        _settings(post_reactions="general:heart")

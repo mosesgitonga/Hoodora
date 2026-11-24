@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.modules.circle.models import CircleLink
 from app.modules.moderation.models import (
     AuditAction,
     AuditEvent,
@@ -234,3 +235,31 @@ async def test_vouching_is_idempotent_and_withdrawable(
     withdrawn = await (await authenticate(voucher)).delete(f"/v1/users/{other_id}/vouch")
     assert withdrawn.json()["vouched"] is False
     assert await db_session.scalar(select(func.count()).select_from(Vouch)) == 0
+
+
+# ---------------------------------------------------------------------------
+# Progress on my own profile (decision U.5)
+# ---------------------------------------------------------------------------
+async def test_my_profile_shows_badge_progress_vouches_and_circle(
+    db_session: AsyncSession, settings: Settings, authenticate: Authenticate
+) -> None:
+    me = await resident(db_session, mask=0b00000000111111, age_days=5)
+    stranger = await make_user(db_session, at=offset_km(NYERI_TOWN, north=40.0))
+    for friend in (await make_user(db_session, at=NYERI_TOWN), stranger):
+        low, high = sorted((me.id, friend.id))
+        db_session.add(CircleLink(user_low_id=low, user_high_id=high))
+    # One vouch from someone far away: the badge wouldn't count it, the profile does.
+    db_session.add(Vouch(voucher_id=stranger.id, vouchee_id=me.id))
+    await db_session.flush()
+
+    body = (await (await authenticate(me)).get("/v1/me")).json()
+
+    assert body["badge_presence_days"] == 6
+    assert body["badge_presence_days_needed"] == settings.badge_min_presence_days
+    assert body["badge_presence_window_days"] == 14
+    reached = datetime.fromisoformat(body["badge_account_age_reached_at"])
+    expected = me.created_at + timedelta(days=settings.badge_min_account_age_days)
+    assert abs(reached - expected) < timedelta(seconds=1)
+    assert body["vouches_received"] == 1
+    assert body["badge_vouches_needed"] == settings.badge_vouches_required
+    assert body["circle_count"] == 2

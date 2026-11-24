@@ -21,6 +21,7 @@ from app.modules.auth import service as auth_service
 from app.modules.auth.dependencies import ActiveUser, CurrentUser, user_rate_limit
 from app.modules.auth.phone import normalise_phone_number
 from app.modules.auth.schemas import AddPhoneIn
+from app.modules.circle import links as circle_links
 from app.modules.circle import service as circle_service
 from app.modules.events import service as events_service
 from app.modules.feed import service as feed_service
@@ -41,7 +42,7 @@ from app.modules.services import reviews as reviews_service
 from app.modules.services import service as services_service
 from app.modules.users import badge, contact, nearby
 from app.modules.users import service as users_service
-from app.modules.users.models import Block, User
+from app.modules.users.models import HOME_PRESENCE_WINDOW_DAYS, Block, User
 from app.modules.users.schemas import (
     AreaLabelOut,
     BlockCreateIn,
@@ -157,6 +158,16 @@ async def get_me(
         presence_days_this_week=contact.days_this_week(user, settings=settings, today=today),
         contact_unlock_days=settings.contact_unlock_days,
         contact_unlock_window_days=settings.contact_unlock_window_days,
+        badge_presence_days=contact.presence_days(
+            user, today, window_days=HOME_PRESENCE_WINDOW_DAYS
+        ),
+        badge_presence_days_needed=settings.badge_min_presence_days,
+        badge_presence_window_days=HOME_PRESENCE_WINDOW_DAYS,
+        badge_account_age_reached_at=user.created_at
+        + timedelta(days=settings.badge_min_account_age_days),
+        vouches_received=await badge.vouches_received_count(session, user.id),
+        badge_vouches_needed=settings.badge_vouches_required,
+        circle_count=await circle_links.circle_size(session, user.id),
         presence_check_due=user.has_home_location and user.presence_checked_on != today,
         cover_media_id=user.cover_media_id,
         cover=await _cover(session, storage, user),

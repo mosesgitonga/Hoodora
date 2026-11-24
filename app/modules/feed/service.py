@@ -852,6 +852,11 @@ async def set_reaction(
     target_model, target_id = await _reaction_target(
         session, viewer=user, post_id=post_id, comment_id=comment_id
     )
+    if target_model is Post:
+        # A post offers one reaction, by its category (decision U.3): store that,
+        # whatever kind this client sent.
+        category = await session.scalar(select(Post.category).where(Post.id == target_id))
+        kind = settings.post_reaction_for(category or "")
 
     existing = await _find_reaction(session, user.id, post_id=post_id, comment_id=comment_id)
     if existing is not None:

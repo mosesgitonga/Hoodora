@@ -105,6 +105,32 @@ class MeOut(BaseModel):
     )
     contact_unlock_days: int = 4
     contact_unlock_window_days: int = 7
+    badge_presence_days: int = Field(
+        default=0,
+        description=(
+            "Days at home among the last `badge_presence_window_days`, today included: "
+            "the badge's presence count, for showing progress (decision U.5)."
+        ),
+    )
+    badge_presence_days_needed: int = Field(
+        default=10, description="Days at home the badge's earned route needs."
+    )
+    badge_presence_window_days: int = 14
+    badge_account_age_reached_at: datetime | None = Field(
+        default=None,
+        description="When the account is old enough for the badge's earned route.",
+    )
+    vouches_received: int = Field(
+        default=0,
+        description=(
+            "Every vouch received. Deliberately not filtered by area as the badge's "
+            "count is: that would tell you whether a voucher lives near you."
+        ),
+    )
+    badge_vouches_needed: int = Field(
+        default=2, description="Vouches from verified neighbours that also earn the badge."
+    )
+    circle_count: int = Field(default=0, description="People in your Circle.")
     presence_check_due: bool = Field(
         default=False,
         description="True when the app has not yet checked today whether the phone is at home.",

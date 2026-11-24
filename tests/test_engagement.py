@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import importlib.util
+import pathlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 import httpx
+import pytest
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.providers.storage import MemoryStorageProvider
-from app.modules.feed.models import Comment, Post, Story
+from app.modules.feed.models import Comment, Post, Reaction, Story
 from app.modules.media.models import MediaPurpose
 from app.modules.users.models import User
 from app.modules.users.service import block_user
@@ -215,17 +218,49 @@ async def test_reacting_counts_once_per_person(
 async def test_changing_a_reaction_replaces_it(
     db_session: AsyncSession, redis_client: Redis, authenticate: Authenticate
 ) -> None:
+    """On a comment, where the kind is the reacter's choice."""
     author = await make_user(db_session, at=NYERI_TOWN)
     fan = await make_user(db_session, at=NYERI_TOWN)
     post = await make_post(db_session, redis_client, author=author)
     client = await authenticate(fan)
-    await client.put(f"/v1/posts/{post.id}/reaction", json={"kind": "like"})
+    comment = (await client.post(f"/v1/posts/{post.id}/comments", json={"body": "Hi"})).json()
+    await client.put(f"/v1/comments/{comment['id']}/reaction", json={"kind": "like"})
 
-    changed = await client.put(f"/v1/posts/{post.id}/reaction", json={"kind": "helpful"})
+    changed = await client.put(f"/v1/comments/{comment['id']}/reaction", json={"kind": "helpful"})
 
     assert changed.json() == {"kind": "helpful", "reaction_count": 1}
-    feed_item = (await client.get(f"/v1/posts/{post.id}")).json()
-    assert feed_item["my_reaction"] == "helpful"
+
+
+@pytest.mark.parametrize(
+    ("category", "sent", "stored"),
+    [
+        ("general", "helpful", "like"),
+        ("general", "love", "like"),
+        ("question", "like", "helpful"),
+        ("recommendation", "helpful", "helpful"),
+        ("lost_and_found", "like", "helpful"),
+        ("alert", "sad", "helpful"),
+    ],
+)
+async def test_a_post_offers_one_reaction_by_its_category(
+    db_session: AsyncSession,
+    redis_client: Redis,
+    authenticate: Authenticate,
+    category: str,
+    sent: str,
+    stored: str,
+) -> None:
+    """Decision U.3. Stored as the category's kind whatever the app sent, so an
+    older app that sends "helpful" everywhere stays consistent."""
+    author = await make_user(db_session, at=NYERI_TOWN)
+    fan = await make_user(db_session, at=NYERI_TOWN)
+    post = await make_post(db_session, redis_client, author=author, category=category)
+    client = await authenticate(fan)
+
+    response = await client.put(f"/v1/posts/{post.id}/reaction", json={"kind": sent})
+
+    assert response.json() == {"kind": stored, "reaction_count": 1}
+    assert (await client.get(f"/v1/posts/{post.id}")).json()["my_reaction"] == stored
 
 
 async def test_removing_a_reaction(
@@ -547,3 +582,38 @@ async def test_the_export_includes_content(
     assert [p["body"] for p in export["content"]["posts"]] == ["My first post"]
     assert "media" in export
     assert any("EXIF" in item for item in export["not_held"])
+
+
+async def test_migration_0025_turns_reactions_on_general_posts_into_likes(
+    db_session: AsyncSession, redis_client: Redis
+) -> None:
+    """The data migration's own statement, on real rows: General posts' reactions
+    become likes, other posts' and comments' are untouched."""
+    spec = importlib.util.spec_from_file_location(
+        "migration_0025",
+        pathlib.Path(__file__).parents[1] / "migrations/versions/0025_general_post_reactions.py",
+    )
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    author = await make_user(db_session, at=NYERI_TOWN)
+    fan = await make_user(db_session, at=NYERI_TOWN)
+    general = await make_post(db_session, redis_client, author=author, category="general")
+    question = await make_post(db_session, redis_client, author=author, category="question")
+    comment = Comment(post_id=general.id, author_id=author.id, body="Hi")
+    db_session.add(comment)
+    await db_session.flush()
+    rows = [
+        Reaction(user_id=fan.id, post_id=general.id, kind="helpful"),
+        Reaction(user_id=author.id, post_id=general.id, kind="love"),
+        Reaction(user_id=fan.id, post_id=question.id, kind="helpful"),
+        Reaction(user_id=fan.id, comment_id=comment.id, kind="helpful"),
+    ]
+    db_session.add_all(rows)
+    await db_session.flush()
+
+    await db_session.execute(text(migration.CONVERT))
+    for row in rows:
+        await db_session.refresh(row)
+
+    assert [row.kind for row in rows] == ["like", "like", "helpful", "helpful"]

@@ -396,6 +396,12 @@ class Settings(BaseSettings):
     comment_max_length: int = Field(default=1000, ge=1, le=10_000)
     reaction_kinds: str = "like,love,helpful,celebrate,sad"
     """One reaction per user per target; changing it replaces the previous one."""
+    post_reactions: str = "general:like"
+    """The one reaction a post offers, by category, as `category:kind` pairs
+    (decision U.3). A category not listed offers `post_reaction_default`. A
+    reaction on a post is stored as its category's kind whatever the client
+    sends, so an older app sending "helpful" everywhere stays consistent."""
+    post_reaction_default: str = "helpful"
 
     # -- Moderation ----------------------------------------------------------
     report_auto_hide_threshold: int = Field(default=3, ge=1, le=100)
@@ -776,6 +782,9 @@ class Settings(BaseSettings):
             raise ValueError("POST_CATEGORIES must list at least one category")
         if not self.reaction_kind_list:
             raise ValueError("REACTION_KINDS must list at least one kind")
+        offered = {self.post_reaction_default, *self.post_reaction_map.values()}
+        if not offered <= set(self.reaction_kind_list):
+            raise ValueError("POST_REACTIONS and POST_REACTION_DEFAULT must use REACTION_KINDS")
         # A new account with a *looser* limit than an established one would make
         # the age check pointless, and the mistake is easy to make in an env file.
         if self.new_account_posts_per_day > self.posts_per_day:
@@ -979,6 +988,15 @@ class Settings(BaseSettings):
     @property
     def reaction_kind_list(self) -> tuple[str, ...]:
         return tuple(part.strip() for part in self.reaction_kinds.split(",") if part.strip())
+
+    @property
+    def post_reaction_map(self) -> dict[str, str]:
+        pairs = (part.split(":", 1) for part in self.post_reactions.split(",") if ":" in part)
+        return {category.strip(): kind.strip() for category, kind in pairs}
+
+    def post_reaction_for(self, category: str) -> str:
+        """The one reaction kind a post of `category` offers."""
+        return self.post_reaction_map.get(category, self.post_reaction_default)
 
     @property
     def story_ttl(self) -> timedelta:
