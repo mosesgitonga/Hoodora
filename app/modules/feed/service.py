@@ -62,7 +62,7 @@ from app.modules.follows import links as follow_links
 from app.modules.follows.models import FollowEntityType
 from app.modules.groups import access as group_access
 from app.modules.groups.models import ROLE_RANK, Group, GroupRole
-from app.modules.location import bands, zones
+from app.modules.location import bands, cells, zones
 from app.modules.location.radius import RadiusEngine, RadiusResult
 from app.modules.location.service import (
     Anchor,
@@ -168,10 +168,6 @@ async def create_post(
     (decision C.5).
     """
     location = await _require_location(session, redis, author)
-    if group is None:
-        # Posting in a place means having been there (decision L.2). A group
-        # post reaches only the group's members, so it isn't placed.
-        await zones.require_may_post_at(session, user=author, location=location, settings=settings)
     if service_post_id is not None:
         if group is not None:
             raise BadRequestError("A post in a group cannot be made as a service")
@@ -194,6 +190,13 @@ async def create_post(
         raise BadRequestError(
             f"A post can have at most {settings.post_max_images} images",
             details={"max_images": settings.post_max_images},
+        )
+    if group is None:
+        # Posting in a place means having been there, or a starter post without
+        # links (decisions L.2 and L.3). A group post reaches only the group's
+        # members, so it isn't placed.
+        await zones.claim_posting_right_at(
+            session, user=author, location=location, settings=settings, starter=True, text=cleaned
         )
 
     assets = await claim_assets_for(
@@ -999,7 +1002,13 @@ async def create_story(
     audience: Audience = Audience.neighbours_and_circle,
 ) -> Story:
     location = await _require_location(session, redis, author)
-    await zones.require_may_post_at(session, user=author, location=location, settings=settings)
+    # Stories need no days anywhere, and are seen only around their own zone
+    # (decision L.3). Links wait, as in comments, for someone new to the area.
+    if contains_link(text) and await new_to_area(session, redis, user=author, settings=settings):
+        raise ForbiddenError(
+            "You can share links in stories once you've been around here for a few days.",
+            details={"reason": "links_not_allowed_yet"},
+        )
 
     if kind == StoryKind.image:
         if media_id is None or text:
@@ -1041,14 +1050,15 @@ async def stories_page(
     settings: Settings,
     mode: AnchorMode = "home",
 ) -> StoryPage:
-    """Live stories within the viewer's feed radius, newest first.
+    """Live stories from the viewer's zone, newest first.
 
-    Stories share the feed's radius, as the brief's table specifies.
+    Not the feed's radius: stories need no days in an area, so they are seen only
+    in the zone they were posted from and the zones touching it (decision L.3),
+    the same edge rule as posting. A Circle sees them anywhere through
+    `circle_stories_page`.
     """
     anchor = await _require_anchor(redis, viewer=viewer, mode=mode)
-    radius = await RadiusEngine(session, redis, settings).radius_for(
-        RadiusFeature.feed, anchor.cell_res8
-    )
+    nearby_zones = cells.disk(zones.zone_of(anchor.cell_res9), 1)
     blocked = await blocked_user_ids(session, viewer.id)
 
     statement: Select[Story] = select(Story).where(
@@ -1057,7 +1067,7 @@ async def stories_page(
         # Checked on read as well as swept by the worker: between sweeps an
         # expired story must not be served, and the sweep is not instant.
         Story.expires_at > datetime.now(UTC),
-        bands.within(Story.centroid, anchor, radius.radius_m),
+        Story.cell_res7.in_(nearby_zones),
     )
     if blocked:
         statement = statement.where(Story.author_id.not_in(blocked))

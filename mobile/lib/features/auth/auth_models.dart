@@ -94,6 +94,7 @@ class Me {
     this.presenceCheckDue = false,
     this.showInNearby = false,
     this.circleRequestPolicy = 'everyone',
+    this.starterPostsLeft = 0,
     this.homeProvisional = false,
     this.homeConfirmBy,
   });
@@ -124,6 +125,7 @@ class Me {
         presenceCheckDue: json['presence_check_due'] as bool? ?? false,
         showInNearby: json['show_in_nearby'] as bool? ?? false,
         circleRequestPolicy: json['circle_request_policy'] as String? ?? 'everyone',
+        starterPostsLeft: json['starter_posts_left'] as int? ?? 0,
         homeProvisional: json['home_provisional'] as bool? ?? false,
         homeConfirmBy: _date(json['home_confirm_by']),
       );
@@ -178,6 +180,10 @@ class Me {
   /// Who may send me Circle requests: `everyone`, `nearby_only`,
   /// `contacts_only` or `nobody`.
   final String circleRequestPolicy;
+
+  /// Posts I can still make somewhere I haven't yet been around on the days
+  /// posting needs; they can't contain links (decision L.3).
+  final int starterPostsLeft;
 
   /// Home was set away from home at sign-up; set the real one by [homeConfirmBy]
   /// (decision M.10).

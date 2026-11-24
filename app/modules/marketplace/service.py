@@ -175,7 +175,6 @@ async def create_listing(
             "Turn on location to list something",
             details={"action": "PUT /v1/me/location"},
         )
-    await zones.require_may_post_at(session, user=seller, location=location, settings=settings)
     cleaned_title = _clean(
         title, field="title", max_length=settings.listing_title_max_length, required=True
     )
@@ -186,6 +185,15 @@ async def create_listing(
         required=False,
     )
     _check_allowed(cleaned_title, cleaned_description, settings)
+    # The days in this area, or a starter post without links (L.2, L.3).
+    await zones.claim_posting_right_at(
+        session,
+        user=seller,
+        location=location,
+        settings=settings,
+        starter=True,
+        text=f"{cleaned_title} {cleaned_description or ''}",
+    )
     digest = content_hash(cleaned_title, cleaned_description)
     await _check_not_duplicate(session, seller_id=seller.id, digest=digest)
 

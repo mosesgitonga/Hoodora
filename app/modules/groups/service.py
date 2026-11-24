@@ -193,7 +193,9 @@ async def _location_for(
             "Turn on location to make a public group",
             details={"action": "PUT /v1/me/location"},
         )
-    await zones.require_may_post_at(session, user=user, location=location, settings=settings)
+    await zones.claim_posting_right_at(
+        session, user=user, location=location, settings=settings, starter=False
+    )
     return location
 
 

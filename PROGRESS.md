@@ -4324,3 +4324,85 @@ test; all Circle tests pass.
     the staging feed.
 - **Not yet tried on the phone:** Circle, the posting rule, and the new
   sign-up question.
+
+## Starter posts, and stories by zone (2026-11-24)
+
+### Plan
+
+**Asked:** the product owner found they couldn't post. The new rule needs 4
+days in an area, and days only started counting at the deploy. They changed
+the rule for new people:
+- **Starter posts:** a new account can make up to 3 posts, with no links,
+  without the days.
+- **Stories:** as many as they like, with no days needed. A story is seen only
+  by their Circle and by people in the hexagon it was posted from.
+
+**Decided with the product owner:**
+- **Who:** every account, replacing the sign-up shortcut (phone plus "this is
+  my home area" no longer gives unlimited posting).
+- **What the 3 cover:** feed posts, market listings, and "I offer" / "I need"
+  posts, 3 in total. Jobs, public groups and events still need the 4 days.
+- **Where:** anywhere the phone is.
+- **Stories:** no days needed, for anyone. Neighbours see them only in the
+  zone they were posted from (and touching zones, as for posting), and the
+  Circle sees them wherever it is.
+
+**My choice, to confirm:** the 3 are once per account, not limited to the
+first week, so current accounts get them too.
+
+**Server:**
+- **`users.starter_posts_used`** (migration 0023), counted when a post goes
+  out without the days. `users.home_claimed_at_signup` and the shortcut are
+  removed.
+- **`zones.claim_posting_right`:** the days, or else a starter post if one is
+  left, the kind is covered, and the text has no link. Refusals:
+  - `new_to_area`, with `starter_posts_left`;
+  - `links_not_allowed_yet`.
+- **Stories:**
+  - no days check;
+  - links refused from someone new to the area, as for comments;
+  - `GET /v1/stories` lists stories from the viewer's zone and the touching
+    zones, not the feed radius.
+- **`GET /me`** gives `starter_posts_left`.
+
+**App:**
+- **Sign-up:** the wording no longer promises posting straight away.
+- **Writing a post:** while starter posts are left, a note says how many, and
+  that links wait.
+
+### Built (2026-11-24)
+
+**Server:**
+- **`zones.claim_posting_right`:** the days in the zone, or else a starter post
+  if the kind is covered, one is left, and the text has no link. Feed posts and
+  listings use it, and so do "I offer" / "I need" service posts (with every text
+  field checked for links). Jobs, public groups and public events use the
+  days-only form.
+- **Starter posts are counted in one conditional update,** so two posts at once
+  can't use a fourth, and a refused post costs nothing. `GET /me` gives
+  `starter_posts_left`.
+- **Stories:**
+  - no days check;
+  - a link from someone new to the area is refused;
+  - `GET /v1/stories` lists the viewer's zone and the touching zones, not the
+    feed radius.
+- **Migration 0023:** adds `users.starter_posts_used`, and drops
+  `home_claimed_at_signup` with the shortcut.
+- **Tests:**
+  - **Factory:** users made at a place get the 4 days there, as established
+    locals.
+  - **`test_zones.py`:** 8 new tests, for the three starter posts and then the
+    wait, no links, anywhere, jobs still waiting, the days using no starter
+    post, stories with no days, story links, and stories by zone. The shortcut
+    tests are gone.
+
+**App:**
+- **Sign-up:** says you can make 3 posts straight away, without links.
+- **Writing a post:** while starter posts are left, a note says this may use
+  one of them, and that they can't contain links.
+
+**Checked:**
+- **Server:** the full suite passes. Migrations 0021 to 0023 upgrade,
+  downgrade and re-apply, and `alembic check` is clean.
+- **App:** all 140 tests pass, one of them new. Lint, types and the analyzer
+  are clean.

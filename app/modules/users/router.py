@@ -139,6 +139,7 @@ async def get_me(
         display_name=user.display_name,
         phone_number=user.phone_number,
         has_google_account=user.google_sub is not None,
+        starter_posts_left=zones.starter_posts_left(user, settings),
         status=user.status,
         member_since=user.created_at,
         area_label=await _area_label(session, redis, user, settings),

@@ -191,12 +191,6 @@ async def set_home_location(
     )
     user.home_set_at = now
     user.home_provisional = not at_home
-    # The posting shortcut is for a home claimed at sign-up and never moved
-    # (decision L.2). Re-confirming the same place keeps it.
-    if is_first_time:
-        user.home_claimed_at_signup = at_home
-    elif was_provisional or not unchanged:
-        user.home_claimed_at_signup = False
     if was_provisional:
         # The real home replaces a provisional one as a first home would: no
         # cooldown starts, and nothing was proven there to carry over.

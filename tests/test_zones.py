@@ -25,7 +25,6 @@ from app.modules.feed import service as feed_service
 from app.modules.groups import service as groups_service
 from app.modules.groups.models import GroupJoinPolicy, GroupVisibility
 from app.modules.location import cells, zones
-from app.modules.location import service as location_service
 from app.modules.location.models import UserZoneDay
 from app.modules.users.models import User
 from tests.factories import (
@@ -43,9 +42,14 @@ Authenticate = Callable[[User], Awaitable[httpx.AsyncClient]]
 POST = {"body": "Water is back on in Kamakwa", "category": "general"}
 
 
-async def newcomer(db_session: AsyncSession, **kwargs: Any) -> User:
-    """Lives in Nyeri town, but without the sign-up shortcut: has the days to earn."""
-    return await make_user(db_session, at=NYERI_TOWN, claimed_home=False, **kwargs)
+async def newcomer(db_session: AsyncSession, *, starter_left: bool = False, **kwargs: Any) -> User:
+    """Lives in Nyeri town with none of the days yet. Their starter posts (L.3)
+    are used up unless `starter_left`, so the days rule is what's tested."""
+    user = await make_user(db_session, at=NYERI_TOWN, established=False, **kwargs)
+    if not starter_left:
+        user.starter_posts_used = 3
+        await db_session.flush()
+    return user
 
 
 async def zone_rows(db_session: AsyncSession, user: User) -> list[UserZoneDay]:
@@ -98,7 +102,13 @@ async def test_new_to_an_area_a_post_is_refused_with_the_days_so_far(
 
     assert refused.status_code == 403
     details = refused.json()["error"]["details"]
-    assert details == {"reason": "new_to_area", "days": 3, "needed": 4, "window_days": 7}
+    assert details == {
+        "reason": "new_to_area",
+        "days": 3,
+        "needed": 4,
+        "window_days": 7,
+        "starter_posts_left": 0,
+    }
 
 
 async def test_four_days_in_the_week_and_they_may_post(
@@ -150,7 +160,7 @@ async def test_days_older_than_a_week_do_not_count(
     assert not result.may_post
 
 
-async def test_listings_services_stories_and_public_groups_need_the_days_too(
+async def test_listings_services_and_public_groups_need_the_days_too(
     db_session: AsyncSession, authenticate: Authenticate
 ) -> None:
     client = await authenticate(await newcomer(db_session))
@@ -169,7 +179,6 @@ async def test_listings_services_stories_and_public_groups_need_the_days_too(
         await client.post(
             "/v1/services", json={"kind": "offering", "category": "plumbing", "title": "Plumber"}
         ),
-        await client.post("/v1/stories", json={"kind": "text", "text": "Hello Kamakwa"}),
         await client.post(
             "/v1/groups",
             json={"name": "Kamakwa walkers", "category": "sports", "visibility": "public"},
@@ -230,85 +239,133 @@ async def test_a_public_event_needs_the_days_at_its_venue(
 
 
 # ---------------------------------------------------------------------------
-# The sign-up shortcut
+# Starter posts (decision L.3)
 # ---------------------------------------------------------------------------
-async def test_a_home_claimed_at_sign_up_with_a_verified_phone_posts_at_once(
+async def starter_left(client: httpx.AsyncClient) -> int:
+    return int((await client.get("/v1/me")).json()["starter_posts_left"])
+
+
+LISTING = {
+    "title": "Sofa",
+    "category": "furniture",
+    "condition": "good",
+    "pricing": "fixed",
+    "price_kes": 5000,
+}
+
+
+async def test_a_newcomer_gets_three_starter_posts_then_waits_for_the_days(
     db_session: AsyncSession, authenticate: Authenticate
 ) -> None:
-    user = await make_user(db_session, at=NYERI_TOWN, claimed_home=True)
+    client = await authenticate(await newcomer(db_session, starter_left=True))
+    assert await starter_left(client) == 3
 
-    posted = await (await authenticate(user)).post("/v1/posts", json=POST)
+    made = [
+        await client.post("/v1/posts", json=POST),
+        await client.post("/v1/listings", json=LISTING),
+        await client.post(
+            "/v1/services", json={"kind": "seeking", "category": "plumbing", "title": "Gate fix?"}
+        ),
+    ]
+    assert [r.status_code for r in made] == [201, 201, 201], [r.text for r in made]
+    assert await starter_left(client) == 0
+
+    refused = await client.post("/v1/posts", json=POST)
+    assert refused.status_code == 403
+    details = refused.json()["error"]["details"]
+    assert details["reason"] == "new_to_area"
+    assert details["starter_posts_left"] == 0
+    assert "used your 3 starter posts" in refused.json()["error"]["message"]
+
+
+async def test_a_starter_post_has_no_links_and_a_refusal_costs_nothing(
+    db_session: AsyncSession, authenticate: Authenticate
+) -> None:
+    client = await authenticate(await newcomer(db_session, starter_left=True))
+
+    refused = await client.post(
+        "/v1/posts", json={"body": "Cheap phones at bit.ly/deal", "category": "general"}
+    )
+
+    assert refused.status_code == 403
+    assert refused.json()["error"]["details"]["reason"] == "links_not_allowed_yet"
+    assert await starter_left(client) == 3
+
+
+async def test_starter_posts_go_anywhere_the_phone_is(
+    db_session: AsyncSession, authenticate: Authenticate
+) -> None:
+    client = await authenticate(await newcomer(db_session, starter_left=True))
+
+    await client.post("/v1/me/explore", json=KARATINA.as_payload())
+    posted = await client.post("/v1/posts", json=POST)
 
     assert posted.status_code == 201, posted.text
 
 
-async def test_the_shortcut_is_for_home_not_for_somewhere_else(
+async def test_jobs_need_the_days_even_with_starter_posts_left(
     db_session: AsyncSession, authenticate: Authenticate
 ) -> None:
-    user = await make_user(db_session, at=NYERI_TOWN, claimed_home=True)
-    client = await authenticate(user)
+    client = await authenticate(await newcomer(db_session, starter_left=True, created_days_ago=60))
 
-    await client.post("/v1/me/explore", json=KARATINA.as_payload())
-    refused = await client.post("/v1/posts", json=POST)
-
-    assert refused.status_code == 403
-    assert refused.json()["error"]["details"]["reason"] == "new_to_area"
-
-
-async def test_no_verified_phone_means_no_shortcut(
-    db_session: AsyncSession, authenticate: Authenticate
-) -> None:
-    """Signed up with Google and no number yet (decision A.1)."""
-    user = await make_user(db_session, at=NYERI_TOWN, claimed_home=True)
-    user.phone_number = None
-    user.phone_verified_at = None
-    user.google_sub = "g-zones"
-    await db_session.flush()
-
-    refused = await (await authenticate(user)).post("/v1/posts", json=POST)
-
-    assert refused.status_code == 403
-
-
-async def test_saying_yes_at_sign_up_claims_home_and_no_does_not(
-    db_session: AsyncSession, redis_client: Redis, settings: Settings
-) -> None:
-    yes = await make_user(db_session)
-    no = await make_user(db_session)
-
-    for user, at_home in ((yes, True), (no, False)):
-        await location_service.set_home_location(
-            db_session,
-            redis_client,
-            user=user,
-            latitude=NYERI_TOWN.latitude,
-            longitude=NYERI_TOWN.longitude,
-            settings=settings,
-            at_home=at_home,
-        )
-
-    assert yes.home_claimed_at_signup is True
-    assert no.home_claimed_at_signup is False
-    # Either way they were there today.
-    assert len(await zone_rows(db_session, yes)) == 1
-
-
-async def test_moving_home_gives_up_the_shortcut(
-    db_session: AsyncSession, redis_client: Redis, settings: Settings
-) -> None:
-    user = await make_user(db_session, at=NYERI_TOWN, claimed_home=True)
-    no_cooldown = settings.model_copy(update={"home_change_cooldown_days": 0})
-
-    await location_service.set_home_location(
-        db_session,
-        redis_client,
-        user=user,
-        latitude=KARATINA.latitude,
-        longitude=KARATINA.longitude,
-        settings=no_cooldown,
+    job = await client.post(
+        "/v1/services", json={"kind": "hiring", "category": "other", "title": "Shop assistant"}
     )
 
-    assert user.home_claimed_at_signup is False
+    assert job.status_code == 403
+    assert job.json()["error"]["details"]["reason"] == "new_to_area"
+    assert await starter_left(client) == 3
+
+
+async def test_with_the_days_a_post_uses_no_starter_post(
+    db_session: AsyncSession, authenticate: Authenticate
+) -> None:
+    client = await authenticate(await make_user(db_session, at=NYERI_TOWN))
+
+    assert (await client.post("/v1/posts", json=POST)).status_code == 201
+    assert await starter_left(client) == 3
+
+
+# ---------------------------------------------------------------------------
+# Stories (decision L.3)
+# ---------------------------------------------------------------------------
+async def test_stories_need_no_days(db_session: AsyncSession, authenticate: Authenticate) -> None:
+    client = await authenticate(await newcomer(db_session))
+
+    for line in ("Mandazi at the stage", "Rain coming", "Lights back on"):
+        story = await client.post("/v1/stories", json={"kind": "text", "text": line})
+        assert story.status_code == 201, story.text
+
+
+async def test_a_newcomers_story_has_no_links(
+    db_session: AsyncSession, authenticate: Authenticate
+) -> None:
+    client = await authenticate(await newcomer(db_session))
+
+    refused = await client.post("/v1/stories", json={"kind": "text", "text": "Deals: bit.ly/x"})
+
+    assert refused.status_code == 403
+    assert refused.json()["error"]["details"]["reason"] == "links_not_allowed_yet"
+
+
+async def test_stories_are_seen_only_around_their_zone(
+    db_session: AsyncSession, authenticate: Authenticate
+) -> None:
+    """Inside the feed's 15 km, but beyond the zone and the zones touching it."""
+    author = await make_user(db_session, at=NYERI_TOWN)
+    next_door = await make_user(db_session, at=offset_km(NYERI_TOWN, north=0.5))
+    across_town = await make_user(db_session, at=offset_km(NYERI_TOWN, north=11.0))
+    posted = await (await authenticate(author)).post(
+        "/v1/stories", json={"kind": "text", "text": "Mandazi at the stage"}
+    )
+    story_id = posted.json()["id"]
+
+    async def sees(viewer: User) -> bool:
+        listed = (await (await authenticate(viewer)).get("/v1/stories")).json()["items"]
+        return story_id in {item["id"] for item in listed}
+
+    assert await sees(next_door)
+    assert not await sees(across_town)
 
 
 # ---------------------------------------------------------------------------

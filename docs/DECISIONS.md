@@ -2793,6 +2793,7 @@ a week.
   (`users.home_claimed_at_signup`). Moving home, or answering no, means the days
   like anywhere else. Accounts that existed before this, with a confirmed home
   never moved and a verified phone, got the shortcut in migration 0022.
+  **Replaced by L.3** the next day: the shortcut and its column are gone.
 - **What counts as a day:** the app reported the phone in the zone that day
   (`POST /v1/me/explore`, `PUT /v1/me/location`, `POST /v1/me/presence`), which
   it does at launch and on coming back to the app.
@@ -2830,4 +2831,40 @@ rule allows: one bit per zone per day, 7 days, no positions within a zone.
 **Links are detected generously** (`core.links.contains_link`): schemes,
 `www.`, short links (`bit.ly`, `wa.me`, `t.me`), and words ending in common
 suffixes, `.co.ke` included. A false alarm costs a rewording.
+
+### L.3 Starter posts, and stories by zone (2026-11-24)
+
+**Context.** Under L.2 the product owner couldn't post on staging. Days only
+began counting at the deploy, and their account didn't qualify for the sign-up
+shortcut. A brand-new person would be silent for four days.
+
+**Choice, decided with the product owner.**
+- **Starter posts:** every account may make 3 posts (`STARTER_POSTS`), once,
+  without having the days where it posts.
+  - They cover feed posts, market listings, and "I offer" / "I need" service
+    posts, 3 in total.
+  - None may contain a link.
+  - They work wherever the phone is.
+  - `users.starter_posts_used` counts them. The count goes up in one
+    conditional update, so two posts at once can't take a fourth.
+  - A refused post uses nothing.
+  - `GET /me` gives `starter_posts_left`.
+- **They replace the L.2 shortcut** (phone plus "this is my home area"), so
+  nobody posts without limit on day one. Migration 0023 drops
+  `home_claimed_at_signup`.
+- **Still need the days:** jobs, public groups and public events.
+- **Stories need no days, for anyone.** In exchange, neighbours see a story
+  only in the zone it was posted from and the zones touching it (`GET
+  /v1/stories`), not across the feed's radius. The author's Circle sees it
+  wherever they are, as before. A story's text may not hold a link while its
+  author is new to the area, as for comments.
+- **Once per account, not per first week.** This is my reading of "first
+  signup", so that existing accounts get them too. It means someone who never
+  used theirs could use them after moving. Limiting them to the first week is
+  a small change if wanted.
+
+**Reasoning.** It keeps the point of L.2, that posting into a place means
+having been there, while letting a newcomer say hello. Three link-free posts
+are little use to a spammer. Stories vanish in a day, and seen only in their own
+zone they can't be used to reach a town.
 

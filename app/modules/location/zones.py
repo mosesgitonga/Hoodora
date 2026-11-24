@@ -11,9 +11,10 @@ the nightly roll deletes a row once its days have aged out. A day counts when
 the app reported the phone there, which it does when it opens and comes back to
 the foreground.
 
-**The one shortcut:** someone who said "this is my home area" when they signed
-up, has a verified phone, and has not moved home since, may post around home
-from day one. Moving home, or saying the place was not home, means the days.
+**Starter posts** (decision L.3): every account may make `STARTER_POSTS` posts,
+once, somewhere it doesn't have the days: feed posts, listings, and "I offer" /
+"I need" service posts, without links. Jobs, public groups and events always
+need the days. Stories never do; they are seen only around their own zone.
 """
 
 from __future__ import annotations
@@ -23,13 +24,14 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.db import execute_dml
 from app.core.errors import ForbiddenError
+from app.core.links import contains_link
 from app.modules.location import cells
 from app.modules.location.models import UserZoneDay
 from app.modules.users.models import User
@@ -90,12 +92,10 @@ class ZoneStanding:
     days: int
     """Distinct days of the last seven spent in the zone or a touching one."""
     needed: int
-    by_home: bool
-    """The sign-up shortcut applies here."""
 
     @property
     def may_post(self) -> bool:
-        return self.by_home or self.days >= self.needed
+        return self.days >= self.needed
 
 
 async def standing(
@@ -120,47 +120,88 @@ async def standing(
     combined = 0
     for mask, updated_on in rows:
         combined |= rolled(int(mask), updated_on, day)
-    by_home = (
-        user.home_claimed_at_signup
-        and not user.home_provisional
-        and user.phone_verified_at is not None
-        and user.home_cell_res7 is not None
-        and user.home_cell_res7 in nearby
-    )
-    return ZoneStanding(
-        days=bin(combined).count("1"),
-        needed=settings.posting_presence_days,
-        by_home=bool(by_home),
-    )
+    return ZoneStanding(days=bin(combined).count("1"), needed=settings.posting_presence_days)
 
 
-async def require_may_post(
-    session: AsyncSession, *, user: User, cell: int, settings: Settings
+def starter_posts_left(user: User, settings: Settings) -> int:
+    return max(0, settings.starter_posts - user.starter_posts_used)
+
+
+async def claim_posting_right(
+    session: AsyncSession,
+    *,
+    user: User,
+    cell: int,
+    settings: Settings,
+    starter: bool,
+    text: str | None = None,
 ) -> None:
-    """Refuse to place something in a zone the person is new to."""
+    """May this person place something in the zone of `cell`? Raise if not.
+
+    With the days there, yes. Without them, a starter post if `starter` (the kind
+    is one starter posts cover), one is left, and `text` has no link; using it
+    counts it. Otherwise 403 `new_to_area`, or `links_not_allowed_yet`.
+    """
     result = await standing(session, user=user, cell=cell, settings=settings)
     if result.may_post:
         return
+    left = starter_posts_left(user, settings) if starter else 0
+    if left > 0:
+        if contains_link(text):
+            raise ForbiddenError(
+                "Your first posts can't contain links. You can share links once you've "
+                "been around here for a few days.",
+                details={"reason": "links_not_allowed_yet", "starter_posts_left": left},
+            )
+        # One statement that only succeeds while a post is left, so two posts at
+        # once can't use a fourth.
+        used = await execute_dml(
+            session,
+            update(User)
+            .where(User.id == user.id, User.starter_posts_used < settings.starter_posts)
+            .values(starter_posts_used=User.starter_posts_used + 1),
+        )
+        await session.refresh(user, ["starter_posts_used"])
+        if used:
+            return
+    used_up = starter and settings.starter_posts > 0
     raise ForbiddenError(
-        f"You can post here once you've been around on {result.needed} days in a week. "
+        (f"You've used your {settings.starter_posts} starter posts. " if used_up else "")
+        + f"You can post here once you've been around on {result.needed} days in a week. "
         f"So far: {result.days}.",
         details={
             "reason": "new_to_area",
             "days": result.days,
             "needed": result.needed,
             "window_days": WINDOW_DAYS,
+            "starter_posts_left": starter_posts_left(user, settings),
         },
     )
 
 
-async def require_may_post_at(
-    session: AsyncSession, *, user: User, location: dict[str, object], settings: Settings
+async def require_may_post(
+    session: AsyncSession, *, user: User, cell: int, settings: Settings
 ) -> None:
-    """`require_may_post` for the location columns new content is about to take."""
+    """For what always needs the days: jobs, public groups and public events."""
+    await claim_posting_right(session, user=user, cell=cell, settings=settings, starter=False)
+
+
+async def claim_posting_right_at(
+    session: AsyncSession,
+    *,
+    user: User,
+    location: dict[str, object],
+    settings: Settings,
+    starter: bool,
+    text: str | None = None,
+) -> None:
+    """`claim_posting_right` for the location columns new content is about to take."""
     cell = location.get("cell_res9")
     if not isinstance(cell, int):  # pragma: no cover — the columns always carry it
         raise TypeError("location columns without a res-9 cell")
-    await require_may_post(session, user=user, cell=cell, settings=settings)
+    await claim_posting_right(
+        session, user=user, cell=cell, settings=settings, starter=starter, text=text
+    )
 
 
 # ---------------------------------------------------------------------------

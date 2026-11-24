@@ -45,6 +45,11 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   String? _progress;
   String? _error;
 
+  int get _starterPostsLeft {
+    final auth = ref.watch(authControllerProvider);
+    return auth is AuthSignedIn ? auth.me.starterPostsLeft : 0;
+  }
+
   @override
   void dispose() {
     _body.dispose();
@@ -263,6 +268,15 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                     'Photo location data is removed.',
               )
             else ...[
+              if (_starterPostsLeft > 0) ...[
+                NotePanel(
+                  icon: Icons.waving_hand_outlined,
+                  text: "If you haven't been around here on 4 days this week, this uses one of your "
+                      '$_starterPostsLeft starter ${_starterPostsLeft == 1 ? 'post' : 'posts'}, '
+                      "which can't contain links.",
+                ),
+                const SizedBox(height: 12),
+              ],
               AudienceChoice(
                 withCircle: _withCircle,
                 onChanged: _busy ? null : (value) => setState(() => _withCircle = value),

@@ -811,7 +811,7 @@ back to the app. Exported as the number of days per zone, without the cells.
 
 | Field | Why | Retention |
 | --- | --- | --- |
-| `home_claimed_at_signup` | The person said "this is my home area" at sign-up and hasn't moved it. With a verified phone, they may post around home from day one | Until home moves, or purge |
+| `starter_posts_used` | How many of the account's 3 starter posts it has used: posts made somewhere it doesn't yet have the days (decision L.3). A count, nothing about where | Life of the account |
 
 ## The mobile app — what stays on the phone
 

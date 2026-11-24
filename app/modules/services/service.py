@@ -204,7 +204,6 @@ async def create_post(
             "Turn on location to post what's around you",
             details={"action": "PUT /v1/me/location"},
         )
-    await zones.require_may_post_at(session, user=author, location=location, settings=settings)
     if (
         kind == ServiceKind.hiring
         and author.phone_verified_at is None
@@ -239,6 +238,26 @@ async def create_post(
         **location,
     )
     _apply_fields(post, fields, settings)
+    # The days in this area, or a starter post without links (L.2, L.3). Jobs
+    # always need the days.
+    await zones.claim_posting_right_at(
+        session,
+        user=author,
+        location=location,
+        settings=settings,
+        starter=kind != ServiceKind.hiring,
+        text=" ".join(
+            part
+            for part in (
+                post.title,
+                post.description,
+                post.rate_info,
+                post.availability_info,
+                post.budget_info,
+            )
+            if part
+        ),
+    )
     try:
         async with session.begin_nested():
             session.add(post)

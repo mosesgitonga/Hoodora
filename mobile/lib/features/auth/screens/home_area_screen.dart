@@ -68,8 +68,8 @@ class _HomeAreaScreenState extends ConsumerState<HomeAreaScreen> {
                     Text('Is this your home area?', style: text.headlineMedium),
                     const SizedBox(height: 12),
                     Text(
-                      'Hoodora shows what is happening around wherever you are. If the area '
-                      "you're in now is where you live, you can start posting here straight away.",
+                      'Hoodora shows what is happening around wherever you are. Your home area is '
+                      'the one shown on your profile.',
                       style: text.bodyLarge?.copyWith(color: Palette.muted),
                     ),
                     const SizedBox(height: 20),
@@ -97,8 +97,8 @@ class _HomeAreaScreenState extends ConsumerState<HomeAreaScreen> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      "Not home? You can look around and comment anywhere. You can post in an area "
-                      "once you've been there on 4 days in a week.",
+                      "You can make 3 posts straight away, without links. After that, you can post "
+                      "in an area once you've been there on 4 days in a week.",
                       textAlign: TextAlign.center,
                       style: text.bodySmall?.copyWith(fontSize: 12),
                     ),

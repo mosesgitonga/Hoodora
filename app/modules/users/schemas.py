@@ -57,6 +57,14 @@ class MeOut(BaseModel):
     has_google_account: bool = Field(
         default=False, description="Whether the account signs in with Google."
     )
+    starter_posts_left: int = Field(
+        default=0,
+        description=(
+            "Posts the account may still make somewhere it doesn't yet have the days: "
+            "feed posts, listings and service offers or requests, without links "
+            "(decision L.3)."
+        ),
+    )
     status: UserStatus
     member_since: datetime
 

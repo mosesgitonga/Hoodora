@@ -203,6 +203,14 @@ void main() {
     expect((sent.data as Map)['audience'], 'neighbours_only');
   });
 
+  testWidgets('with starter posts left, writing a post says so (decision L.3)', (tester) async {
+    me = {...me, 'starter_posts_left': 2};
+    await open(tester, Routes.compose);
+
+    expect(find.textContaining('uses one of your 2 starter posts'), findsOneWidget);
+    expect(find.textContaining("can't contain links"), findsOneWidget);
+  });
+
   testWidgets('who can send Circle requests is set in Privacy', (tester) async {
     await open(tester, Routes.privacy);
 

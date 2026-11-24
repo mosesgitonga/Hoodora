@@ -35,7 +35,7 @@ async def newcomer(db_session: AsyncSession) -> User:
     return await make_user(db_session, created_days_ago=0, contact_unlocked=False)
 
 
-async def test_away_from_home_gives_a_provisional_home_and_the_days_to_post(
+async def test_away_from_home_gives_a_provisional_home_and_a_starter_post(
     db_session: AsyncSession, authenticate: Authenticate, settings: Settings
 ) -> None:
     user = await newcomer(db_session)
@@ -49,13 +49,13 @@ async def test_away_from_home_gives_a_provisional_home_and_the_days_to_post(
     confirm_by = datetime.fromisoformat(me["home_confirm_by"])
     assert timedelta(days=settings.provisional_home_days - 1) < confirm_by - datetime.now(UTC)
 
-    # Not home, so no sign-up shortcut: posting there waits for the days (L.2).
-    refused = await (await authenticate(user)).post(
+    # No days there yet, so this goes out as one of the starter posts (L.3).
+    posted = await (await authenticate(user)).post(
         "/v1/posts", json={"body": "Visiting for the week", "category": "general"}
     )
-    assert refused.status_code == 403
-    assert refused.json()["error"]["details"]["reason"] == "new_to_area"
-    assert refused.json()["error"]["details"]["days"] == 1
+    assert posted.status_code == 201, posted.text
+    me = (await (await authenticate(user)).get("/v1/me")).json()
+    assert me["starter_posts_left"] == settings.starter_posts - 1
     # Nothing was proven by being there.
     await db_session.refresh(user)
     assert user.home_presence_mask == 0

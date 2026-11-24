@@ -167,7 +167,7 @@ async def make_user(
     storage_resolution: int = 9,
     created_days_ago: float | None = None,
     contact_unlocked: bool = True,
-    claimed_home: bool | None = None,
+    established: bool | None = None,
 ) -> User:
     """A user, optionally with a home location already set.
 
@@ -187,10 +187,6 @@ async def make_user(
         # Most tests are about something other than proving a home area, so their
         # people may contact each other. Tests of decision M.7 pass False.
         contact_unlocked_at=now if contact_unlocked else None,
-        # Someone made at a place is a local who said "this is my home area" at
-        # sign-up, so they may post around home (decision L.2). Tests of the zone
-        # rules pass False.
-        home_claimed_at_signup=(at is not None) if claimed_home is None else claimed_home,
     )
     if created_days_ago is not None:
         # Account age drives new-account rate limits and reporter trust, so tests
@@ -208,6 +204,10 @@ async def make_user(
 
     session.add(user)
     await session.flush()
+    # Someone made at a place is a local who has been around there on the days
+    # posting needs (decision L.2). Tests of the zone rules pass False.
+    if at is not None and (established is None or established):
+        await give_zone_days(session, user, at)
     return user
 
 

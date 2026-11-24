@@ -239,6 +239,11 @@ class Settings(BaseSettings):
     """Days of the last seven someone must have been in a zone, or a zone touching
     it, before they may post there. Decision L.2."""
 
+    starter_posts: int = Field(default=3, ge=0, le=20)
+    """Posts an account may make, once, before it has the days somewhere: feed
+    posts, listings, and "I offer" / "I need" service posts, without links.
+    Decision L.3."""
+
     initiator_link_free_messages: int = Field(default=3, ge=0, le=20)
     """How many of their first messages in a chat they started someone may not put
     a link in. Decision L.2."""

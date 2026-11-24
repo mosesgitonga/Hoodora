@@ -393,3 +393,11 @@ Whoever starts a chat sends no links in their first few messages. Only zones and
 days are kept, never coordinates, and nothing older than a week. Recorded as
 decision L.2.
 
+### Starter posts and stories (agreed 2026-11-24)
+
+Every account may make 3 posts, once, before it has the days somewhere: feed
+posts, listings, and service offers or requests, without links, anywhere. Jobs,
+public groups and events still need the days. Stories never need them, and are
+seen only by the author's Circle and by people in the zone they were posted
+from. This replaces the sign-up shortcut above. Recorded as decision L.3.
+

@@ -177,13 +177,9 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     It counts for nothing towards the contact rule or the badge, and is replaced,
     without a cooldown, when they set their real home. Decision M.10."""
 
-    home_claimed_at_signup: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=text("false")
-    )
-    """The person said "this is my home area" when they signed up, and has not
-    moved it since. With a verified phone, that lets them post around home from
-    day one, without the days anywhere else needs (decision L.2). Cleared when
-    home moves."""
+    starter_posts_used: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    """How many of the account's starter posts are used: posts made somewhere it
+    doesn't yet have the days, at most `STARTER_POSTS` (decision L.3)."""
 
     show_in_nearby: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
@@ -272,6 +268,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
             name="user_home_presence_mask_is_14_bits",
         ),
         CheckConstraint("rating_count >= 0", name="user_rating_count_non_negative"),
+        CheckConstraint("starter_posts_used >= 0", name="user_starter_posts_used_non_negative"),
         CheckConstraint(
             "rating_average IS NULL OR (rating_average >= 1 AND rating_average <= 5)",
             name="user_rating_average_in_range",
