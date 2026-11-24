@@ -2984,6 +2984,13 @@ and keeps working when the CDN (U.2) starts signing them differently.
   The S3 gateway needs signatures, and making it readable anonymously would
   also have opened the public `/myradius-media/` path.
 - **No new dependency:** `hmac` signs, and `httpx`, already used, purges.
+- **Verified on staging** (PROGRESS, A4):
+  - the token is not in the cache key: a second, different token was a HIT;
+  - a missing, tampered or expired token, or a request to the origin without
+    the secret, is refused;
+  - a purge stops a deleted photo loading.
+  - From Nyeri a photo's first byte comes at 0.27 s instead of ~0.85 s. Bunny
+    serves Kenya from Johannesburg, not Nairobi.
 
 ### U.3 A post offers one reaction, by its category (2026-11-24)
 

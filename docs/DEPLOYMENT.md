@@ -246,7 +246,10 @@ billing are the product owner's.
   - It reads from the storage filer on `127.0.0.1:8033`, which is published to
     localhost only.
   - The secret reaches nginx through `/etc/nginx/snippets/myradius-cdn-origin.conf`
-    (600, root), which `bootstrap.sh` writes from `CDN_ORIGIN_SECRET`.
+    (600, root), which `bootstrap.sh` writes from `CDN_ORIGIN_SECRET`. It is an
+    `if` included in the location, not a `map`: a 64-character key overflows
+    nginx's default `map_hash_bucket_size`, and raising that would be a
+    server-wide change.
   - The live site file was edited by hand to match the template, since certbot
     owns it, and checked with `nginx -t` before reloading.
 - **The API:** `STORAGE_PUBLIC_BASE_URL=https://media.myradius.chatara.co` and

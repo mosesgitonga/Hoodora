@@ -4857,3 +4857,81 @@ Recorded as decisions U.1–U.5.
 - **Taps over adb** worked on this phone today.
 - **To tidy:** "0 people in your Circle" should read as an invitation, like
   the other zero counts.
+
+### Built: A3, media through Bunny (2026-11-24)
+
+**Set up:**
+- **Account and keys.** The product owner created the Bunny account and saved
+  the API key to a local file. It went straight into the server's
+  `.env.production` over ssh's stdin, and the local file was deleted. Nothing
+  secret went through the chat or the repository.
+- **The pull zone,** `hoodora-staging-media` (7076924), was created from the
+  server through Bunny's API:
+  - token authentication on;
+  - `IgnoreQueryStrings` on;
+  - a year's edge cache;
+  - cookies stripped;
+  - log IPs dropped;
+  - an edge rule adding the origin secret header;
+  - the hostname `media.myradius.chatara.co` (a CNAME added at Namecheap by the
+    product owner), with a free certificate and HTTPS forced.
+- **The zone's token key and the origin secret** were written to
+  `.env.production` by the script and never printed.
+- **Origin:** the nginx location `/cdn-origin/` reads from the SeaweedFS filer
+  (`127.0.0.1:8033`, new in `docker-compose.vps.yml`).
+  - The first attempt used a `map` for the secret. `nginx -t` rejected it
+    (`map_hash_bucket_size`); the script restored the site file, and the other
+    sites were unaffected.
+  - It is now an `if` in a root-only snippet included in the location.
+  - The live site file is backed up at `/root/myradius.chatara.co.before-cdn-origin`.
+- **The API:** `STORAGE_PUBLIC_BASE_URL=https://media.myradius.chatara.co`,
+  then `api` and `worker` were recreated. The previous env file is at
+  `/root/env.production.before-cdn` (600). Rolling back is in DEPLOYMENT.
+
+### A4. Verified (2026-11-24)
+
+**Security:**
+
+| Request | Result |
+| --- | --- |
+| Origin, no secret header | 403 |
+| Origin, wrong secret | 403 |
+| Origin, an original's path | 404 |
+| Edge, no token | 403 |
+| Edge, tampered token | 403 |
+| Edge, expired token | 403 |
+| Edge, valid token | 200 |
+
+**The cache key:** a valid token was a MISS, then a *different* valid token
+for the same file was a HIT. The token is not in the cache key.
+
+**Purge:** the test image was served as a HIT. After `storage.delete_object`,
+the real deletion path, it was a MISS then 404, with the same valid token.
+
+**HTTP/2:** the edge negotiates `h2`. Hoodora's nginx stays on HTTP/1.1.
+
+**Timings from Nyeri, 118 KB WebP:**
+
+| | Before (direct, presigned) | After (Bunny, edge JH1) |
+| --- | --- | --- |
+| Round trip | 220–227 ms | 78–100 ms |
+| Fresh connection: TLS done | 0.42–0.48 s | 0.18–0.20 s |
+| Fresh connection: first byte | 0.78–0.91 s | 0.27–0.29 s (cache HIT) |
+| Fresh connection: total | 1.19–1.39 s | 0.63–0.65 s (HIT); 1.78 s on the first MISS |
+| Open connection: total | 0.34 s | 0.16 s |
+| The phone's cache | never hit (URL changed every second) | hits by path across signatures (A2) |
+
+**The edge** that answers from Nyeri is Johannesburg (`BunnyCDN-JH1`), not
+Nairobi. Bunny chooses the edge, so whether a Nairobi edge exists or will be
+used would need asking Bunny.
+
+**On the phone:** after the switch, Home loaded every photo and avatar from
+the new CDN URLs, which the app had never cached. Bunny's own statistics still
+showed 0 requests at the time; they arrive with a delay.
+
+**Left:**
+- **Private photo tokens last an hour.** A chat photo first scrolled to more
+  than an hour after its list was loaded fails until the list refreshes.
+  Cached photos are unaffected.
+- **Before launch,** Bunny joins the privacy notice's list of processors
+  (DATA_MAP).
