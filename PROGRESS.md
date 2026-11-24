@@ -4544,3 +4544,40 @@ choice, so the real file is not committed until it's made.
     fallbacks gaining a real village;
   - validation passes, and all seven test places still resolve.
 - **Staging** was re-seeded (518 removed, 812 loaded).
+
+### King'ong'o from local knowledge (2026-11-24)
+
+- **Reported:** the Highlands factory, in King'ong'o, read "near Nyeri".
+- **Cause:** the only King'ong'o point was King'ong'o Primary School (IEBC
+  2012). The Nyeri town point, 450 m west of the school, was nearer the
+  factory.
+- **Fix, in findme:**
+  - **A verified point:** King'ong'o at the factory, in `manual_places.csv`,
+    from the product owner's local knowledge. It's the first entry in that
+    file.
+  - **Polling stations:** a hand-added point no longer stops findme adding a
+    polling station of the same name, so the school's King'ong'o point
+    stays. findme's tests pass, including a new one for this.
+- **Result:** the factory and the school both read "King'ong'o", and "Nyeri"
+  is now about 1 km around the town point. Validation passes.
+- **Staging** was re-seeded (812 removed, 810 loaded).
+
+### "Near DeKUT" (2026-11-24)
+
+- **Asked:** call the area around Dedan Kimathi University "DeKUT". The
+  product owner gave five points.
+- **First try:** DeKUT came out at 21 km², reaching 3 km into farmland and
+  into Muringato and King'ong'o. The product owner chose to limit it to
+  500 m from the points.
+- **Fix, in findme:** an optional `reach_m` column in `manual_places.csv`.
+  - A place with a reach names only ground within that distance of its
+    points, merged ones included.
+  - Everything else is worked out as if the place weren't there.
+  - findme's tests pass, including a new one for this.
+- **Result:**
+  - all five points read "DeKUT", and DeKUT is 3.0 km²;
+  - it took ground from Muringato (2.7 km²), Mathari and King'ong'o;
+  - outside it, 0 of 19,981 random points changed name;
+  - the Highlands factory, King'ong'o Primary, the town centre and Kiriti
+    are unchanged.
+- **Staging** was re-seeded (810 removed, 813 loaded).
