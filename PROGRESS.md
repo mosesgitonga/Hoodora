@@ -4823,3 +4823,37 @@ Recorded as decisions U.1–U.5.
 - **A4:** the before-and-after timings follow A3.
 - **Shipping:** the app needs a full release (1.5.0+8), not a patch, because
   of the new icons. The server needs a deploy.
+
+## Release 1.5.0+8 on the phone (2026-11-24)
+
+- **Published** on Shorebird with `scripts/app_release.sh`: a 64-bit APK
+  (22.3 MB), signed with the upload key (SHA-1 `549c4e9c…c4b1`). A release,
+  not a patch, because of the new icons.
+- **Staging** runs `f7ed663` at migration 0025. CI and the deploy passed, and
+  `GET /me` returns the new fields.
+- **Installed** on the product owner's Redmi A5 over adb, as an update to
+  1.4.1+7.
+- **Seen on the phone:**
+  - **Home:** "Around here" with "near King'ong'o". "Within 15 km of here"
+    with "Update location" beside it. Services and Groups chips. An Update
+    with a heart and "1 like" (converted from helpful) and "Comment". No
+    "nearby" on the meta line. The plain "+" Post button, since the account
+    has posted.
+  - **Marketplace:**
+    - only Sell in the header;
+    - "All" readable, orange with white text, in dark mode;
+    - "Within 30 km of here · Newest ▾" with Update location;
+    - the card shows "Good · 9 Nov" and "under 1 km";
+    - the call to sell at the end.
+  - **The cache:** the first tile took a few seconds (a 320 px size never
+    fetched before). After pull-to-refresh, which brings new presigned URLs,
+    the photo stayed on screen without reloading.
+  - **Me:**
+    - "Neighbours see: nearby · Reviews appear after your first sale or job";
+    - badge progress, "0 of the 10 days needed (last 14), from 7 Dec";
+    - "0 people in your Circle";
+    - an orange Posts tab;
+    - a shorter banner.
+- **Taps over adb** worked on this phone today.
+- **To tidy:** "0 people in your Circle" should read as an invitation, like
+  the other zero counts.
