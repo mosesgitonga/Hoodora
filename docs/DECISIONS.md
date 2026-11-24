@@ -2906,3 +2906,155 @@ naming them to others does.
 83 fallback areas from CBS 2002 sublocations. Their redistribution terms are
 unconfirmed. The dataset is kept out of the public repository until that is
 decided.
+
+## App polish
+
+From the product owner's review of the app on a phone against staging
+(2026-11-24). The plan, with the measurements behind it, is in `PROGRESS.md`.
+
+### U.1 Photos are cached by their path, at a size named by purpose (2026-11-24)
+
+**Context.** Photos took about 2 seconds to appear.
+- **The URL changed on every load.** Staging serves presigned S3 GETs, and
+  their signature carries the second they were made. The app cached by URL, so
+  the cache never hit.
+- **Each photo pays for a fresh connection.** A fresh connection from Nyeri to
+  the server costs about 1.2 s for a 118 KB photo, against 0.34 s on an open
+  one.
+- **Tiles fetched too much.** Marketplace tiles fetched the 720 px size because
+  a ~340 px tile rounded up.
+
+**Choice.**
+- **One widget for every network image**, `NetImage` in
+  `lib/core/net_image.dart`, keyed by the URL's path without its query. The path
+  names the media and the width and never changes, since a new upload gets a new
+  path, so a new signature still hits the cache.
+  - The brief suggested `${mediaId}_${variant}`. The path is the same thing and
+    also covers avatars and covers, which the app holds without a media id.
+  - A test fails if any screen loads a network image another way.
+- **Sizes named by purpose** (`ImageSize`):
+  - small (320) for avatars, story rings, group pictures and grid tiles;
+  - medium (720) for feed, listing and chat photos and covers;
+  - large (1280) for the full-screen story viewer.
+- **A neutral placeholder** in the photo's space, and a 150 ms fade-in.
+  Dominant colours would need a new field and a backfill; the product owner
+  chose neutral.
+- **Prefetch:** when the next page of the feed or market arrives, its first
+  photos are warmed into the cache.
+- **HTTP/2 comes from the CDN** (U.2), not nginx. nginx 1.24 can only turn on
+  HTTP/2 for all eight sites on the shared server at once, which would change
+  the product owner's other projects.
+- **No server change for caching:** variants are already served with
+  `Cache-Control: public, max-age=31536000, immutable`.
+
+**Reasoning.** Most of the 2 seconds was the same photo fetched again over a new
+connection. A stable key removes the repeat downloads, whoever signs the URL,
+and keeps working when the CDN (U.2) starts signing them differently.
+
+### U.2 Media through Bunny CDN, with signed URLs (2026-11-24, waiting on the account)
+
+**Choice, from the brief.**
+- **Provider:** a Bunny pull zone on a media subdomain, with an edge in
+  Nairobi. Bunny suits because it needs only a CNAME and its token
+  authentication keeps private media private while still caching it.
+- **Signing:** every media URL gets Bunny's HMAC-SHA256 token (standard
+  library only) with an expiry: 7 days for public posts, listings and avatars,
+  1 hour for chat, group and Circle-only media.
+- **Origin:** an nginx location on Hoodora's site serves only processed
+  variants, and only with the pull zone's secret header.
+- **Purge:** deleting media also purges it from the edge.
+- **Not built yet.**
+  - The account is the product owner's to create.
+  - Whether Bunny keeps the token out of its cache key must be tested on the
+    real zone before building. The brief asks to stop and ask if it doesn't.
+
+### U.3 A post offers one reaction, by its category (2026-11-24)
+
+**Context.** "Helpful" made no sense on a selfie.
+
+**Choice.**
+- **The mapping:** `POST_REACTIONS` maps a category to the one reaction it
+  offers, `general:like`, and everything else offers
+  `POST_REACTION_DEFAULT=helpful`. So a General post (shown as "Update") gets
+  a heart, and Question, Recommendation, Alert and Lost & found get a thumb.
+- **The server stores the category's kind whatever the client sends.** Without
+  that, the 1.4 app, which sends "helpful" everywhere, would keep writing the
+  old kind on General posts. Comments keep the kind sent.
+- **Existing reactions on General posts become "like"** (migration 0025), as
+  the product owner chose. Counts don't change: `reaction_count` was always
+  the total. The downgrade can't restore the old kinds, which aren't kept.
+- **"Update" is a label only;** the stored category stays `general`.
+- **The brief's "Event → Interested" row is skipped.** There is no event post
+  category, and events are their own feature.
+- **The composer's audience** sits next to the Post button, in a bar above
+  the keyboard. It keeps the API's two choices: "Neighbours and Circle" and
+  "Neighbours only". A Circle-only post would be new visibility logic, and the
+  product owner chose to keep these two.
+
+### U.4 Wording and navigation, from the screenshots (2026-11-24)
+
+**Choice.**
+- **Area name:** "Around here", on Home and in the drawer.
+- **Radius line:** "Within N km of here", everywhere. The brief asked for "of
+  home", but since L.1 the radius is measured from wherever the phone is, and
+  "here" is always true.
+- **The crosshair** is labelled "Update location", which is what it does (L.1
+  left nothing to "explore"). It sits on the radius line, so titles aren't
+  crowded, and moves under the text when there's no room. Its first tap
+  explains it once; the note is kept in a small local file (`lib/core/hints.dart`)
+  like the theme choice, with no new dependency.
+- **Shortcut row:** Services and Groups chips under the stories. Events joins
+  when it has a screen.
+- **The end of the feed** offers "Ask your neighbours something", opening the
+  composer on Question.
+- **Post button:** "+ Post" until the account has posted, then "+". "Posted" is
+  known from a starter post used, a post of mine in the feed, or a post made on
+  this phone.
+- **Meta line:** the generic fallback label ("nearby") is hidden on posts and
+  listing cards, since the distance band says as much. Real place names stay.
+- **Times:** "now", "12m", "3h", "Yesterday", "7 Nov", "7 Nov 2025".
+- **Counts:** none at zero; "Comment", "Like" and "Helpful" alone until there
+  are some.
+- **Category chips:** none for General. The others take theme colours (new
+  palette pairs for Alert, Lost & found and Recommendation; Question uses the
+  trust colours), so Alerts stand out in both themes.
+- **Selected chips and segments:** orange with white text, through the theme's
+  chip and segmented-button styles. Material's default teal is gone, and so is
+  the market's own ink fill, which was near-white at night under white text.
+  The fill is the daytime orange in both modes, since white on the brighter
+  night orange is about 3:1.
+- **Marketplace:**
+  - Sort sits on the radius line, "Within 30 km of here · Newest ▾", not among
+    the category filters.
+  - Saved and My listings moved to my profile's Selling tab.
+  - Cards show condition and age.
+  - The sell form's title has the brief's hint.
+  - The end of the results offers Sell.
+- **My profile:**
+  - "Neighbours see: …" instead of a bare label.
+  - "Reviews appear after your first sale or job".
+  - Each empty tab has a button to fill it.
+  - The banner is shorter while there is no cover photo.
+
+### U.5 Trust signals on my own profile (2026-11-24)
+
+**Choice.** `GET /me` gains, as the product owner approved:
+- `badge_presence_days`, `badge_presence_days_needed`,
+  `badge_presence_window_days` and `badge_account_age_reached_at`, so the
+  profile can say how far along the badge's earned route someone is;
+- `vouches_received` and `badge_vouches_needed`;
+- `circle_count`.
+
+The profile shows:
+- "Phone verified";
+- badge progress, until the badge itself shows beside the name;
+- vouches;
+- "N people in your Circle", linking to the Circle.
+
+**`vouches_received` counts every vouch, unfiltered.** The badge counts only
+vouches from verified neighbours in the same area. Showing that count would
+tell someone whether a person who vouched for them lives near them, the leak
+`badge.py` already avoids when a vouch is given.
+
+All the new values are worked out from data already kept, and nothing new is
+stored.

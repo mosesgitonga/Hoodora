@@ -213,7 +213,7 @@ and filtered through blocking.
 | --- | --- | --- |
 | Comment: `post_id`, `author_id`, `parent_id`, `body`, `status` | The conversation | Soft-deleted; purged with the account |
 | `is_visiting` | Marks a comment written while exploring (decision 1.1, rule 3) | With the comment |
-| Reaction: `user_id`, target, `kind`, `created_at` | Reactions | Deleted on account purge |
+| Reaction: `user_id`, target, `kind`, `created_at` | Reactions. On a post, `kind` is the one its category offers (decision U.3); migration 0025 turned existing reactions on General posts into `like` | Deleted on account purge |
 | Comment `score` | Upvotes minus downvotes; ranks top-level comments (decision 2.21) | With the comment; a purged voter's votes are subtracted |
 | Comment vote: `user_id`, `comment_id`, `value` (+1/-1), `created_at` | One vote per person per comment | Exported; deleted on account purge |
 
@@ -838,6 +838,7 @@ explore hold lapses, and does not write it to the phone.
 | Feed, chat, service and listing photos | The image cache in the app's cache folder | Not downloading the same image twice | Evicted by size and age, or cleared by the system. **Not yet cleared at sign-out** — to do before shared-phone use is likely |
 | Saved for offline reading: the account, the Home feed's latest 50 posts, the 30 most recent chats with their latest 50 messages and member names | Encrypted files (AES-256-GCM) in the app's private folder; the key in the phone's secure keystore | Opening and reading offline (DECISIONS M.11) | Sign-out, the session ending, or a deletion request: files and key are wiped. Chats that drop out of the latest 30 are deleted as the list updates |
 | Light or dark choice | `appearance.json` in the app's private folder | Remembering Same as phone / Light / Dark | Kept across sign-outs; holds nothing personal |
+| One-time notes shown | `hints.json` in the app's private folder | Not explaining "Update location" twice (decision U.4) | Kept across sign-outs; holds only the keys of notes shown. Whether an account has posted is kept in memory only, never here |
 | Photos chosen for a post, message or listing | Resized copies in the app's cache folder, made by the picker | Uploading | Cleared by the system. Location data is stripped server-side whatever the phone sends |
 | The data export ("Download my data") | A temporary file in the app's cache folder, written by `share_plus` to hand to the share sheet | The right of access: a copy the person keeps where they choose | Cleared by the system. Holds the phone number and sent messages; the screen says so (DECISIONS M.5) |
 

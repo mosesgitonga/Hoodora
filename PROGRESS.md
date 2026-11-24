@@ -4581,3 +4581,245 @@ choice, so the real file is not committed until it's made.
   - the Highlands factory, King'ong'o Primary, the town centre and Kiriti
     are unchanged.
 - **Staging** was re-seeded (810 removed, 813 loaded).
+
+## UI polish from device screenshots, and slow images (2026-11-24)
+
+### Plan
+
+Asked for by the product owner after reviewing the app on a phone against
+staging. Part A (images) first, then B–F.
+
+#### A1. Measured
+
+Measured from the development machine in Nyeri. The round trip to the server
+is about 227 ms.
+
+1. **The URL changes on every load.** Staging has no
+   `STORAGE_PUBLIC_BASE_URL`, so every photo URL is a presigned S3 GET with
+   `X-Amz-Date` to the second and a 1-hour expiry. Two requests a second apart
+   gave different URLs. The app's image cache is keyed by URL, so it never
+   hits: every feed load downloads every photo again.
+2. **Timing of a 118 KB WebP** (a test image I uploaded and then deleted, no
+   user media):
+
+   | Request | TLS done | First byte | Total |
+   | --- | --- | --- | --- |
+   | Fresh connection (×3) | 0.42–0.48 s | 0.78–0.91 s | 1.19–1.39 s |
+   | Second on the same connection | – | 0.22 s | 0.34 s |
+
+   Connection setup costs ~0.6 s and each round trip ~0.23 s. A phone on mobile
+   data adds to that, which fits the ~2 s seen. Headers: `Content-Type:
+   image/webp` and `Cache-Control: public, max-age=31536000, immutable`, which
+   the storage provider already sets. `HEAD` on a presigned URL gives 403
+   because the signature is for GET only.
+3. **HTTP/1.1 only.** ALPN negotiates `http/1.1`. Images go from nginx
+   straight to SeaweedFS (`location /myradius-media/` → `127.0.0.1:8032`), not
+   through the API.
+   - nginx is 1.24, and all eight sites on the server share `listen 443 ssl`.
+   - On 1.24, `http2` on a `listen` line applies to the whole socket, so adding
+     it to Hoodora's site switches HTTP/2 on for all eight. It can't be done
+     for Hoodora alone without upgrading nginx (1.25.1+ has a per-server
+     `http2 on`). **Needs a decision.**
+4. **Variants per screen.** The app picks the smallest width at least the
+   on-screen width × pixel density:
+
+   | Surface | On a 2× phone |
+   | --- | --- |
+   | Avatars and story rings | 320 |
+   | Feed photos, listing detail, story viewer | 720 (1280 on a 3× phone) |
+   | Marketplace grid tiles | **720**: a ~340 px tile rounds up |
+   | Full-screen photo viewer | none in the app yet |
+
+#### A2. Fixes in the app (no new dependency; `cached_network_image` is already used)
+
+- **One shared image widget** with a stable `cacheKey`:
+  - the URL's path without the query string, which already embeds the media id
+    and the width;
+  - this works for avatars and covers too, which the app holds as sizes
+    without a media id;
+  - a test checks that every image goes through it with a stable key.
+- **Variant per surface, explicit:**
+  - avatars, story rings and grid tiles: 320;
+  - feed photos and listing detail: 720;
+  - story viewer and any full-screen view: 1280.
+- **Placeholder and fade-in:** a neutral surface colour in the image's space,
+  and a 150 ms fade-in.
+- **Prefetch:** when the next page of the feed or market arrives (fetched as
+  the user nears the end), precache its first photos at their feed variant.
+- **Cache headers:** already right at the origin; nothing to change.
+
+#### A3. Bunny CDN with signed URLs
+
+- **Account:** the product owner creates the Bunny account and pull zone and
+  shares an API key. It goes in `.env.production` on the server, with
+  `docs/DEPLOYMENT.md` saying so. Never in the repo.
+- **Signing:** Bunny's advanced token is HMAC-SHA256 over the path, expiry and
+  optional data with the zone's security key: standard library only, like the
+  presign today.
+  - A long-lived token (7 days) for public posts, listings and avatars.
+  - A short-lived token (1 hour) for chat photos and group-only or Circle-only
+    posts.
+  - Both durations are in config.
+- **Cache key:** Bunny's docs don't say whether the token query is in the edge
+  cache key. I'll test it on the real zone: two different tokens for one file,
+  where the second must be a cache HIT. If it isn't, I stop and ask, as the
+  brief says.
+- **Origin:** a new nginx location on Hoodora's site that serves only processed
+  variants from SeaweedFS, and only when the pull zone's secret header is
+  present. Tested with `nginx -t` before reloading.
+- **Purge:** the worker job that deletes media also purges its variant paths
+  through Bunny's API. A fake provider is used in tests, like SMS and push.
+  DATA_MAP gains Bunny as a processor.
+- **Uploads:** presigned PUTs stay as they are.
+
+#### B–F, with what the API already has
+
+- **B1 Area name:** "Around here" everywhere.
+- **B2 Radius wording, needs a decision.**
+  - Since L.1 the radius is measured from where the phone is, which is home
+    only when the phone is at home.
+  - "Within N km of home" is wrong away from home.
+- **B3 Meta line:** hide the generic fallback label ("nearby"), keep real
+  labels. Display only.
+- **B4 Relative times:** "12m", "3h", "Yesterday", "7 Nov", "7 Nov 2025", on
+  posts, comments and listing cards.
+- **B5 No zero counts:** "Comment" instead of "0 comments", and the reaction
+  label without a number.
+- **B6 Category chips:** none for General, a theme colour for each of the
+  others.
+- **C Reactions by category.** Question, Recommendation, Alert and Lost &
+  found → helpful (thumb). General → like (heart).
+  - **Event:** there is no event post category (posts are general, question,
+    recommendation, lost_and_found, alert), and "interested" is not a reaction
+    kind. **Needs a decision.**
+  - **Existing reactions:** `reaction_count` is already the total of every
+    kind, so existing "helpful" reactions on General posts keep counting as
+    likes without a migration. A person's old "helpful" shows as their like,
+    and tapping removes it.
+  - **"Update":** General's label becomes "Update" in the app only; the stored
+    value stays.
+  - **Audience:** the choice moves next to the Post button.
+- **D1 Shortcut row:** Services · Groups · Events. **There is no Events screen
+  in the app**, though the API has events (upcoming public events nearby).
+  **Needs a decision.**
+- **D2 The crosshair button.** Since L.1 there is no "explore elsewhere": it
+  reads the GPS now, so "Explore" would mislead. **Needs a decision.** It gets
+  a one-time explanation either way.
+- **D3 End of the feed:** "Ask your neighbours something" opens the composer
+  on Question.
+- **D4 Post button:** "+ Post" until the first post.
+- **E1 Selected chips:** orange fill with white text; unselected chips keep the
+  outline. Contrast checked in both themes.
+- **E2 Sort:** moves to the radius line (newest, nearest, price up, price
+  down). Relevance stays for searches.
+- **E3 Header:** Sell stays. Saved and My listings move into the profile's
+  Selling tab. The crosshair as D2.
+- **E4–E6:**
+  - condition on listing cards and a clear condition field in the sell form;
+  - the title hint;
+  - the "Selling something?" call to sell below the grid.
+- **F1 Selected tab:** orange.
+- **F2 Own area label:** "Neighbours see: …".
+- **F3 Trust signals.**
+  - Already in `GET /me`: the phone (verified when present) and
+    `is_verified_neighbour`.
+  - **Not in the API:**
+    - badge progress ("Day 6 of 14");
+    - vouch count;
+    - Circle count (the Circle list is paged with no total).
+  - **Needs a decision.**
+- **F4–F6:**
+  - empty states with actions;
+  - own-profile reviews wording;
+  - a shorter banner.
+
+#### Shipping
+
+- **App: a full release (1.5.0+8), not a patch.** These screens use icons the
+  app hasn't used before, which changes the cut-down icon font, and Shorebird
+  refuses that (seen with 1.4.1).
+- **Server deploy:**
+  - CDN signing and the purge job;
+  - the media URL change;
+  - any new `GET /me` fields.
+- **nginx:** the CDN origin location, and HTTP/2 if chosen.
+
+### Decided (2026-11-24)
+
+The product owner answered the plan's questions:
+
+| Question | Answer |
+| --- | --- |
+| HTTP/2 | From the CDN, not nginx |
+| Radius line | "Within N km of here" everywhere |
+| Crosshair | "Update location" |
+| Events chip | Left out for now |
+| Event reaction row | Skipped |
+| Trust fields | Add the three to `GET /me` |
+| Placeholder | Neutral colour |
+| Reactions on General posts | Converted to "like" |
+| Composer audience | Keep "Neighbours only"; no Circle-only audience |
+
+Recorded as decisions U.1–U.5.
+
+### Built (2026-11-24)
+
+**Part A2 (app):**
+- **`NetImage`** (`lib/core/net_image.dart`) carries every network image:
+  - a cache key from the URL's path, so a new signature still hits;
+  - sizes named by purpose (320/720/1280);
+  - a neutral placeholder and a 150 ms fade-in.
+- **Prefetch:** the feed and market warm the next page's photos.
+- **A test** fails if a screen loads a network image any other way.
+
+**Server:**
+- **Reactions:** `POST_REACTIONS` / `POST_REACTION_DEFAULT`. A reaction on a
+  post is stored as its category's kind whatever is sent; comments keep the
+  kind sent.
+- **Migration 0025** turns existing reactions on General posts into "like".
+  - Round trip and `alembic check` pass.
+  - A test runs its SQL on real rows.
+- **`GET /me`** gains badge progress, `vouches_received` (unfiltered, for
+  privacy), `badge_vouches_needed` and `circle_count`.
+
+**App, B–F:**
+- **Wording:** "Around here"; "Within N km of here"; the fallback label hidden
+  on posts and cards; times as "12m", "3h", "Yesterday", "7 Nov", "7 Nov 2025";
+  no zero counts.
+- **Reactions:** a heart on Updates (General's new label) and a thumb
+  elsewhere. Category chips from the theme, and none on General.
+- **Composer:** the audience menu sits beside Post in a bar above the keyboard.
+  The end of the feed opens it on Question.
+- **Home:**
+  - "Update location" on the radius line, with a one-time note, kept in
+    `hints.json` like the theme choice; whether an account posted is in memory
+    only;
+  - Services and Groups chips;
+  - "+ Post" until the first post.
+- **Chips:** selected chips and segments are orange with white text in both
+  themes, through the theme. This fixes the unreadable market chips and the
+  teal profile tabs.
+- **Marketplace:**
+  - sort on the radius line;
+  - Saved and My listings in the profile's Selling tab;
+  - condition and age on cards;
+  - the sell-form hint;
+  - "Selling something?" at the end of the results.
+- **Profile:**
+  - "Neighbours see: …";
+  - trust signals;
+  - empty tabs with actions;
+  - the own-profile reviews wording;
+  - a shorter empty banner.
+
+**Checks:**
+- **Server:** ruff, mypy and the full suite.
+- **App:** analyze and 172 tests, 20 of them new in `test/ui_polish_test.dart`.
+- **Narrow phones:** the 320 dp test caught the labelled button overflowing.
+  `ReachLine` now wraps it under the text.
+
+**Not done:**
+- **A3 (Bunny CDN):** waits for the product owner's Bunny account and API key.
+- **A4:** the before-and-after timings follow A3.
+- **Shipping:** the app needs a full release (1.5.0+8), not a patch, because
+  of the new icons. The server needs a deploy.
