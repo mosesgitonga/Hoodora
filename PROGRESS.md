@@ -4498,3 +4498,49 @@ choice, so the real file is not committed until it's made.
   phone, so compose wasn't opened.
 - **Not changed:** `APP_LATEST_BUILD` on the server, which would offer build 7
   to older builds.
+
+### Places rebuilt: estates beat the town outline (2026-11-24)
+
+- **Reported:** the phone read "near Nyeri" between Mathari and King'ong'o.
+- **Cause, in findme:**
+  - OpenStreetMap's Nyeri outline claimed all ground in it, except where a
+    place's point lay inside it;
+  - Mathari's and King'ong'o's points lie just outside it.
+- **Fix, in findme:** a new `inner_places = "nearest"` mode, now the setting.
+  - Inside a town outline, every place's generated area takes its part first.
+  - The town keeps only the ground nearest its own point.
+  - Official village outlines still win over generated areas.
+  - findme's tests pass, including a new one for this.
+- **Result:**
+  - 518 places;
+  - "Nyeri" falls from 6.1 km² to 4.0 km², all within about 1.5 km of the
+    centre in Rware ward;
+  - the edges of town read Mathari, King'ong'o, Muringato and Kwanderi.
+- **Staging** was re-seeded (522 removed, 518 loaded). No code changed here.
+- **Left:** around the centre no other estate is recorded in any source, so it
+  still reads "Nyeri". Verified points in findme's `manual_places.csv` would
+  name it.
+
+### Places rebuilt again: nearest place in any ward (2026-11-24)
+
+- **Reported:** the phone still read "near Nyeri" at the west edge of Rware,
+  1.4 km from Mathari and 2.2 km from the town point.
+- **Cause:**
+  - findme drew one Voronoi diagram per ward, so ground went to the nearest
+    place in its own ward;
+  - Mathari is in the next ward;
+  - the server uses the hexagon's centre, and that one lay about 100 m inside
+    Rware.
+- **Fix, in findme:** `cells_cross_wards = true`, now the setting.
+  - One diagram is drawn over the county and cut along ward lines.
+  - Every piece keeps the ward it lies in, and pieces still stop 3 km from
+    their place.
+  - findme's tests pass, including a new one for this.
+- **Result:**
+  - 812 polygons, more because a village reaching across a ward line has a
+    piece in each;
+  - the spot now reads "Mathari", and the town centre still reads "Nyeri";
+  - 9.6% of 20,000 random points changed name, mostly sublocation
+    fallbacks gaining a real village;
+  - validation passes, and all seven test places still resolve.
+- **Staging** was re-seeded (518 removed, 812 loaded).
