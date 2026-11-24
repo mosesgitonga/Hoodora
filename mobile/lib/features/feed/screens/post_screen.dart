@@ -183,12 +183,12 @@ class _PostScreenState extends ConsumerState<PostScreen> {
     }
   }
 
-  Future<void> _toggleHelpful() async {
+  Future<void> _toggleReaction() async {
     final controller = ref.read(feedControllerProvider.notifier);
     final inFeed = ref.read(feedControllerProvider).posts.any((p) => p.id == widget.postId);
     try {
       if (inFeed) {
-        await controller.toggleHelpful(widget.postId);
+        await controller.toggleReaction(widget.postId);
         setState(() => _post = ref.read(feedControllerProvider).posts.firstWhere((p) => p.id == widget.postId));
       } else if (_post != null) {
         final repo = ref.read(feedRepositoryProvider);
@@ -196,8 +196,9 @@ class _PostScreenState extends ConsumerState<PostScreen> {
           await repo.unreact(widget.postId);
           setState(() => _post = _post!.copyWith(clearReaction: true, reactionCount: _post!.reactionCount - 1));
         } else {
-          final count = await repo.react(widget.postId, FeedController.helpful);
-          setState(() => _post = _post!.copyWith(myReaction: FeedController.helpful, reactionCount: count));
+          final kind = reactionKindFor(_post!.category);
+          final count = await repo.react(widget.postId, kind);
+          setState(() => _post = _post!.copyWith(myReaction: kind, reactionCount: count));
         }
       }
     } on ApiException catch (error) {
@@ -391,7 +392,7 @@ class _PostScreenState extends ConsumerState<PostScreen> {
                         PostCard(
                           post: post,
                           mine: post.author.id == myId,
-                          onHelpful: _toggleHelpful,
+                          onReact: _toggleReaction,
                           onMore: post.author.id == myId ? () => _ownPostMenu(post) : () => _postMenu(post),
                           onAuthor: () => openProfile(context, ref, post.author.id),
                         ),

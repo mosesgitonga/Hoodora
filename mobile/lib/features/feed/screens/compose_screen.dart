@@ -6,10 +6,10 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/hints.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
-import '../../circle/audience_choice.dart';
 import '../../auth/auth_controller.dart';
 import '../../groups/group_models.dart' show groupPostPostedMessage;
 import '../feed_controller.dart';
@@ -24,11 +24,14 @@ const _maxLength = 2000;
 /// the group screen when this closes. With [editing], it changes one of your
 /// posts instead: text and category only (decision 2.22).
 class ComposeScreen extends ConsumerStatefulWidget {
-  const ComposeScreen({super.key, this.groupId, this.groupName, this.editing});
+  const ComposeScreen({super.key, this.groupId, this.groupName, this.editing, this.initialCategory});
 
   final String? groupId;
   final String? groupName;
   final Post? editing;
+
+  /// The category to start on, such as `question` from the end of the feed.
+  final String? initialCategory;
 
   @override
   ConsumerState<ComposeScreen> createState() => _ComposeScreenState();
@@ -36,7 +39,8 @@ class ComposeScreen extends ConsumerStatefulWidget {
 
 class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   late final _body = TextEditingController(text: widget.editing?.body);
-  late String _category = widget.editing?.category ?? 'general';
+  late String _category = widget.editing?.category ??
+      (postCategories.containsKey(widget.initialCategory) ? widget.initialCategory! : 'general');
 
   /// Who sees it besides neighbours: my Circle too, unless I say not.
   bool _withCircle = true;
@@ -119,6 +123,8 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
       final (post, reach) =
           await repo.createPost(body: body, category: _category, mediaIds: mediaIds, withCircle: _withCircle);
       ref.read(feedControllerProvider.notifier).prepend(post);
+      final auth = ref.read(authControllerProvider);
+      if (auth is AuthSignedIn) ref.read(hintsProvider.notifier).mark(Hint.posted(auth.me.id));
       if (!mounted) return;
       context.pop();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -156,152 +162,233 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
           widget.editing != null ? 'Edit post' : 'Post to ${widget.groupName ?? area}',
           overflow: TextOverflow.ellipsis,
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilledButton(
-              onPressed: _busy ? null : _post,
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                children: [
+                  Text('What kind of post?', style: text.labelMedium?.copyWith(color: Palette.muted)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final entry in postCategories.entries)
+                        ChoiceChip(
+                          label: Text(entry.value),
+                          selected: _category == entry.key,
+                          onSelected: _busy ? null : (_) => setState(() => _category = entry.key),
+                          selectedColor: Palette.selectedFill,
+                          labelStyle: text.labelMedium?.copyWith(
+                            color: _category == entry.key ? Palette.onPrimary : Palette.ink,
+                          ),
+                          showCheckmark: false,
+                          side: BorderSide(color: _category == entry.key ? Palette.primary : Palette.lineStrong),
+                          backgroundColor: Palette.surface,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _body,
+                    enabled: !_busy,
+                    autofocus: true,
+                    minLines: 5,
+                    maxLines: 12,
+                    maxLength: _maxLength,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      hintText: 'Ask a question, share a tip, report something lost or found…',
+                    ),
+                  ),
+                  if (widget.editing != null)
+                    NotePanel(
+                      icon: Icons.history_rounded,
+                      text: widget.editing!.images.isEmpty
+                          ? 'The post will show it was edited.'
+                          : "Photos can't be changed: to change them, delete the post and post again. "
+                              'The post will show it was edited.',
+                    ),
+                  if (widget.editing == null && _photos.isNotEmpty)
+                    SizedBox(
+                      height: 96,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _photos.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 8),
+                        itemBuilder: (_, index) => Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.memory(_photos[index], width: 96, height: 96, fit: BoxFit.cover),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: IconButton.filled(
+                                onPressed: _busy ? null : () => setState(() => _photos.removeAt(index)),
+                                tooltip: 'Remove photo',
+                                iconSize: 16,
+                                visualDensity: VisualDensity.compact,
+                                style: IconButton.styleFrom(backgroundColor: Palette.ink),
+                                icon: const Icon(Icons.close_rounded, color: Palette.onPrimary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (widget.editing == null) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: _busy || _photos.length >= _maxPhotos ? null : _addPhotos,
+                        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: Text(_photos.isEmpty ? 'Add photos' : 'Add photos (${_photos.length}/$_maxPhotos)'),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (widget.editing != null)
+                    const SizedBox.shrink()
+                  else if (widget.groupId != null)
+                    const NotePanel(
+                      icon: Icons.groups_outlined,
+                      text: "Posted in the group only; it doesn't reach the neighbourhood feed. "
+                          'Photo location data is removed.',
+                    )
+                  else ...[
+                    if (_starterPostsLeft > 0) ...[
+                      NotePanel(
+                        icon: Icons.waving_hand_outlined,
+                        text: "If you haven't been around here on 4 days this week, this uses one of your "
+                            '$_starterPostsLeft starter ${_starterPostsLeft == 1 ? 'post' : 'posts'}, '
+                            "which can't contain links.",
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    const NotePanel(
+                      icon: Icons.location_on_outlined,
+                      text: "Posted to the area you're in now. Neighbours see the area and a rough "
+                          'distance, never exactly where you are. Photo location data is removed.',
+                    ),
+                  ],
+                  if (_progress != null) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Palette.primary),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(_progress!, style: text.bodyMedium),
+                      ],
+                    ),
+                  ],
+                  FormError(_error),
+                ],
+              ),
+            ),
+            // Who sees it, beside the button that sends it (decision U.4). Above the
+            // keyboard, since the body shrinks for it.
+            _ComposeBar(
+              withCircle: widget.editing == null && widget.groupId == null ? _withCircle : null,
+              onAudience: _busy ? null : (value) => setState(() => _withCircle = value),
+              action: widget.editing != null ? 'Save' : 'Post',
+              onAction: _busy ? null : _post,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposeBar extends StatelessWidget {
+  const _ComposeBar({required this.withCircle, required this.onAudience, required this.action, required this.onAction});
+
+  /// Null where there is no choice: in a group, or when editing.
+  final bool? withCircle;
+  final ValueChanged<bool>? onAudience;
+  final String action;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final circle = withCircle;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Palette.surface,
+        border: Border(top: BorderSide(color: Palette.line)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: circle == null
+                  ? const SizedBox.shrink()
+                  : Align(
+                      alignment: Alignment.centerLeft,
+                      child: PopupMenuButton<bool>(
+                        tooltip: 'Who sees this',
+                        enabled: onAudience != null,
+                        initialValue: circle,
+                        onSelected: onAudience,
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: true,
+                            child: ListTile(
+                              title: Text('Neighbours and Circle'),
+                              subtitle: Text('Your Circle too, wherever they live'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: false,
+                            child: ListTile(
+                              title: Text('Neighbours only'),
+                              subtitle: Text('Only people around where you post'),
+                            ),
+                          ),
+                        ],
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(circle ? Icons.group_outlined : Icons.home_outlined,
+                                  size: 18, color: Palette.primary),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  circle ? 'Neighbours and Circle' : 'Neighbours only',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: text.labelLarge?.copyWith(color: Palette.ink),
+                                ),
+                              ),
+                              Icon(Icons.arrow_drop_down_rounded, color: Palette.muted),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+            FilledButton(
+              onPressed: onAction,
               style: FilledButton.styleFrom(
-                minimumSize: const Size(72, 40),
+                minimumSize: const Size(88, 40),
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
-              child: Text(widget.editing != null ? 'Save' : 'Post'),
+              child: Text(action),
             ),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            Text('What kind of post?', style: text.labelMedium?.copyWith(color: Palette.muted)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final entry in postCategories.entries)
-                  ChoiceChip(
-                    label: Text(entry.value),
-                    selected: _category == entry.key,
-                    onSelected: _busy ? null : (_) => setState(() => _category = entry.key),
-                    selectedColor: Palette.primary,
-                    labelStyle: text.labelMedium?.copyWith(
-                      color: _category == entry.key ? Palette.onPrimary : Palette.ink,
-                    ),
-                    showCheckmark: false,
-                    side: BorderSide(color: _category == entry.key ? Palette.primary : Palette.lineStrong),
-                    backgroundColor: Palette.surface,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _body,
-              enabled: !_busy,
-              autofocus: true,
-              minLines: 5,
-              maxLines: 12,
-              maxLength: _maxLength,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                hintText: 'Ask a question, share a tip, report something lost or found…',
-              ),
-            ),
-            if (widget.editing != null)
-              NotePanel(
-                icon: Icons.history_rounded,
-                text: widget.editing!.images.isEmpty
-                    ? 'The post will show it was edited.'
-                    : "Photos can't be changed: to change them, delete the post and post again. "
-                        'The post will show it was edited.',
-              ),
-            if (widget.editing == null && _photos.isNotEmpty)
-              SizedBox(
-                height: 96,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _photos.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (_, index) => Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.memory(_photos[index], width: 96, height: 96, fit: BoxFit.cover),
-                      ),
-                      Positioned(
-                        top: 2,
-                        right: 2,
-                        child: IconButton.filled(
-                          onPressed: _busy ? null : () => setState(() => _photos.removeAt(index)),
-                          tooltip: 'Remove photo',
-                          iconSize: 16,
-                          visualDensity: VisualDensity.compact,
-                          style: IconButton.styleFrom(backgroundColor: Palette.ink),
-                          icon: const Icon(Icons.close_rounded, color: Palette.onPrimary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            if (widget.editing == null) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _busy || _photos.length >= _maxPhotos ? null : _addPhotos,
-                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                icon: const Icon(Icons.add_photo_alternate_outlined),
-                label: Text(_photos.isEmpty ? 'Add photos' : 'Add photos (${_photos.length}/$_maxPhotos)'),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ],
-            if (widget.editing != null)
-              const SizedBox.shrink()
-            else if (widget.groupId != null)
-              const NotePanel(
-                icon: Icons.groups_outlined,
-                text: "Posted in the group only; it doesn't reach the neighbourhood feed. "
-                    'Photo location data is removed.',
-              )
-            else ...[
-              if (_starterPostsLeft > 0) ...[
-                NotePanel(
-                  icon: Icons.waving_hand_outlined,
-                  text: "If you haven't been around here on 4 days this week, this uses one of your "
-                      '$_starterPostsLeft starter ${_starterPostsLeft == 1 ? 'post' : 'posts'}, '
-                      "which can't contain links.",
-                ),
-                const SizedBox(height: 12),
-              ],
-              AudienceChoice(
-                withCircle: _withCircle,
-                onChanged: _busy ? null : (value) => setState(() => _withCircle = value),
-              ),
-              const SizedBox(height: 12),
-              const NotePanel(
-                icon: Icons.location_on_outlined,
-                text: "Posted to the area you're in now. Neighbours see the area and a rough "
-                    'distance, never exactly where you are. Photo location data is removed.',
-              ),
-            ],
-            if (_progress != null) ...[
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Palette.primary),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(_progress!, style: text.bodyMedium),
-                ],
-              ),
-            ],
-            FormError(_error),
           ],
         ),
       ),

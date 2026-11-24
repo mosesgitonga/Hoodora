@@ -148,7 +148,7 @@ void main() {
       await openMarket(tester);
       expect(find.text('KES 18,000'), findsOneWidget);
       expect(find.text('Free'), findsWidgets);
-      expect(find.text('Within 30 km of you'), findsOneWidget);
+      expect(find.textContaining('Within 30 km of here'), findsOneWidget);
 
       await tester.tap(find.text('5-seater sofa set, grey'));
       await tester.pumpAndSettle();
@@ -179,7 +179,8 @@ void main() {
             })
           : const FakeReply(0);
       await openMarket(tester);
-      await tester.tap(find.text('Sell'));
+      // The header's Sell; another waits at the end of the results.
+      await tester.tap(find.text('Sell').first);
       await tester.pumpAndSettle();
 
       Finder inForm(Finder finder) => find.descendant(of: find.byType(SellScreen), matching: finder);

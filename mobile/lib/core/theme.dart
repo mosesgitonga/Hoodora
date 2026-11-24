@@ -19,6 +19,12 @@ class PaletteColors {
     required this.trustTint,
     required this.danger,
     required this.surface,
+    required this.alertTint,
+    required this.alertInk,
+    required this.foundTint,
+    required this.foundInk,
+    required this.recommendTint,
+    required this.recommendInk,
   });
 
   final Color primary;
@@ -37,6 +43,15 @@ class PaletteColors {
   final Color trustTint;
   final Color danger;
   final Color surface;
+
+  /// Post category chips (Alert, Lost & found, Recommendation), so the urgent
+  /// ones stand out; Question uses the trust colours (decision U.4).
+  final Color alertTint;
+  final Color alertInk;
+  final Color foundTint;
+  final Color foundInk;
+  final Color recommendTint;
+  final Color recommendInk;
 
   /// Hoodora's palette, from the app icon: its orange, navy and cream. Buttons
   /// and links use a deeper orange than the icon's #E8480C, so white text on
@@ -58,6 +73,12 @@ class PaletteColors {
     trustTint: Color(0xFFE3F4F1),
     danger: Color(0xFFB42318),
     surface: Color(0xFFFFFFFF),
+    alertTint: Color(0xFFFDE2D5),
+    alertInk: Color(0xFF8A2A06),
+    foundTint: Color(0xFFDCE8F7),
+    foundInk: Color(0xFF163E6C),
+    recommendTint: Color(0xFFFBE7B5),
+    recommendInk: Color(0xFF5C3D00),
   );
 
   /// At night: the icon's navy, deepened, instead of cream; the orange a shade
@@ -79,6 +100,12 @@ class PaletteColors {
     trustTint: Color(0xFF142F33),
     danger: Color(0xFFF0705F),
     surface: Color(0xFF1D1A2E),
+    alertTint: Color(0xFF3D1F14),
+    alertInk: Color(0xFFFFB59A),
+    foundTint: Color(0xFF172A42),
+    foundInk: Color(0xFFA9C8F0),
+    recommendTint: Color(0xFF3A2E10),
+    recommendInk: Color(0xFFF2D58A),
   );
 
   static PaletteColors of(Brightness brightness) => brightness == Brightness.dark ? dark : light;
@@ -110,12 +137,23 @@ class Palette {
   static Color get trustInk => _current.trustInk;
   static Color get trustTint => _current.trustTint;
   static Color get danger => _current.danger;
+  static Color get alertTint => _current.alertTint;
+  static Color get alertInk => _current.alertInk;
+  static Color get foundTint => _current.foundTint;
+  static Color get foundInk => _current.foundInk;
+  static Color get recommendTint => _current.recommendTint;
+  static Color get recommendInk => _current.recommendInk;
 
   /// Cards, sheets and fields: white by day, a raised navy at night.
   static Color get surface => _current.surface;
 
   /// Text and icons on the brand colour or over a photo: white in both modes.
   static const onPrimary = Color(0xFFFFFFFF);
+
+  /// The fill of a selected chip or segment: the daytime orange in both modes,
+  /// with white text on it at 5.1:1. The night orange is brighter so it reads on
+  /// navy, which leaves white text on it near 3:1 (decision U.4).
+  static const selectedFill = Color(0xFFCC3D0A);
 }
 
 /// Both typefaces are variable fonts. Flutter does not map `fontWeight` onto a
@@ -190,6 +228,36 @@ ThemeData buildTheme([Brightness brightness = Brightness.light]) {
     scaffoldBackgroundColor: p.cream,
     fontFamily: 'Figtree',
     textTheme: textTheme,
+    // Selected chips and segments: orange with white text, the rest outlined, in
+    // both modes. Without these, Material's default teal and the market's own
+    // ink fill (near-white at night, under white text) took over (decision U.4).
+    chipTheme: ChipThemeData(
+      selectedColor: Palette.selectedFill,
+      backgroundColor: p.surface,
+      checkmarkColor: Palette.onPrimary,
+      showCheckmark: false,
+      labelStyle: WidgetStateTextStyle.resolveWith(
+        (states) => _figtree(
+          14,
+          FontWeight.w500,
+          color: states.contains(WidgetState.selected) ? Palette.onPrimary : p.ink,
+        ),
+      ),
+      side: WidgetStateBorderSide.resolveWith(
+        (states) => BorderSide(color: states.contains(WidgetState.selected) ? Palette.selectedFill : p.lineStrong),
+      ),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? Palette.selectedFill : p.surface,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? Palette.onPrimary : p.ink,
+        ),
+        side: WidgetStatePropertyAll(BorderSide(color: p.lineStrong)),
+      ),
+    ),
     appBarTheme: AppBarTheme(
       backgroundColor: p.cream,
       foregroundColor: p.ink,

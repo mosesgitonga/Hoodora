@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/net_image.dart';
 import '../../../core/router.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
@@ -76,6 +77,14 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final state = ref.watch(marketControllerProvider);
+    // As a later page arrives, warm the cache with its tiles (decision U.1).
+    ref.listen(marketControllerProvider.select((state) => state.listings.length), (was, now) {
+      if (was == null || was == 0 || now <= was) return;
+      prefetchImages(context, [
+        for (final listing in ref.read(marketControllerProvider).listings.skip(was))
+          if (listing.images.isNotEmpty) listing.images.first.urlFor(ImageSize.small.width),
+      ]);
+    });
     // Rebuilt when the phone's location arrives, so the reach below is current.
     ref.watch(exploreProvider);
 
@@ -88,18 +97,9 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
               padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
               child: Row(
                 children: [
+                  // Saved and your listings live in your profile's Selling tab now
+                  // (decision U.4); the header keeps the one thing people come to do.
                   Expanded(child: Text('Marketplace', style: text.headlineSmall)),
-                  const LocateButton(),
-                  IconButton(
-                    tooltip: 'Saved',
-                    onPressed: () => context.go(Routes.savedListings),
-                    icon: const Icon(Icons.bookmark_border_rounded),
-                  ),
-                  IconButton(
-                    tooltip: 'Your listings',
-                    onPressed: () => context.go(Routes.myListings),
-                    icon: const Icon(Icons.storefront_outlined),
-                  ),
                   FilledButton.icon(
                     onPressed: () => context.push(Routes.sell),
                     style: FilledButton.styleFrom(
@@ -140,12 +140,6 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
                 children: [
-                  _Chip(
-                    label: listingSorts[state.sort] ?? 'Newest',
-                    icon: Icons.swap_vert_rounded,
-                    selected: true,
-                    onTap: () => _chooseSort(state.sort),
-                  ),
                   _Chip(label: 'All', selected: state.category == null, onTap: () => _controller.setCategory(null)),
                   for (final entry in listingCategories.entries)
                     _Chip(
@@ -154,6 +148,36 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                       onTap: () => _controller.setCategory(entry.key),
                     ),
                 ],
+              ),
+            ),
+            // The reach and the order, which aren't filters, on one line, with the
+            // button that updates where the reach is from (decision U.4).
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 2),
+              child: ReachLine(
+                info: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (state.radiusKm != null) Text('${reachLabel(state.radiusKm!)} · ', style: text.bodySmall),
+                    InkWell(
+                      onTap: () => _chooseSort(state.sort),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              listingSorts[state.sort] ?? 'Newest',
+                              style: text.bodySmall?.copyWith(color: Palette.ink, fontWeight: FontWeight.w600),
+                            ),
+                            Icon(Icons.arrow_drop_down_rounded, size: 18, color: Palette.ink),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             Expanded(
@@ -199,18 +223,8 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
       controller: _scroll,
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        if (state.radiusKm != null)
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-            sliver: SliverToBoxAdapter(
-              child: Text(
-                reachLabel(state.radiusKm!),
-                style: text.bodySmall,
-              ),
-            ),
-          ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 24),
           sliver: SliverGrid.builder(
             itemCount: state.listings.length,
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -232,35 +246,53 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
               padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator(color: Palette.primary)),
             ),
+          )
+        else if (state.nextCursor == null)
+          // The end of the results invites the other side of the market (decision U.4).
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+              child: Column(
+                children: [
+                  Text(
+                    state.radiusKm == null
+                        ? 'Selling something? Neighbours nearby will see it.'
+                        : 'Selling something? Neighbours within ${kmLabel(state.radiusKm!)} km will see it.',
+                    textAlign: TextAlign.center,
+                    style: text.bodyMedium?.copyWith(color: Palette.muted),
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    onPressed: () => context.push(Routes.sell),
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Sell'),
+                  ),
+                ],
+              ),
+            ),
           ),
       ],
     );
   }
-
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.selected, required this.onTap, this.icon});
+  const _Chip({required this.label, required this.selected, required this.onTap});
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
-        avatar: icon == null ? null : Icon(icon, size: 16, color: selected ? Palette.onPrimary : Palette.ink),
         label: Text(label),
         selected: selected,
         onSelected: (_) => onTap(),
-        showCheckmark: false,
-        selectedColor: Palette.ink,
-        labelStyle: TextStyle(color: selected ? Palette.onPrimary : Palette.ink, fontSize: 13.5),
-        backgroundColor: Palette.surface,
-        side: BorderSide(color: selected ? Palette.ink : Palette.lineStrong),
+        // Colours from the theme's chip style: orange and white when selected.
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
       ),
     );

@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
+import '../../../core/net_image.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
@@ -721,7 +721,6 @@ class _Bubble extends StatelessWidget {
       SendState.failed => 'Not sent · tap for options',
       SendState.sent => read ? '${clockTime(message.createdAt)} · Read' : clockTime(message.createdAt),
     };
-    final width = (MediaQuery.sizeOf(context).width * 0.7 * MediaQuery.devicePixelRatioOf(context)).round();
 
     Widget content;
     if (message.deleted) {
@@ -733,10 +732,9 @@ class _Bubble extends StatelessWidget {
           constraints: const BoxConstraints(maxHeight: 320),
           child: message.localImage != null
               ? Image.memory(Uint8List.fromList(message.localImage!), fit: BoxFit.cover)
-              : CachedNetworkImage(
-                  imageUrl: message.image!.urlFor(width),
-                  fit: BoxFit.cover,
-                  placeholder: (_, _) => SizedBox(height: 200, child: ColoredBox(color: Palette.sand)),
+              : NetImage(
+                  message.image!.urlFor(ImageSize.medium.width),
+                  placeholder: SizedBox(height: 200, child: ColoredBox(color: Palette.sand)),
                 ),
         ),
       );

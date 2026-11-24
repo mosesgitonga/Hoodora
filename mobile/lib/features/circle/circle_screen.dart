@@ -95,18 +95,18 @@ class _CircleScreenState extends ConsumerState<CircleScreen> {
     }
   }
 
-  Future<void> _toggleHelpful(Post post) async {
+  Future<void> _toggleReaction(Post post) async {
     final repo = ref.read(feedRepositoryProvider);
     final on = post.myReaction != null;
     void put(Post next) => setState(() => _posts = [for (final p in _posts) p.id == next.id ? next : p]);
     put(on
         ? post.copyWith(clearReaction: true, reactionCount: post.reactionCount - 1)
-        : post.copyWith(myReaction: 'helpful', reactionCount: post.reactionCount + 1));
+        : post.copyWith(myReaction: reactionKindFor(post.category), reactionCount: post.reactionCount + 1));
     try {
       if (on) {
         await repo.unreact(post.id);
       } else {
-        await repo.react(post.id, 'helpful');
+        await repo.react(post.id, reactionKindFor(post.category));
       }
     } on ApiException {
       put(post);
@@ -196,7 +196,7 @@ class _CircleScreenState extends ConsumerState<CircleScreen> {
                 child: PostCard(
                   post: post,
                   mine: post.author.id == myId,
-                  onHelpful: () => _toggleHelpful(post),
+                  onReact: () => _toggleReaction(post),
                   onOpen: () => context.push(Routes.post(post.id)),
                   onAuthor: () => openProfile(context, ref, post.author.id),
                 ),

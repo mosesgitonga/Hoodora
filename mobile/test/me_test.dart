@@ -209,12 +209,16 @@ void main() {
     testWidgets('the Me tab is my profile, with my posts, and I can edit it', (tester) async {
       await openMe(tester);
       expect(find.text('Amina K.'), findsWidgets);
-      expect(find.text('Nyeri Town · ★ 4.5 (2) · Joined Oct 2026'), findsOneWidget);
+      expect(find.text('Neighbours see: Nyeri Town · ★ 4.5 (2) · Joined Oct 2026'), findsOneWidget);
       expect(find.text('Matatu stage has moved across the road'), findsOneWidget);
 
       await tester.tap(find.text('Selling'));
       await tester.pumpAndSettle();
-      expect(find.text('Nothing for sale. Sell something from the Market.'), findsOneWidget);
+      // Empty, with the way to fill it, and Saved and my listings at hand (decision U.4).
+      expect(find.text('Nothing for sale yet.'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Sell'), findsOneWidget);
+      expect(find.text('Saved'), findsOneWidget);
+      expect(find.text('Manage my listings'), findsOneWidget);
 
       await tester.tap(find.text('Edit profile'));
       await tester.pumpAndSettle();

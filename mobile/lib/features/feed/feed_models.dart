@@ -85,8 +85,10 @@ String? distanceLabel(String? bucket) => switch (bucket) {
       _ => null,
     };
 
+/// Categories as people read them. General shows as "Update"; the stored value
+/// stays `general` (decision U.3).
 const postCategories = <String, String>{
-  'general': 'General',
+  'general': 'Update',
   'question': 'Question',
   'recommendation': 'Recommendation',
   'lost_and_found': 'Lost & found',
@@ -263,18 +265,24 @@ class FeedPage extends ResultPage<Post> {
   final double radiusKm;
 }
 
-/// "20 min", "3 h", "Tue", "12 Oct": how long ago, briefly.
+/// The one reaction a post offers, by its category, as the server's
+/// `POST_REACTIONS` maps it: a heart on an Update, "helpful" on the rest
+/// (decision U.3). The server stores this kind whatever is sent.
+String reactionKindFor(String category) => category == 'general' ? 'like' : 'helpful';
+
+/// How long ago, briefly: "now", "12m", "3h" the same day, "Yesterday",
+/// "7 Nov", and "7 Nov 2025" before this year (decision U.4).
 String timeAgo(DateTime moment, {DateTime? now}) {
-  final current = now ?? DateTime.now();
-  final elapsed = current.difference(moment);
-  if (elapsed.inMinutes < 1) return 'now';
-  if (elapsed.inMinutes < 60) return '${elapsed.inMinutes} min';
-  if (elapsed.inHours < 24) return '${elapsed.inHours} h';
-  if (elapsed.inDays < 7) {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days[moment.toLocal().weekday - 1];
-  }
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final current = (now ?? DateTime.now()).toLocal();
   final local = moment.toLocal();
-  return '${local.day} ${months[local.month - 1]}';
+  final elapsed = current.difference(local);
+  if (elapsed.inMinutes < 1) return 'now';
+  if (elapsed.inMinutes < 60) return '${elapsed.inMinutes}m';
+  final today = DateTime(current.year, current.month, current.day);
+  final day = DateTime(local.year, local.month, local.day);
+  if (day == today) return '${elapsed.inHours}h';
+  if (day == DateTime(today.year, today.month, today.day - 1)) return 'Yesterday';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final date = '${local.day} ${months[local.month - 1]}';
+  return local.year == current.year ? date : '$date ${local.year}';
 }

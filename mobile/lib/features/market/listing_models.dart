@@ -150,7 +150,12 @@ class Listing {
   String get conditionName => listingConditions[condition] ?? condition;
 
   /// Area · distance band, as everywhere else. Never a number.
-  String get where => [areaLabel.label, ?distanceLabel(distanceBucket)].join(' · ');
+  /// Area and distance band, leaving out the generic fallback label ("nearby"),
+  /// which the band already says (decision U.4).
+  String get where => [
+        if (areaLabel.precision != 'generic') areaLabel.label,
+        ?distanceLabel(distanceBucket),
+      ].join(' · ');
 
   Listing copyWith({bool? saved}) => Listing(
         id: id,

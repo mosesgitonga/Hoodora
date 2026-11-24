@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
+import '../../../core/net_image.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
@@ -463,18 +463,13 @@ class _Photos extends StatelessWidget {
         child: Center(child: Icon(Icons.image_outlined, size: 48, color: Palette.muted)),
       );
     }
-    final width = (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round();
     return Stack(
       fit: StackFit.expand,
       children: [
         PageView.builder(
           itemCount: images.length,
           onPageChanged: onPage,
-          itemBuilder: (context, index) => CachedNetworkImage(
-            imageUrl: images[index].urlFor(width),
-            fit: BoxFit.cover,
-            placeholder: (_, _) => ColoredBox(color: Palette.sand),
-          ),
+          itemBuilder: (context, index) => NetImage(images[index].urlFor(ImageSize.medium.width)),
         ),
         if (images.length > 1)
           Positioned(

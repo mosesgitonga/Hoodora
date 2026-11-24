@@ -1,7 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/net_image.dart';
 import '../../../core/theme.dart';
+import '../../feed/feed_models.dart' show timeAgo;
 import '../listing_models.dart';
 
 /// A listing's first photo, sized for where it shows, or a quiet placeholder.
@@ -22,12 +23,12 @@ class ListingPhoto extends StatelessWidget {
         child: Center(child: Icon(Icons.image_outlined, color: Palette.muted)),
       );
     }
-    final pixels = (width * MediaQuery.devicePixelRatioOf(context)).round();
-    return CachedNetworkImage(
-      imageUrl: listing.images.first.urlFor(pixels),
+    // Grid tiles and thumbnails take the small size, anything wider the medium.
+    final size = width <= 200 ? ImageSize.small : ImageSize.medium;
+    return NetImage(
+      listing.images.first.urlFor(size.width),
       fit: fit,
-      placeholder: (_, _) => ColoredBox(color: Palette.sand),
-      errorWidget: (_, _, _) => ColoredBox(
+      error: ColoredBox(
         color: Palette.sand,
         child: Center(child: Icon(Icons.broken_image_outlined, color: Palette.muted)),
       ),
@@ -95,8 +96,16 @@ class ListingCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(listing.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.bodyMedium),
                   const SizedBox(height: 2),
-                  Text(listing.where,
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: text.bodySmall?.copyWith(fontSize: 12.5)),
+                  // Condition and age, then where: what a buyer weighs first (decision U.4).
+                  Text(
+                    [listing.conditionName, timeAgo(listing.createdAt)].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall?.copyWith(fontSize: 12.5, color: Palette.inkSoft),
+                  ),
+                  if (listing.where.isNotEmpty)
+                    Text(listing.where,
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: text.bodySmall?.copyWith(fontSize: 12.5)),
                 ],
               ),
             ),

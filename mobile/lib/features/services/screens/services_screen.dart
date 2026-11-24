@@ -62,7 +62,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       appBar: AppBar(
         title: const Text('Services & jobs'),
         actions: [
-          const LocateButton(),
           IconButton(
             tooltip: 'Your posts',
             onPressed: () => context.go(Routes.myServices),
@@ -156,14 +155,13 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   Widget _list(ServicesState state, TextTheme text) {
     final header = <Widget>[
       if (state.kind == ServiceKind.hiring) const JobSafetyNote(),
-      if (state.radiusKm != null)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            reachLabel(state.radiusKm!),
-            style: text.bodySmall,
-          ),
+      // The reach, with the button that updates where it's from (decision U.4).
+      Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: ReachLine(
+          info: Text(state.radiusKm == null ? '' : reachLabel(state.radiusKm!), style: text.bodySmall),
         ),
+      ),
     ];
     if (state.loading && state.posts.isEmpty) {
       return ListView(

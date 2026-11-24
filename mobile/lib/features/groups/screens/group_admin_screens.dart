@@ -275,7 +275,7 @@ class _GroupPendingPostsScreenState extends ConsumerState<GroupPendingPostsScree
                         children: [
                           PostCard(
                             post: post,
-                            onHelpful: () {},
+                            onReact: () {},
                             onOpen: () => context.push(Routes.post(post.id)),
                             onAuthor: () => openProfile(context, ref, post.author.id),
                           ),

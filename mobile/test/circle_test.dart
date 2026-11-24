@@ -192,8 +192,11 @@ void main() {
     await open(tester, Routes.compose);
 
     await tester.enterText(find.byType(TextField).first, 'Water is back on in Kamakwa');
-    await tester.tap(find.text('Neighbours only'));
-    await tester.pump();
+    // The choice is a menu beside the Post button (decision U.4).
+    await tester.tap(find.text('Neighbours and Circle'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Neighbours only').last);
+    await tester.pumpAndSettle();
     final post = find.widgetWithText(FilledButton, 'Post');
     await tester.ensureVisible(post);
     await tester.tap(post);

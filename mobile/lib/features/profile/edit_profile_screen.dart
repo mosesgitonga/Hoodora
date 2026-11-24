@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
+import '../../core/net_image.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../auth/auth_controller.dart';
@@ -116,8 +116,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final auth = ref.watch(authControllerProvider);
     final me = auth is AuthSignedIn ? auth.me : null;
     if (me == null) return const Scaffold();
-    final width = MediaQuery.sizeOf(context).width;
-    final coverUrl = sizeFor(me.cover, (width * MediaQuery.devicePixelRatioOf(context)).round());
+    final coverUrl = sizeFor(me.cover, ImageSize.medium.width);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Edit profile')),
@@ -135,7 +134,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       color: Palette.sand,
                       child: Center(child: Icon(Icons.landscape_outlined)),
                     )
-                  : CachedNetworkImage(imageUrl: coverUrl, fit: BoxFit.cover),
+                  : NetImage(coverUrl),
             ),
           ),
           Row(

@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,11 +6,11 @@ import 'package:go_router/go_router.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
+import '../../../core/net_image.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
 import '../../chats/start_chat.dart';
-import '../../feed/feed_controller.dart';
 import '../../feed/feed_models.dart';
 import '../../feed/widgets/own_post_actions.dart';
 import '../../feed/widgets/post_card.dart';
@@ -187,15 +186,16 @@ class _GroupScreenState extends ConsumerState<GroupScreen> {
         _pinned = [for (final post in _pinned) post.id == id ? change(post) : post];
       });
 
-  Future<void> _toggleHelpful(Post post) async {
+  Future<void> _toggleReaction(Post post) async {
     final repo = ref.read(feedRepositoryProvider);
     try {
       if (post.myReaction != null) {
         _replacePost(post.id, (p) => p.copyWith(clearReaction: true, reactionCount: p.reactionCount - 1));
         await repo.unreact(post.id);
       } else {
-        _replacePost(post.id, (p) => p.copyWith(myReaction: FeedController.helpful, reactionCount: p.reactionCount + 1));
-        final count = await repo.react(post.id, FeedController.helpful);
+        final kind = reactionKindFor(post.category);
+        _replacePost(post.id, (p) => p.copyWith(myReaction: kind, reactionCount: p.reactionCount + 1));
+        final count = await repo.react(post.id, kind);
         _replacePost(post.id, (p) => p.copyWith(reactionCount: count));
       }
     } on ApiException catch (error) {
@@ -462,7 +462,7 @@ class _GroupScreenState extends ConsumerState<GroupScreen> {
             PostCard(
               post: post,
               mine: mine,
-              onHelpful: () => _toggleHelpful(post),
+              onReact: () => _toggleReaction(post),
               onOpen: () async {
                 // It may have been edited, deleted or commented on there.
                 await context.push(Routes.post(post.id));
@@ -508,7 +508,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final cover = sizeFor(group.cover, (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round());
+    final cover = sizeFor(group.cover, ImageSize.medium.width);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -517,7 +517,7 @@ class _Header extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             child: AspectRatio(
               aspectRatio: 16 / 7,
-              child: CachedNetworkImage(imageUrl: cover, fit: BoxFit.cover),
+              child: NetImage(cover),
             ),
           ),
           const SizedBox(height: 12),

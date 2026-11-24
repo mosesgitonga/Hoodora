@@ -1,6 +1,6 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/net_image.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../feed_models.dart';
@@ -33,24 +33,19 @@ class InitialsAvatar extends StatelessWidget {
         style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: radius * 0.7, color: PaletteColors.light.ink),
       ),
     );
-    final url = sizeFor(author.avatar, (radius * 2 * MediaQuery.devicePixelRatioOf(context)).round());
+    final url = sizeFor(author.avatar, ImageSize.small.width);
     if (url == null) return initials;
     return ClipOval(
-      child: CachedNetworkImage(
-        imageUrl: url,
-        width: radius * 2,
-        height: radius * 2,
-        fit: BoxFit.cover,
-        placeholder: (_, _) => initials,
-        errorWidget: (_, _, _) => initials,
-      ),
+      child: NetImage(url, width: radius * 2, height: radius * 2, placeholder: initials),
     );
   }
 }
 
-/// The line under an author's name: area · distance band · time.
+/// The line under an author's name: area · distance band · time. The generic
+/// fallback label ("nearby", shown where too few people live to name the area)
+/// is left out, since the distance band says as much (decision U.4).
 String postMeta(Post post) => [
-      post.areaLabel.label,
+      if (post.areaLabel.precision != 'generic') post.areaLabel.label,
       ?distanceLabel(post.distanceBucket),
       timeAgo(post.createdAt),
       if (post.editedAt != null) 'edited',
@@ -64,10 +59,10 @@ class CategoryTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (bg, ink) = switch (category) {
-      'alert' => (const Color(0xFFFDE2D5), const Color(0xFF8A2A06)),
-      'lost_and_found' => (const Color(0xFFDCE8F7), const Color(0xFF163E6C)),
+      'alert' => (Palette.alertTint, Palette.alertInk),
+      'lost_and_found' => (Palette.foundTint, Palette.foundInk),
       'question' => (Palette.trustTint, Palette.trustInk),
-      'recommendation' => (const Color(0xFFFBE7B5), const Color(0xFF5C3D00)),
+      'recommendation' => (Palette.recommendTint, Palette.recommendInk),
       _ => (Palette.sand, Palette.inkSoft),
     };
     return Container(
@@ -86,7 +81,7 @@ class PostCard extends StatelessWidget {
   const PostCard({
     super.key,
     required this.post,
-    required this.onHelpful,
+    required this.onReact,
     this.onOpen,
     this.onMore,
     this.onAuthor,
@@ -94,7 +89,9 @@ class PostCard extends StatelessWidget {
   });
 
   final Post post;
-  final VoidCallback onHelpful;
+
+  /// Toggles the one reaction the post's category offers (decision U.3).
+  final VoidCallback onReact;
   final VoidCallback? onOpen;
   final VoidCallback? onMore;
 
@@ -105,7 +102,10 @@ class PostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final helpful = post.myReaction != null;
+    // Any reaction of mine counts as on: an older app may have sent another kind.
+    final reacted = post.myReaction != null;
+    final like = reactionKindFor(post.category) == 'like';
+    final count = post.reactionCount;
     return Material(
       color: Palette.surface,
       borderRadius: BorderRadius.circular(16),
@@ -141,7 +141,8 @@ class PostCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  CategoryTag(post.category),
+                  // An Update needs no label; the others are worth flagging (decision U.4).
+                  if (post.category != 'general') CategoryTag(post.category),
                   if (onMore != null)
                     IconButton(
                       onPressed: onMore,
@@ -177,13 +178,25 @@ class PostCard extends StatelessWidget {
               Wrap(
                 children: [
                   TextButton.icon(
-                    onPressed: onHelpful,
+                    onPressed: onReact,
                     style: TextButton.styleFrom(
-                      foregroundColor: helpful ? Palette.primary : Palette.muted,
+                      foregroundColor: reacted ? Palette.primary : Palette.muted,
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                     ),
-                    icon: Icon(helpful ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined, size: 18),
-                    label: Text('${post.reactionCount} helpful'),
+                    icon: Icon(
+                      like
+                          ? (reacted ? Icons.favorite_rounded : Icons.favorite_border_rounded)
+                          : (reacted ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined),
+                      size: 18,
+                    ),
+                    // No zero counts: the label alone until someone reacts (decision U.4).
+                    label: Text(switch ((like, count)) {
+                      (true, 0) => 'Like',
+                      (true, 1) => '1 like',
+                      (true, _) => '$count likes',
+                      (false, 0) => 'Helpful',
+                      (false, _) => '$count helpful',
+                    }),
                   ),
                   TextButton.icon(
                     onPressed: onOpen,
@@ -192,7 +205,11 @@ class PostCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                     ),
                     icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                    label: Text(post.commentCount == 1 ? '1 comment' : '${post.commentCount} comments'),
+                    label: Text(switch (post.commentCount) {
+                      0 => 'Comment',
+                      1 => '1 comment',
+                      final n => '$n comments',
+                    }),
                   ),
                 ],
               ),
@@ -211,11 +228,10 @@ class _Photos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round();
     if (images.length == 1) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: AspectRatio(aspectRatio: 4 / 3, child: _photo(images.first, width)),
+        child: AspectRatio(aspectRatio: 4 / 3, child: _photo(images.first)),
       );
     }
     return SizedBox(
@@ -226,17 +242,15 @@ class _Photos extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (_, index) => ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: SizedBox(width: 200, child: _photo(images[index], width ~/ 2)),
+          child: SizedBox(width: 200, child: _photo(images[index])),
         ),
       ),
     );
   }
 
-  Widget _photo(PostImage image, int width) => CachedNetworkImage(
-        imageUrl: image.urlFor(width),
-        fit: BoxFit.cover,
-        placeholder: (_, _) => ColoredBox(color: Palette.sand),
-        errorWidget: (_, _, _) => ColoredBox(
+  Widget _photo(PostImage image) => NetImage(
+        image.urlFor(ImageSize.medium.width),
+        error: ColoredBox(
           color: Palette.sand,
           child: Center(child: Icon(Icons.broken_image_outlined, color: Palette.muted)),
         ),

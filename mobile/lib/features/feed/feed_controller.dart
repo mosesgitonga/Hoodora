@@ -51,8 +51,6 @@ final feedControllerProvider = NotifierProvider.autoDispose<FeedController, Feed
 /// The neighbourhood feed: first page, more on scroll, pull to refresh, and
 /// local updates when the person reacts, comments or posts.
 class FeedController extends Notifier<FeedState> {
-  static const helpful = 'helpful';
-
   @override
   FeedState build() {
     // Moving the feed to where the phone is, or back home, reloads it.
@@ -108,21 +106,21 @@ class FeedController extends Notifier<FeedState> {
     }
   }
 
-  /// Marks a post helpful, or unmarks it. Shown at once and put back if the
-  /// server refuses.
-  Future<void> toggleHelpful(String postId) async {
+  /// Reacts to a post with the one reaction its category offers, or takes it
+  /// back. Shown at once and put back if the server refuses (decision U.3).
+  Future<void> toggleReaction(String postId) async {
     final post = state.posts.where((p) => p.id == postId).firstOrNull;
     if (post == null) return;
     final on = post.myReaction != null;
     _replace(on
         ? post.copyWith(clearReaction: true, reactionCount: post.reactionCount - 1)
-        : post.copyWith(myReaction: helpful, reactionCount: post.reactionCount + 1));
+        : post.copyWith(myReaction: reactionKindFor(post.category), reactionCount: post.reactionCount + 1));
     try {
       final repo = ref.read(feedRepositoryProvider);
       if (on) {
         await repo.unreact(postId);
       } else {
-        final count = await repo.react(postId, helpful);
+        final count = await repo.react(postId, reactionKindFor(post.category));
         final current = state.posts.where((p) => p.id == postId).firstOrNull;
         if (current != null) _replace(current.copyWith(reactionCount: count));
       }

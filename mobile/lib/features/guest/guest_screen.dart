@@ -208,7 +208,7 @@ class _GuestScreenState extends ConsumerState<GuestScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 12),
                               child: PostCard(
                                 post: _posts[index],
-                                onHelpful: () => _join('mark posts helpful'),
+                                onReact: () => _join('react to posts'),
                                 onOpen: () => _join('read the comments'),
                                 onMore: () => _join('message or report'),
                                 onAuthor: () => _join('see who posted'),

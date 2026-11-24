@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
+import '../../../core/net_image.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../feed/feed_models.dart';
@@ -179,10 +179,7 @@ class _SellScreenState extends ConsumerState<SellScreen> {
                           child: SizedBox.square(
                             dimension: 96,
                             child: switch (_photos[i]) {
-                              _Uploaded(:final image) => CachedNetworkImage(
-                                  imageUrl: image.urlFor(300),
-                                  fit: BoxFit.cover,
-                                ),
+                              _Uploaded(:final image) => NetImage(image.urlFor(ImageSize.small.width)),
                               _Picked(:final bytes) => Image.memory(bytes, fit: BoxFit.cover),
                             },
                           ),
@@ -230,7 +227,11 @@ class _SellScreenState extends ConsumerState<SellScreen> {
             controller: _title,
             maxLength: 120,
             textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(labelText: 'What are you selling?', hintText: 'Three-seater sofa, grey'),
+            decoration: const InputDecoration(
+              labelText: 'What are you selling?',
+              helperText: 'Name the item, e.g. Tecno Spark 20, 128GB. The price goes below.',
+              helperMaxLines: 2,
+            ),
           ),
           const SizedBox(height: 8),
           TextField(

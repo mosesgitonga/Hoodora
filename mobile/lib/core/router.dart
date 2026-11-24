@@ -126,7 +126,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.code, builder: (_, _) => const CodeScreen()),
       GoRoute(path: Routes.signUp, builder: (_, _) => const SignupScreen()),
       GoRoute(path: Routes.homeArea, builder: (_, _) => const HomeAreaScreen()),
-      GoRoute(path: Routes.compose, builder: (_, _) => const ComposeScreen()),
+      // `extra` may name the category to start on, as the end of the feed does.
+      GoRoute(path: Routes.compose, builder: (_, state) => ComposeScreen(initialCategory: state.extra as String?)),
       GoRoute(path: Routes.newStory, builder: (_, _) => const StoryComposeScreen()),
       GoRoute(path: Routes.sell, builder: (_, _) => const SellScreen()),
       // A form: over the tabs, so the keyboard and its Save button have the room.

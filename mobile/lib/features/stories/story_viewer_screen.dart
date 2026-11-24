@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
+import '../../core/net_image.dart';
 import '../../core/theme.dart';
 import '../auth/auth_controller.dart';
 import '../chats/start_chat.dart';
@@ -220,7 +220,6 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> with Sing
     final story = _story;
     final text = Theme.of(context).textTheme;
     final width = MediaQuery.sizeOf(context).width;
-    final pixels = (width * MediaQuery.devicePixelRatioOf(context)).round();
     final where = [story.areaLabel.label, ?distanceLabel(story.distanceBucket), _ago(story.createdAt)].join(' · ');
 
     return Scaffold(
@@ -236,12 +235,11 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> with Sing
           fit: StackFit.expand,
           children: [
             if (story.isImage)
-              CachedNetworkImage(
-                imageUrl: sizeFor(story.image, pixels) ?? '',
+              NetImage(
+                sizeFor(story.image, ImageSize.large.width) ?? '',
                 fit: BoxFit.contain,
-                placeholder: (_, _) => const Center(child: CircularProgressIndicator(color: Palette.onPrimary)),
-                errorWidget: (_, _, _) =>
-                    const Center(child: Icon(Icons.broken_image_outlined, color: Palette.onPrimary, size: 40)),
+                placeholder: const Center(child: CircularProgressIndicator(color: Palette.onPrimary)),
+                error: const Center(child: Icon(Icons.broken_image_outlined, color: Palette.onPrimary, size: 40)),
               )
             else
               Container(

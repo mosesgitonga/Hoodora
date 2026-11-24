@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
+import '../../../core/net_image.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../feed/feed_models.dart';
@@ -30,18 +30,11 @@ class GroupBadge extends StatelessWidget {
         style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Palette.primaryDark, fontSize: size * 0.42),
       ),
     );
-    final url = sizeFor(group.cover, (size * MediaQuery.devicePixelRatioOf(context)).round());
+    final url = sizeFor(group.cover, ImageSize.small.width);
     if (url == null) return letter;
     return ClipRRect(
       borderRadius: BorderRadius.circular(size / 4),
-      child: CachedNetworkImage(
-        imageUrl: url,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        placeholder: (_, _) => letter,
-        errorWidget: (_, _, _) => letter,
-      ),
+      child: NetImage(url, width: size, height: size, placeholder: letter),
     );
   }
 }

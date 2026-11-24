@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myradius/core/api/api_client.dart';
 import 'package:myradius/core/api/token_store.dart';
+import 'package:myradius/core/hints.dart';
 import 'package:myradius/core/offline_store.dart';
 import 'package:myradius/core/providers.dart';
 import 'package:myradius/core/realtime.dart';
@@ -24,6 +25,7 @@ void main() {
     WidgetTester tester, {
     required Map<String, dynamic> explore,
     FakeReader? reader,
+    HintsStore? hints,
     Size screen = const Size(1080, 2400),
   }) async {
     tester.view.physicalSize = screen;
@@ -57,6 +59,8 @@ void main() {
         apiClientProvider.overrideWithValue(api),
         offlineStoreProvider.overrideWithValue(MemoryOfflineStore()),
         locationReaderProvider.overrideWithValue(reader ?? const FakeReader()),
+        // The one-time note on Update location is already seen, unless a test says not.
+        hintsStoreProvider.overrideWithValue(hints ?? MemoryHintsStore({Hint.updateLocation})),
         realtimeProvider.overrideWith((ref) {
           final client = RealtimeClient(api, connect: FakeSockets().connect, uri: Uri.parse('ws://api.test/v1/ws'));
           ref.onDispose(client.dispose);
@@ -110,7 +114,7 @@ void main() {
     expect(find.text('Nyeri Town'), findsOneWidget);
     expect(find.text('Water off on Saturday'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Update my location'));
+    await tester.tap(find.text('Update location'));
     await tester.pumpAndSettle();
 
     expect(find.text("Showing what's around you now."), findsOneWidget);
@@ -122,7 +126,7 @@ void main() {
     expect(find.text('Water off on Saturday'), findsOneWidget);
     expect(sent.where((r) => r.path == '/me/explore'), isEmpty);
 
-    await tester.tap(find.byTooltip('Update my location'));
+    await tester.tap(find.text('Update location'));
     await tester.pumpAndSettle();
 
     expect(find.text('Location is off. Turn it on to use this.'), findsOneWidget);

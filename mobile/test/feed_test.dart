@@ -67,12 +67,24 @@ void main() {
       expect(image.urlFor(2000), 'c');
     });
 
-    test('times read briefly', () {
-      final now = DateTime.utc(2026, 10, 17, 12);
+    test('times read briefly: minutes, hours today, yesterday, then dates', () {
+      final now = DateTime(2026, 10, 17, 12);
       expect(timeAgo(now.subtract(const Duration(seconds: 20)), now: now), 'now');
-      expect(timeAgo(now.subtract(const Duration(minutes: 20)), now: now), '20 min');
-      expect(timeAgo(now.subtract(const Duration(hours: 3)), now: now), '3 h');
-      expect(timeAgo(DateTime.utc(2026, 9, 2, 12), now: now), '2 Sep');
+      expect(timeAgo(now.subtract(const Duration(minutes: 12)), now: now), '12m');
+      expect(timeAgo(now.subtract(const Duration(hours: 3)), now: now), '3h');
+      expect(timeAgo(DateTime(2026, 10, 17, 0, 5), now: now), '11h');
+      expect(timeAgo(DateTime(2026, 10, 16, 23, 30), now: now), 'Yesterday');
+      expect(timeAgo(DateTime(2026, 10, 16, 8), now: now), 'Yesterday');
+      expect(timeAgo(DateTime(2026, 9, 2, 12), now: now), '2 Sep');
+      expect(timeAgo(DateTime(2025, 11, 7, 12), now: now), '7 Nov 2025');
+    });
+
+    test('a post offers the reaction its category maps to', () {
+      expect(reactionKindFor('general'), 'like');
+      for (final category in ['question', 'recommendation', 'lost_and_found', 'alert']) {
+        expect(reactionKindFor(category), 'helpful');
+      }
+      expect(postCategories['general'], 'Update');
     });
 
     test('a post reads from the API and knows when it is held', () {
@@ -120,7 +132,7 @@ void main() {
       expect(state().hasMore, isFalse);
     });
 
-    test('helpful shows at once and is put back if the server refuses', () async {
+    test('a reaction shows at once and is put back if the server refuses', () async {
       var refuse = false;
       handler = (request) => switch ((request.method, request.path)) {
             ('GET', '/feed') => FakeReply(200, feedJson([postJson('p1', reactions: 2)])),
@@ -134,17 +146,17 @@ void main() {
       await until(() => !state().loading);
       final controller = container.read(feedControllerProvider.notifier);
 
-      await controller.toggleHelpful('p1');
+      await controller.toggleReaction('p1');
       expect(state().posts.single.myReaction, 'helpful');
       expect(state().posts.single.reactionCount, 3);
       expect(adapter.requests.last.data, {'kind': 'helpful'});
 
-      await controller.toggleHelpful('p1');
+      await controller.toggleReaction('p1');
       expect(state().posts.single.myReaction, isNull);
       expect(state().posts.single.reactionCount, 2);
 
       refuse = true;
-      await expectLater(controller.toggleHelpful('p1'), throwsA(isA<ApiException>()));
+      await expectLater(controller.toggleReaction('p1'), throwsA(isA<ApiException>()));
       expect(state().posts.single.myReaction, isNull);
       expect(state().posts.single.reactionCount, 2);
     });
@@ -204,12 +216,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Nyeri Town'), findsWidgets);
-      expect(find.text('Within 15 km of you'), findsOneWidget);
+      expect(find.text('Within 15 km of here'), findsOneWidget);
       expect(find.text('Does anyone know a fundi for a leaking tank?'), findsOneWidget);
       expect(find.text('Question'), findsOneWidget);
       expect(find.textContaining('under 1 km'), findsOneWidget);
 
-      await tester.tap(find.text('0 helpful'));
+      await tester.tap(find.text('Helpful'));
       await tester.pumpAndSettle();
       expect(find.text('1 helpful'), findsOneWidget);
     });

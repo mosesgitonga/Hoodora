@@ -68,7 +68,7 @@ void main() {
   });
 
   for (final (what, prompt) in [
-    ('5 helpful', 'Join Hoodora to mark posts helpful'),
+    ('5 helpful', 'Join Hoodora to react to posts'),
     ('New post', 'Join Hoodora to post'),
     ('Market', 'Join Hoodora to buy and sell'),
     ('Chats', 'Join Hoodora to chat with neighbours'),

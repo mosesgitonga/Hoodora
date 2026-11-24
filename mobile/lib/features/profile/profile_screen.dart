@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/router.dart';
+import '../../core/net_image.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../auth/auth_controller.dart';
@@ -221,8 +221,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              sliver: SliverToBoxAdapter(child: _Details(profile: profile)),
+              sliver: SliverToBoxAdapter(child: _Details(profile: profile, mine: mine)),
             ),
+            if (mine)
+              const SliverPadding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                sliver: SliverToBoxAdapter(child: _TrustSignals()),
+              ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               sliver: SliverToBoxAdapter(
@@ -310,13 +315,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   List<Widget> _list(Profile profile, bool mine) {
     final first = profile.displayName.split(' ').first;
-    Widget empty(String text) => SliverToBoxAdapter(
+    // An empty tab on my own profile offers the way to fill it (decision U.4).
+    Widget empty(String text, {String? action, IconData? icon, VoidCallback? onAction}) => SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(32, 24, 32, 8),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Palette.muted),
+        child: Column(
+          children: [
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Palette.muted),
+            ),
+            if (action != null && onAction != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: onAction,
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+                icon: Icon(icon ?? Icons.add_rounded, size: 18),
+                label: Text(action),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+    // Saved listings and managing my own sit in my Selling tab, not the market's
+    // header (decision U.4).
+    final sellingLinks = SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Wrap(
+          spacing: 8,
+          children: [
+            ActionChip(
+              avatar: Icon(Icons.bookmark_border_rounded, size: 18, color: Palette.primary),
+              label: const Text('Saved'),
+              onPressed: () => context.go(Routes.savedListings),
+            ),
+            ActionChip(
+              avatar: Icon(Icons.storefront_outlined, size: 18, color: Palette.primary),
+              label: const Text('Manage my listings'),
+              onPressed: () => context.go(Routes.myListings),
+            ),
+          ],
         ),
       ),
     );
@@ -326,7 +367,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         if (!mine && !profile.postsVisible) {
           return [empty("$first's posts are shown to neighbours nearby. You live further away.")];
         }
-        if (_posts.isEmpty) return [empty(mine ? "You haven't posted yet." : "$first hasn't posted yet.")];
+        if (_posts.isEmpty) {
+          return [
+            mine
+                ? empty(
+                    "You haven't posted yet. Say hello to your neighbours.",
+                    action: 'Write a post',
+                    onAction: () => context.push(Routes.compose),
+                  )
+                : empty("$first hasn't posted yet."),
+          ];
+        }
         return [
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -340,7 +391,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   post: post,
                   mine: mine,
                   onOpen: open,
-                  onHelpful: open,
+                  onReact: open,
                   onMore: mine ? () => _ownPostMenu(post) : null,
                 );
               },
@@ -350,12 +401,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       case _Tab.selling:
         if (_listings.isEmpty) {
           return [
-            empty(
-              mine ? 'Nothing for sale. Sell something from the Market.' : '$first is not selling anything.',
-            ),
+            if (mine) sellingLinks,
+            mine
+                ? empty('Nothing for sale yet.', action: 'Sell', onAction: () => context.push(Routes.sell))
+                : empty('$first is not selling anything.'),
           ];
         }
         return [
+          if (mine) sellingLinks,
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             sliver: SliverGrid.builder(
@@ -376,9 +429,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       case _Tab.services:
         if (_services.isEmpty) {
           return [
-            empty(
-              mine ? 'No services posted. Offer one from Services & jobs.' : '$first has no services posted.',
-            ),
+            mine
+                ? empty(
+                    'No services posted yet.',
+                    action: 'Offer a service',
+                    icon: Icons.handyman_outlined,
+                    onAction: () => context.push(Routes.newService(ServiceKind.offering)),
+                  )
+                : empty('$first has no services posted.'),
           ];
         }
         return [
@@ -408,9 +466,10 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final coverUrl = sizeFor(profile.cover, (width * MediaQuery.devicePixelRatioOf(context)).round());
-    const coverHeight = 170.0;
+    final coverUrl = sizeFor(profile.cover, ImageSize.medium.width);
+    // Without a cover photo the gradient is only a backdrop, so it is kept short
+    // (decision U.4).
+    final coverHeight = coverUrl == null ? 104.0 : 170.0;
     const avatarRadius = 46.0;
     return SizedBox(
       height: coverHeight + avatarRadius,
@@ -429,11 +488,7 @@ class _Header extends StatelessWidget {
                       ),
                     ),
                   )
-                : CachedNetworkImage(
-                    imageUrl: coverUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (_, _) => ColoredBox(color: Palette.sand),
-                  ),
+                : NetImage(coverUrl),
           ),
           SafeArea(
             child: Padding(
@@ -457,17 +512,23 @@ class _Header extends StatelessWidget {
 }
 
 class _Details extends StatelessWidget {
-  const _Details({required this.profile});
+  const _Details({required this.profile, required this.mine});
 
   final Profile profile;
+  final bool mine;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final label = profile.areaLabel?.label;
     final facts = [
-      if (profile.where.isNotEmpty) profile.where,
+      // On my own profile, say it's what others see, so a bare "nearby" makes
+      // sense (decision U.4).
+      if (mine && label != null) 'Neighbours see: $label' else if (profile.where.isNotEmpty) profile.where,
       if (profile.ratingCount > 0)
         '★ ${profile.ratingAverage!.toStringAsFixed(1)} (${profile.ratingCount})'
+      else if (mine)
+        'Reviews appear after your first sale or job'
       else
         'No reviews yet',
       if (profile.memberSince != null) 'Joined ${_monthYear(profile.memberSince!)}',
@@ -524,5 +585,70 @@ class MyProfileScreen extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
     if (auth is! AuthSignedIn) return const Scaffold();
     return ProfileScreen(key: ValueKey(auth.me.id), userId: auth.me.id);
+  }
+}
+
+
+/// On my own profile: what makes neighbours trust an account, and how far along
+/// I am (decision U.5). From `GET /me`; nothing here is shown to anyone else.
+class _TrustSignals extends ConsumerWidget {
+  const _TrustSignals();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authControllerProvider);
+    if (auth is! AuthSignedIn) return const SizedBox.shrink();
+    final me = auth.me;
+    final text = Theme.of(context).textTheme;
+    final ageReached = me.badgeAccountAgeReachedAt;
+    final tooNew = ageReached != null && ageReached.isAfter(DateTime.now());
+
+    Widget line(IconData icon, String label, {Color? colour, VoidCallback? onTap}) => InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: colour ?? Palette.muted),
+                const SizedBox(width: 8),
+                Expanded(child: Text(label, style: text.bodyMedium)),
+                if (onTap != null) Icon(Icons.chevron_right_rounded, size: 20, color: Palette.muted),
+              ],
+            ),
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (me.phoneNumber != null) line(Icons.verified_outlined, 'Phone verified', colour: Palette.trust),
+        // A verified neighbour's badge already shows beside the name; until then,
+        // how far along I am.
+        if (!me.isVerifiedNeighbour) ...[
+          line(
+            Icons.home_outlined,
+            'Neighbour badge: at home ${me.badgePresenceDays} of the ${me.badgePresenceDaysNeeded} days needed '
+            '(last ${me.badgePresenceWindowDays})${tooNew ? ', from ${_dayMonth(ageReached)}' : ''}',
+          ),
+          if (me.vouchesReceived > 0)
+            line(
+              Icons.handshake_outlined,
+              me.vouchesReceived == 1 ? '1 neighbour vouched for you' : '${me.vouchesReceived} neighbours vouched for you',
+            ),
+        ],
+        line(
+          Icons.group_outlined,
+          me.circleCount == 1 ? '1 person in your Circle' : '${me.circleCount} people in your Circle',
+          onTap: () => context.go(Routes.circle),
+        ),
+      ],
+    );
+  }
+
+  static String _dayMonth(DateTime date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final local = date.toLocal();
+    return '${local.day} ${months[local.month - 1]}';
   }
 }

@@ -64,8 +64,9 @@ class AreaLabel {
   final String precision;
 
   /// For a heading: too few neighbours to name the place yet (k-anonymity) reads
-  /// as "Around you" rather than a bare "nearby".
-  String get heading => precision == 'generic' ? 'Around you' : label;
+  /// as "Around here" rather than a bare "nearby", on Home and in the drawer
+  /// alike (decision U.4).
+  String get heading => precision == 'generic' ? 'Around here' : label;
 }
 
 /// The signed-in account, as `GET /v1/me` returns it.
@@ -97,6 +98,13 @@ class Me {
     this.starterPostsLeft = 0,
     this.homeProvisional = false,
     this.homeConfirmBy,
+    this.badgePresenceDays = 0,
+    this.badgePresenceDaysNeeded = 10,
+    this.badgePresenceWindowDays = 14,
+    this.badgeAccountAgeReachedAt,
+    this.vouchesReceived = 0,
+    this.badgeVouchesNeeded = 2,
+    this.circleCount = 0,
   });
 
   factory Me.fromJson(Map<String, dynamic> json) => Me(
@@ -128,6 +136,13 @@ class Me {
         starterPostsLeft: json['starter_posts_left'] as int? ?? 0,
         homeProvisional: json['home_provisional'] as bool? ?? false,
         homeConfirmBy: _date(json['home_confirm_by']),
+        badgePresenceDays: json['badge_presence_days'] as int? ?? 0,
+        badgePresenceDaysNeeded: json['badge_presence_days_needed'] as int? ?? 10,
+        badgePresenceWindowDays: json['badge_presence_window_days'] as int? ?? 14,
+        badgeAccountAgeReachedAt: _date(json['badge_account_age_reached_at']),
+        vouchesReceived: json['vouches_received'] as int? ?? 0,
+        badgeVouchesNeeded: json['badge_vouches_needed'] as int? ?? 2,
+        circleCount: json['circle_count'] as int? ?? 0,
       );
 
   static DateTime? _date(Object? value) => value == null ? null : DateTime.parse(value as String);
@@ -189,6 +204,20 @@ class Me {
   /// (decision M.10).
   final bool homeProvisional;
   final DateTime? homeConfirmBy;
+
+  /// Progress towards the neighbour badge (decision U.5): days at home in the
+  /// last [badgePresenceWindowDays], against what the earned route needs, and
+  /// when the account is old enough for it.
+  final int badgePresenceDays;
+  final int badgePresenceDaysNeeded;
+  final int badgePresenceWindowDays;
+  final DateTime? badgeAccountAgeReachedAt;
+
+  /// Every vouch received. The badge counts only those from verified
+  /// neighbours nearby, which the app is deliberately not told.
+  final int vouchesReceived;
+  final int badgeVouchesNeeded;
+  final int circleCount;
 
   bool get deletionPending => deletionRequestedAt != null;
 }

@@ -240,7 +240,7 @@ class _GroupsScreenState extends ConsumerState<GroupsScreen> {
                         ),
                     section(
                       'Nearby',
-                      _radiusKm == null ? null : 'Within ${_km(_radiusKm!)} km of you',
+                      _radiusKm == null ? null : 'Within ${_km(_radiusKm!)} km of here',
                     ),
                     TextField(
                       controller: _search,

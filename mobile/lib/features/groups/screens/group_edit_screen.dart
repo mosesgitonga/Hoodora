@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
+import '../../../core/net_image.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../feed/feed_models.dart';
@@ -98,7 +98,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final existingCover = widget.editing == null ? null : sizeFor(widget.editing!.cover, 1080);
+    final existingCover = widget.editing == null ? null : sizeFor(widget.editing!.cover, ImageSize.medium.width);
 
     return Scaffold(
       appBar: AppBar(
@@ -122,7 +122,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
                   child: _cover != null
                       ? Image.memory(_cover!, fit: BoxFit.cover)
                       : existingCover != null
-                          ? CachedNetworkImage(imageUrl: existingCover, fit: BoxFit.cover)
+                          ? NetImage(existingCover)
                           : Container(
                               color: Palette.sand,
                               alignment: Alignment.center,
