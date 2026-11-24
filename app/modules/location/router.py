@@ -25,6 +25,7 @@ from app.modules.location.schemas import (
     HomeSetIn,
     LocationIn,
     MyRadiusOut,
+    NearPlaceOut,
     PresenceOut,
     RadiusOut,
 )
@@ -151,7 +152,10 @@ async def check_presence(
         "Other people still see the caller's home area on their profile, and the "
         "badge, the newcomer rule and People nearby still go by home.\n\n"
         "From the home hexagon itself, nothing is held, since home is the same "
-        "place: the answer says `same_area_as_home`."
+        "place: the answer says `same_area_as_home`.\n\n"
+        '`near` names roughly where the phone is, such as "Gatitu", from the '
+        "seeded places its cell falls in (decision L.4). It is for the caller only "
+        "and is never stored; it is null where no places are seeded."
     ),
     dependencies=[Depends(user_rate_limit(bucket="start_explore", limit=120, window_seconds=3600))],
 )
@@ -178,10 +182,16 @@ async def start_explore(
     at_home = user.home_cell_res8 is not None and explored.cell_res8 == user.home_cell_res8
     if at_home:
         await location_service.stop_explore(redis, user_id=user.id)
+    near = await location_service.place_near(session, cell_res9=explored.cell_res9)
     return ExploreOut(
         area_label=AreaLabelOut(label=label.label, precision=label.precision),
         expires_at=explored.expires_at,
         same_area_as_home=at_home,
+        near=(
+            NearPlaceOut(name=near.name, level=near.level, ward=near.ward)
+            if near is not None
+            else None
+        ),
     )
 
 

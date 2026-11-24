@@ -100,6 +100,11 @@ The API applies migrations as it starts. Then, once:
 # The areas whose names labels are made from: one GeoJSON file per town.
 docker compose -f docker-compose.prod.yml exec api python -m scripts.seed_areas seeds/areas/nyeri.geojson
 
+# The places Home names as "near Gatitu" (decision L.4). The file is not in the
+# repository; copy it in first. Re-running replaces the county's places.
+docker compose -f docker-compose.prod.yml cp nyeri_places.geojson api:/tmp/nyeri_places.geojson
+docker compose -f docker-compose.prod.yml exec api python -m scripts.seed_places /tmp/nyeri_places.geojson
+
 # The first admin. Prints a temporary password and an authenticator secret, once.
 docker compose -f docker-compose.prod.yml exec api python -m scripts.create_admin --email you@example.com --name "Your Name"
 ```

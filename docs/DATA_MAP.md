@@ -813,6 +813,21 @@ back to the app. Exported as the number of days per zone, without the cells.
 | --- | --- | --- |
 | `starter_posts_used` | How many of the account's 3 starter posts it has used: posts made somewhere it doesn't yet have the days (decision L.3). A count, nothing about where | Life of the account |
 
+## Places (2026-11-24)
+
+Decision L.4: "near Gatitu" on Home.
+
+### `places`
+
+Named outlines (village, sublocation, town or ward), with their ward, sub-county,
+county, source and how they were made. **Not personal data**: reference data
+loaded by `scripts/seed_places.py`, with no link to any account.
+
+**Nothing is recorded about who is near which place.** `POST /v1/me/explore`
+works out the place from the phone's res-9 cell for that one answer, and only
+the person sees it. The app holds it in memory until the server's two-hour
+explore hold lapses, and does not write it to the phone.
+
 ## The mobile app — what stays on the phone
 
 | What | Where | Why | Kept until |

@@ -105,6 +105,16 @@ class HomeLocationOut(BaseModel):
     )
 
 
+class NearPlaceOut(BaseModel):
+    """Roughly where the caller is: the named place their phone's cell falls in."""
+
+    name: str = Field(examples=["Gatitu"])
+    level: str = Field(
+        description="`town`, `village`, `sublocation` or `ward`: how specific the name is."
+    )
+    ward: str | None = Field(default=None, examples=["Ruring'u"])
+
+
 class ExploreOut(BaseModel):
     """An active explore session.
 
@@ -120,6 +130,14 @@ class ExploreOut(BaseModel):
         description=(
             "True when the phone is still in the home hexagon: nothing to explore, "
             "so browsing stays at home and no session is started."
+        ),
+    )
+    near: NearPlaceOut | None = Field(
+        default=None,
+        description=(
+            "Roughly where the phone is: the named place its cell falls in, for "
+            "the caller only. Null where no place is seeded. Not stored "
+            "(decision L.4)."
         ),
     )
     note: str = Field(

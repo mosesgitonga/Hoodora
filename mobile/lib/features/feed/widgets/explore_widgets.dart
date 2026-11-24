@@ -13,6 +13,87 @@ String reachLabel(double km) {
   return 'Within $value km of you';
 }
 
+/// "near Gatitu", beside the Home title: roughly where the phone is (decision
+/// L.4). Tapping it says how rough, and that only this person sees it.
+class NearChip extends StatelessWidget {
+  const NearChip({super.key, required this.place});
+
+  final NearPlace place;
+
+  void _explain(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final ward = place.ward;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Palette.cream,
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Near ${place.name}', style: text.titleLarge),
+              if (ward != null && ward != place.name) ...[
+                const SizedBox(height: 2),
+                Text('$ward ward', style: text.bodyMedium?.copyWith(color: Palette.muted)),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                "Roughly where your phone is, from the hexagon it's in, a few hundred "
+                'metres across. Near a boundary it may name the place next door.',
+                style: text.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              Text("Only you see this, and it isn't saved.", style: text.bodyMedium),
+              const SizedBox(height: 12),
+              Text(
+                'Place names: © OpenStreetMap contributors, GeoNames, OCHA and geoBoundaries.',
+                style: text.bodySmall?.copyWith(color: Palette.muted),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(onPressed: () => Navigator.of(sheet).pop(), child: const Text('OK')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelMedium?.copyWith(color: Palette.inkSoft);
+    return Semantics(
+      button: true,
+      label: 'Roughly where you are: near ${place.name}',
+      excludeSemantics: true,
+      child: Material(
+        color: Palette.sand,
+        shape: const StadiumBorder(),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () => _explain(context),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.place_outlined, size: 14, color: Palette.primary),
+                const SizedBox(width: 3),
+                Flexible(
+                  child: Text('near ${place.name}', maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Reads GPS now and shows the feed, the market, and services and jobs from
 /// where the phone is. The app does this by itself when it opens; this is for
 /// someone who has just moved, or turned location on.

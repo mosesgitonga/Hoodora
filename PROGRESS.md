@@ -4406,3 +4406,73 @@ first week, so current accounts get them too.
   downgrade and re-apply, and `alembic check` is clean.
 - **App:** all 140 tests pass, one of them new. Lint, types and the analyzer
   are clean.
+
+## "Around Gatitu": where you are, on Home (2026-11-24)
+
+### Plan
+
+**Asked:** at the top of Home, next to "Around you", say roughly where the
+person is. The names come from `findme/output/nyeri_places.geojson`: 522
+non-overlapping named areas covering Nyeri County, mostly villages
+approximated by "nearest known place".
+
+**Design:**
+- **Kept apart from area labels.** Places go in their own `places` table, not
+  `areas`. Area labels are what *other* people see, so they keep their
+  k-anonymity and coarse names. "Where you are" is shown only to the person it
+  describes, so it can name their village.
+- **Server:**
+  - `places` (migration 0024): name, level, ward, sub-county, county, source,
+    confidence, and the outline with a GiST index.
+  - `scripts/seed_places.py` loads a file in this dataset's format, replacing
+    a county's places in one transaction, with `--exclude-source` to leave out
+    a source.
+  - `POST /v1/me/explore`, which the app already sends at launch and on
+    resume, answers `near`: the place covering the phone's res-9 cell centre
+    (about 200 m), never the coordinates.
+  - Nothing is stored: it is computed for that response only.
+- **App:**
+  - a "near Gatitu" pill beside the Home title;
+  - tapping it explains how it's worked out and that it isn't saved;
+  - nothing shows when there's no location or no place covers it.
+- **Credits:** the Privacy screen's attribution line names the dataset's
+  sources.
+
+**Needs the product owner:** the GitHub repository is public, so committing
+the dataset publishes it, under the ODbL. Two of its sources have unconfirmed
+redistribution rights:
+- 121 places from IEBC 2012 polling stations (no licence stated);
+- 83 fallback areas from CBS 2002 sublocations (HDX legacy terms).
+
+The findme build can leave both out. The feature code doesn't depend on the
+choice, so the real file is not committed until it's made.
+
+### Built (2026-11-24)
+
+- **Server:**
+  - `Place` model and migration 0024. Checked with upgrade, downgrade, upgrade
+    and `alembic check`.
+  - `location_service.place_near(cell_res9)` finds the smallest place covering
+    the cell's centre.
+  - `ExploreOut.near` (`NearPlaceOut`: name, level, ward) is filled at home
+    too.
+  - `scripts/seed_places.py` takes `--exclude-source` and `--dry-run`. It
+    checks the whole file before writing, and refuses rather than skipping a
+    bad feature.
+- **Checked against the real file** on a scratch database:
+  - all 522 places load in about 3 seconds, and a second run replaces them;
+  - Nyeri town gives "Nyeri", Naro Moru and Mweiga give themselves;
+  - Laikipia gives nothing;
+  - near a boundary the name can be the next village.
+- **App:**
+  - `nearProvider` holds the last answer until the server's hold lapses, kept
+    alive by the shell;
+  - `NearChip` sits beside the Home title, in a Wrap so it moves under a long
+    title on a narrow phone, and is hidden when it repeats the title;
+  - its sheet explains it and credits the sources;
+  - the Settings privacy credits are extended.
+- **Tests:**
+  - server: `tests/test_places.py` (15);
+  - app: six new in `explore_test.dart`, including a 320 dp screen.
+- **Not done:** seeding staging, and committing the dataset. Both wait on the
+  source decision under the plan.

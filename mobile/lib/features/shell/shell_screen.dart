@@ -46,6 +46,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> with WidgetsBindingOb
     // Where the phone is, held for as long as someone is signed in: the lists and
     // anything posted follow it (decision L.1).
     ref.listenManual(exploreProvider, (_, _) {});
+    ref.listenManual(nearProvider, (_, _) {});
     Future.microtask(_locate);
     Future.microtask(_dailyCheck);
     Future.microtask(() => ref.read(pushServiceProvider).start(ref.read(routerProvider)));

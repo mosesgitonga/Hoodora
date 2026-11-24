@@ -7,6 +7,7 @@ import 'package:myradius/core/api/token_store.dart';
 import 'package:myradius/core/offline_store.dart';
 import 'package:myradius/core/providers.dart';
 import 'package:myradius/core/realtime.dart';
+import 'package:myradius/features/feed/explore.dart';
 import 'package:myradius/main.dart';
 
 import 'feed_test.dart' show feedJson, postJson;
@@ -19,8 +20,13 @@ void main() {
 
   /// Signed in, with home in Nyeri Town. [explore] is the server's answer when the
   /// app sends where the phone is; the feed differs by where it is read from.
-  Future<void> open(WidgetTester tester, {required Map<String, dynamic> explore, FakeReader? reader}) async {
-    tester.view.physicalSize = const Size(1080, 2400);
+  Future<void> open(
+    WidgetTester tester, {
+    required Map<String, dynamic> explore,
+    FakeReader? reader,
+    Size screen = const Size(1080, 2400),
+  }) async {
+    tester.view.physicalSize = screen;
     tester.view.devicePixelRatio = 2.75;
     addTearDown(tester.view.reset);
     final store = MemoryTokenStore()..refreshToken = 'r1';
@@ -121,6 +127,103 @@ void main() {
 
     expect(find.text('Location is off. Turn it on to use this.'), findsOneWidget);
     expect(sent.where((r) => r.path == '/me/explore'), isEmpty);
+  });
+
+  testWidgets('beside the title, roughly where the phone is, and only for you', (tester) async {
+    await open(
+      tester,
+      explore: {
+        'area_label': {'label': 'Around you', 'precision': 'generic'},
+        'expires_at': later(),
+        'same_area_as_home': false,
+        'near': {'name': 'Gatitu', 'level': 'village', 'ward': "Ruring'u"},
+      },
+    );
+    expect(find.text('near Gatitu'), findsOneWidget);
+
+    await tester.tap(find.text('near Gatitu'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Near Gatitu'), findsOneWidget);
+    expect(find.text("Ruring'u ward"), findsOneWidget);
+    expect(find.text("Only you see this, and it isn't saved."), findsOneWidget);
+    expect(find.textContaining('OpenStreetMap'), findsOneWidget);
+  });
+
+  testWidgets('on a narrow phone, a long title and name fit without overflow', (tester) async {
+    // About 320 dp wide, the narrowest Android phones still sold.
+    await open(
+      tester,
+      screen: const Size(880, 1800),
+      explore: {
+        'area_label': {'label': 'Kiganjo Mathari Estate', 'precision': 'area'},
+        'expires_at': later(),
+        'same_area_as_home': false,
+        'near': {'name': 'Kamuyu Kiangoma Village', 'level': 'village', 'ward': 'Kiganjo/Mathari'},
+      },
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('near Kamuyu Kiangoma Village'), findsOneWidget);
+  });
+
+  testWidgets('at home the place is named too', (tester) async {
+    await open(
+      tester,
+      explore: {
+        'area_label': {'label': 'Nyeri Town', 'precision': 'town'},
+        'expires_at': later(),
+        'same_area_as_home': true,
+        'near': {'name': 'Kamakwa', 'level': 'village', 'ward': 'Rware'},
+      },
+    );
+
+    expect(find.text('Nyeri Town'), findsOneWidget);
+    expect(find.text('near Kamakwa'), findsOneWidget);
+  });
+
+  testWidgets('no name where no place is known, or where the title already says it', (tester) async {
+    await open(
+      tester,
+      explore: {
+        'area_label': {'label': 'Kingongo', 'precision': 'area'},
+        'expires_at': later(),
+        'same_area_as_home': false,
+        'near': {'name': 'Kingongo', 'level': 'village', 'ward': 'Rware'},
+      },
+    );
+    expect(find.text('Kingongo'), findsOneWidget);
+    expect(find.textContaining('near '), findsNothing);
+  });
+
+  testWidgets('an older server, with no near, shows no name', (tester) async {
+    await open(
+      tester,
+      explore: {
+        'area_label': {'label': 'Kingongo', 'precision': 'area'},
+        'expires_at': later(),
+        'same_area_as_home': false,
+      },
+    );
+    expect(find.textContaining('near '), findsNothing);
+  });
+
+  testWidgets('the name goes when the reading lapses: no name beats an old one', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final keep = container.listen(nearProvider, (_, _) {});
+    addTearDown(keep.close);
+
+    container
+        .read(nearProvider.notifier)
+        .show(
+          const NearPlace(name: 'Gatitu', level: 'village'),
+          until: DateTime.now().add(const Duration(minutes: 1)),
+        );
+    expect(container.read(nearProvider)?.name, 'Gatitu');
+
+    await tester.pump(const Duration(minutes: 1, seconds: 1));
+    expect(container.read(nearProvider), isNull);
   });
 
   testWidgets('coming back to the app soon after sends nothing more', (tester) async {

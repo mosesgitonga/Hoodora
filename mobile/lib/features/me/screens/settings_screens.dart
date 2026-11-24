@@ -295,7 +295,9 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
               const SizedBox(height: 24),
               Text(
                 'Area names and boundaries: map data © OpenStreetMap contributors, '
-                'available under the Open Database Licence.',
+                'available under the Open Database Licence. Place names, as in "near '
+                'Gatitu": also GeoNames (CC BY 4.0), OCHA via HDX (CC BY-IGO) and '
+                'geoBoundaries (ODbL); village areas are generated approximations.',
                 style: text.bodySmall,
               ),
             ],

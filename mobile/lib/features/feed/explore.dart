@@ -22,6 +22,47 @@ class Exploring {
 /// What reading the location found.
 enum ExploreOutcome { exploring, atHome }
 
+/// Roughly where the phone is, "near Gatitu": the named place its hexagon falls
+/// in (decision L.4). Shown to the person only, and never saved, by the server
+/// or here.
+class NearPlace {
+  const NearPlace({required this.name, required this.level, this.ward});
+
+  factory NearPlace.fromJson(Map<String, dynamic> json) => NearPlace(
+        name: json['name'] as String,
+        level: json['level'] as String,
+        ward: json['ward'] as String?,
+      );
+
+  final String name;
+
+  /// `town`, `village`, `sublocation` or `ward`: how specific [name] is.
+  final String level;
+  final String? ward;
+}
+
+/// The latest [NearPlace], replaced by each reading. Discarded with the signed-in
+/// shell, like [exploreProvider].
+final nearProvider = NotifierProvider.autoDispose<NearController, NearPlace?>(NearController.new);
+
+class NearController extends Notifier<NearPlace?> {
+  Timer? _ends;
+
+  @override
+  NearPlace? build() {
+    ref.onDispose(() => _ends?.cancel());
+    return null;
+  }
+
+  /// Shows [place] until [until]: after that it is no longer known where the
+  /// phone is, so no name is better than an old one.
+  void show(NearPlace? place, {required DateTime until}) {
+    _ends?.cancel();
+    state = place;
+    if (place != null) _ends = Timer(until.difference(DateTime.now()), () => state = null);
+  }
+}
+
 /// Discarded with the signed-in shell, like the feed, so it never outlives the account.
 final exploreProvider = NotifierProvider.autoDispose<ExploreController, Exploring?>(ExploreController.new);
 
@@ -67,13 +108,20 @@ class ExploreController extends Notifier<Exploring?> {
       'accuracy_metres': reading.accuracyMetres,
     }) as Map);
     _lastSent = DateTime.now();
+    final until = DateTime.parse(data['expires_at'] as String).toLocal();
+    final near = data['near'];
+    // At home too: the name is about where the phone is, not about home.
+    ref.read(nearProvider.notifier).show(
+          near is Map ? NearPlace.fromJson(Map<String, dynamic>.from(near)) : null,
+          until: until,
+        );
     if (data['same_area_as_home'] == true) {
       _set(null);
       return ExploreOutcome.atHome;
     }
     _set(Exploring(
       area: AreaLabel.fromJson(Map<String, dynamic>.from(data['area_label'] as Map)),
-      until: DateTime.parse(data['expires_at'] as String).toLocal(),
+      until: until,
     ));
     return ExploreOutcome.exploring;
   }

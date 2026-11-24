@@ -40,7 +40,7 @@ from app.core.errors import BadRequestError, ConflictError
 from app.core.redis import CACHE_ERRORS
 from app.modules.location import cells, zones
 from app.modules.location.cells import CellLocation, InvalidCoordinatesError
-from app.modules.location.models import Area, AreaKind, CellActivity
+from app.modules.location.models import Area, AreaKind, CellActivity, Place
 from app.modules.moderation.audit import record_audit_event
 from app.modules.moderation.models import AuditAction
 from app.modules.users import contact
@@ -322,6 +322,34 @@ def _enforce_change_cooldown(user: User, settings: Settings, now: datetime) -> N
                 "cooldown_days": settings.home_change_cooldown_days,
             },
         )
+
+
+@dataclass(frozen=True, slots=True)
+class NearPlace:
+    name: str
+    level: str
+    ward: str | None
+
+
+async def place_near(session: AsyncSession, *, cell_res9: int) -> NearPlace | None:
+    """The named place covering a cell's centre: roughly where someone is, to tell
+    them and only them (decision L.4). From the cell, never the coordinates, so
+    it is as approximate as the cell, a few hundred metres. None where no place is
+    seeded, which is normal in a town nobody has seeded yet."""
+    latitude, longitude = cells.cell_centroid(cell_res9)
+    point = func.ST_SetSRID(func.ST_MakePoint(longitude, latitude), 4326)
+    row = (
+        await session.execute(
+            select(Place.name, Place.level, Place.ward)
+            .where(func.ST_Covers(Place.boundary, point))
+            # Places don't overlap; if two seeds ever do, the smaller is nearer.
+            .order_by(func.ST_Area(Place.boundary).asc())
+            .limit(1)
+        )
+    ).first()
+    if row is None:
+        return None
+    return NearPlace(name=row.name, level=row.level, ward=row.ward)
 
 
 async def _resolve_area_id(

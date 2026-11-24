@@ -122,6 +122,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ? 'Around here'
             : exploring.area.label;
     final radius = feed.radiusKm;
+    // Roughly where the phone is (decision L.4); left out when the title says it already.
+    final near = ref.watch(nearProvider);
+    final shownNear = near != null && near.name.toLowerCase() != area.toLowerCase() ? near : null;
 
     return Scaffold(
       drawer: HomeMenu(area: home, radiusKm: radius),
@@ -165,7 +168,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(area, style: text.headlineSmall),
+                                // A Wrap, so on a narrow phone a long name moves the
+                                // chip to the next line rather than squeezing either.
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(area, style: text.headlineSmall),
+                                    if (shownNear != null) NearChip(place: shownNear),
+                                  ],
+                                ),
                                 const SizedBox(height: 2),
                                 Text(
                                   radius != null

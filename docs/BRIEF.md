@@ -401,3 +401,10 @@ public groups and events still need the days. Stories never need them, and are
 seen only by the author's Circle and by people in the zone they were posted
 from. This replaces the sign-up shortcut above. Recorded as decision L.3.
 
+
+### Where you are, on Home (agreed 2026-11-24)
+
+The top of Home says roughly where the person is, "near Gatitu", beside the area
+name. It names the village, sublocation or town the phone's hexagon falls in,
+from seeded place outlines. Only that person sees it, and it isn't stored.
+Recorded as decision L.4.

@@ -2868,3 +2868,41 @@ having been there, while letting a newcomer say hello. Three link-free posts
 are little use to a spammer. Stories vanish in a day, and seen only in their own
 zone they can't be used to reach a town.
 
+
+### L.4 "Near Gatitu": telling someone roughly where they are (2026-11-24)
+
+**Context.** The product owner asked for the top of Home to say roughly where
+the person is, beside "Around you", from a dataset of 522 named places covering
+Nyeri County (`findme/output/nyeri_places.geojson`). The area labels can't do
+this. They are what other people see, so k-anonymity makes them coarse, and
+they read "Around you" wherever too few people live to name the area.
+
+**Choice.**
+- **A place is named only to the person in it.** That is why it can be a village
+  when the area label can't.
+- **Kept out of `areas`.** Places have their own table, `places` (migration
+  0024), loaded by `scripts/seed_places.py`. Area labels, k-anonymity and
+  everything other people see are untouched.
+- **From the cell, never the coordinates.** `POST /v1/me/explore`, which the app
+  sends at launch and on coming back to it, answers `near`: the place covering
+  the centre of the phone's res-9 hexagon, about 200 m across. It is computed
+  for that answer and not stored. It is given at home too, since it describes
+  where the phone is, not home.
+- **In the app.** A "near Gatitu" chip beside the Home title. It is hidden where
+  the title already says the same name. Tapping it explains how rough it is and
+  that only the person sees it. The app forgets it when the server's two-hour
+  hold lapses, because no name is better than an old one.
+- **Seeding replaces a county whole.** Feature ids are not kept, because the
+  findme build regenerates them. `--exclude-source` leaves out a source whose
+  redistribution terms are unconfirmed.
+- **Credits** are on the Privacy screen, and in the chip's explanation.
+
+**Reasoning.** "Around you" says nothing to someone in a quiet place, and a
+village name is what people use. Naming the place to the person standing in it
+tells them nothing they don't know, so it needs none of the protection that
+naming them to others does.
+
+**Open.** Whether to use the 121 places from IEBC 2012 polling stations and the
+83 fallback areas from CBS 2002 sublocations. Their redistribution terms are
+unconfirmed. The dataset is kept out of the public repository until that is
+decided.

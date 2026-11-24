@@ -183,3 +183,31 @@ class UserZoneDay(Base):
         CheckConstraint("days_mask >= 0 AND days_mask < 128", name="user_zone_days_mask_is_7_bits"),
         Index("ix_user_zone_days_updated_on", "updated_on"),
     )
+
+
+class Place(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """A named place someone can be told they are in: "near Gatitu".
+
+    Not an `Area`. Areas name a place to *other people*, under k-anonymity, so
+    they stay coarse. A place is only ever named to the person standing in it,
+    from the cell their phone reported, so it can be a village (decision L.4).
+
+    Loaded from seed data by `scripts/seed_places.py`; nothing about any town is
+    in the code. A county's places do not overlap, so a point is in one at most.
+    """
+
+    __tablename__ = "places"
+
+    name: Mapped[str] = mapped_column(String(120))
+    level: Mapped[str] = mapped_column(String(20))
+    """`town`, `village`, `sublocation` or `ward`: how specific the name is."""
+    ward: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    sub_county: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    county: Mapped[str] = mapped_column(String(120), index=True)
+    source: Mapped[str] = mapped_column(String(300))
+    """Where the name came from, as the dataset records it, for attribution."""
+    confidence: Mapped[str] = mapped_column(String(40))
+    """`official polygon`, `generated cell` (nearest known place) or `fallback`."""
+    boundary: Mapped[object] = mapped_column(
+        Geography(geometry_type="MULTIPOLYGON", srid=4326, spatial_index=True)
+    )
