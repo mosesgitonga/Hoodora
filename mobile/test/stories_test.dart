@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart' show RequestOptions;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myradius/core/api/api_client.dart';
 import 'package:myradius/core/api/token_store.dart';
 import 'package:myradius/core/providers.dart';
+import 'package:myradius/core/net_image.dart';
 import 'package:myradius/core/realtime.dart';
 import 'package:myradius/features/stories/story_models.dart';
+import 'package:myradius/features/stories/story_viewer_screen.dart';
 import 'package:myradius/main.dart';
 
 import 'support/fake_adapter.dart';
@@ -42,6 +47,30 @@ Map<String, dynamic> story(
   'view_count': views,
   'seen': seen,
 };
+
+Map<String, dynamic> photoStory(String id, String authorId, String name) => {
+  ...story(id, authorId, name, ''),
+  'kind': 'image',
+  'text': null,
+  'image': {
+    '720': {'url': 'https://media.test/public/story/$authorId/$id-720.webp', 'width': 720, 'height': 1280},
+    '1280': {'url': 'https://media.test/public/story/$authorId/$id-1280.webp', 'width': 1280, 'height': 2276},
+  },
+};
+
+/// A photo that arrives only when the test says so.
+class _HeldPhoto extends ImageProvider<_HeldPhoto> {
+  _HeldPhoto(this.arrival);
+
+  final Completer<ImageInfo> arrival;
+
+  @override
+  Future<_HeldPhoto> obtainKey(ImageConfiguration configuration) => SynchronousFuture(this);
+
+  @override
+  ImageStreamCompleter loadImage(_HeldPhoto key, ImageDecoderCallback decode) =>
+      OneFrameImageStreamCompleter(arrival.future);
+}
 
 void main() {
   late FakeAdapter adapter;
@@ -132,6 +161,35 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
     await tester.pumpAndSettle();
     expect(find.text('Water is back on in Rware'), findsNothing);
+  });
+
+  testWidgets('a photo story waits for its photo before its five seconds start (decision U.6)', (tester) async {
+    final arrival = Completer<ImageInfo>();
+    debugNetImageOverride = (_) => _HeldPhoto(arrival);
+    addTearDown(() => debugNetImageOverride = null);
+    live = [photoStory('p1', 'u2', 'Wanjiku M.')];
+    await openApp(tester);
+
+    await tester.tap(find.text('Wanjiku'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Ten seconds with the photo still on its way: the story stays, its bar still.
+    await tester.pump(const Duration(seconds: 10));
+    expect(find.byType(StoryViewerScreen), findsOneWidget);
+    expect(tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value, 0);
+
+    final image = await tester.runAsync(() => createTestImage(width: 4, height: 4));
+    arrival.complete(ImageInfo(image: image!));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    final value = tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value!;
+    expect(value, inExclusiveRange(0.2, 0.8));
+
+    // Its five seconds run from the photo's arrival, then the viewer closes.
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    expect(find.byType(StoryViewerScreen), findsNothing);
   });
 
   testWidgets('my own story shows its views and who watched', (tester) async {

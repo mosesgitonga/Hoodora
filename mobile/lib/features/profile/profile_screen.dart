@@ -6,6 +6,7 @@ import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/router.dart';
 import '../../core/net_image.dart';
+import '../../core/photo_viewer.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../auth/auth_controller.dart';
@@ -488,7 +489,10 @@ class _Header extends StatelessWidget {
                       ),
                     ),
                   )
-                : NetImage(coverUrl),
+                : GestureDetector(
+                    onTap: () => openPhotos(context, [profile.cover]),
+                    child: NetImage(coverUrl),
+                  ),
           ),
           SafeArea(
             child: Padding(
@@ -499,10 +503,14 @@ class _Header extends StatelessWidget {
           Positioned(
             left: 16,
             bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(color: Palette.cream, shape: BoxShape.circle),
-              child: InitialsAvatar(author: profile.asAuthor, radius: avatarRadius - 3),
+            // The profile photo opens full screen; initials have nothing to open.
+            child: GestureDetector(
+              onTap: profile.avatar.isEmpty ? null : () => openPhotos(context, [profile.avatar]),
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(color: Palette.cream, shape: BoxShape.circle),
+                child: InitialsAvatar(author: profile.asAuthor, radius: avatarRadius - 3),
+              ),
             ),
           ),
         ],
@@ -639,7 +647,11 @@ class _TrustSignals extends ConsumerWidget {
         ],
         line(
           Icons.group_outlined,
-          me.circleCount == 1 ? '1 person in your Circle' : '${me.circleCount} people in your Circle',
+          switch (me.circleCount) {
+            0 => 'Add people to your Circle',
+            1 => '1 person in your Circle',
+            final n => '$n people in your Circle',
+          },
           onTap: () => context.go(Routes.circle),
         ),
       ],

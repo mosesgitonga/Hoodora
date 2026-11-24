@@ -8,6 +8,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
 import '../../../core/net_image.dart';
+import '../../../core/photo_viewer.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
@@ -732,9 +733,12 @@ class _Bubble extends StatelessWidget {
           constraints: const BoxConstraints(maxHeight: 320),
           child: message.localImage != null
               ? Image.memory(Uint8List.fromList(message.localImage!), fit: BoxFit.cover)
-              : NetImage(
-                  message.image!.urlFor(ImageSize.medium.width),
-                  placeholder: SizedBox(height: 200, child: ColoredBox(color: Palette.sand)),
+              : GestureDetector(
+                  onTap: () => openPhotos(context, [message.image!.urlsByWidth]),
+                  child: NetImage(
+                    message.image!.urlFor(ImageSize.medium.width),
+                    placeholder: SizedBox(height: 200, child: ColoredBox(color: Palette.sand)),
+                  ),
                 ),
         ),
       );

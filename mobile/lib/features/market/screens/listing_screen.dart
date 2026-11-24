@@ -6,6 +6,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
 import '../../../core/net_image.dart';
+import '../../../core/photo_viewer.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
@@ -469,7 +470,11 @@ class _Photos extends StatelessWidget {
         PageView.builder(
           itemCount: images.length,
           onPageChanged: onPage,
-          itemBuilder: (context, index) => NetImage(images[index].urlFor(ImageSize.medium.width)),
+          itemBuilder: (context, index) => GestureDetector(
+            // Full screen, with the listing's other photos beside it (decision U.6).
+            onTap: () => openPhotos(context, [for (final image in images) image.urlsByWidth], initial: index),
+            child: NetImage(images[index].urlFor(ImageSize.medium.width)),
+          ),
         ),
         if (images.length > 1)
           Positioned(

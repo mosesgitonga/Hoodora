@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/net_image.dart';
+import '../../../core/photo_viewer.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../feed_models.dart';
@@ -231,7 +232,7 @@ class _Photos extends StatelessWidget {
     if (images.length == 1) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: AspectRatio(aspectRatio: 4 / 3, child: _photo(images.first)),
+        child: AspectRatio(aspectRatio: 4 / 3, child: _photo(context, 0)),
       );
     }
     return SizedBox(
@@ -242,17 +243,22 @@ class _Photos extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (_, index) => ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: SizedBox(width: 200, child: _photo(images[index])),
+          child: SizedBox(width: 200, child: _photo(context, index)),
         ),
       ),
     );
   }
 
-  Widget _photo(PostImage image) => NetImage(
-        image.urlFor(ImageSize.medium.width),
-        error: ColoredBox(
-          color: Palette.sand,
-          child: Center(child: Icon(Icons.broken_image_outlined, color: Palette.muted)),
+  /// Tapping a photo opens it full screen, with the post's others beside it
+  /// (decision U.6).
+  Widget _photo(BuildContext context, int index) => GestureDetector(
+        onTap: () => openPhotos(context, [for (final image in images) image.urlsByWidth], initial: index),
+        child: NetImage(
+          images[index].urlFor(ImageSize.medium.width),
+          error: ColoredBox(
+            color: Palette.sand,
+            child: Center(child: Icon(Icons.broken_image_outlined, color: Palette.muted)),
+          ),
         ),
       );
 }

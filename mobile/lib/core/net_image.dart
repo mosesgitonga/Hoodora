@@ -30,8 +30,15 @@ String imageCacheKey(String url) {
   return uri == null || uri.path.isEmpty ? url : uri.path;
 }
 
-/// The same image as [NetImage] shows, for warming the cache ahead of time.
-ImageProvider netImageProvider(String url) => CachedNetworkImageProvider(url, cacheKey: imageCacheKey(url));
+/// Tests only: where every network image comes from instead of the cache, which
+/// needs the phone's storage. Always null in the app.
+@visibleForTesting
+ImageProvider Function(String url)? debugNetImageOverride;
+
+/// The same image as [NetImage] shows: for full-screen viewers, and for warming
+/// the cache ahead of time.
+ImageProvider netImageProvider(String url) =>
+    debugNetImageOverride?.call(url) ?? CachedNetworkImageProvider(url, cacheKey: imageCacheKey(url));
 
 /// Warms the cache with [urls] (the next page's first photos), quietly: a photo
 /// that fails here is simply loaded when it scrolls into view.
@@ -68,6 +75,16 @@ class NetImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final waiting = placeholder ?? ColoredBox(color: Palette.sand);
+    if (debugNetImageOverride != null) {
+      return Image(
+        image: netImageProvider(url),
+        width: width,
+        height: height,
+        fit: fit,
+        frameBuilder: (_, child, frame, synchronous) => frame == null && !synchronous ? waiting : child,
+        errorBuilder: (_, _, _) => error ?? waiting,
+      );
+    }
     return CachedNetworkImage(
       imageUrl: url,
       cacheKey: imageCacheKey(url),

@@ -3082,3 +3082,31 @@ tell someone whether a person who vouched for them lives near them, the leak
 
 All the new values are worked out from data already kept, and nothing new is
 stored.
+
+### U.6 Photos open full screen, and a story waits for its photo (2026-11-24)
+
+**Context.** The product owner asked for photos to expand when tapped, and found
+story photos appearing partway through. A story's five seconds started when it
+opened, not when its photo arrived. Stories also fetched the 1280 px size,
+which is about 2.5 times the data a 720-pixel phone can show.
+
+**Choice.**
+- **Tap to expand:** post, listing and chat photos, and a profile's photo and
+  cover, open in a full-screen viewer (`lib/core/photo_viewer.dart`).
+  - Swipe between a post's or listing's photos, pinch to zoom (paging stops
+    while zoomed), and close with ✕ or back.
+  - The feed's size, usually cached, shows at once and is replaced by the sharp
+    one when it arrives.
+- **Full-screen size follows the screen:** the smallest variant at least as wide
+  as the screen in pixels, else the largest. That is 720 on the product
+  owner's phone and 1280 on a 1080-pixel one. This replaces U.1's "1280 for full
+  screen".
+- **A photo story's clock starts when its photo arrives,** or fails. Until then
+  the bar stays empty and a spinner shows. Holding to pause can't start a story
+  that is still loading. The next story's photo is fetched while this one
+  plays.
+- **One test seam,** `debugNetImageOverride` in `net_image.dart`, which tests set
+  to supply photos directly, since the image cache needs the phone's storage.
+  It is always null in the app.
+- **Shipped as a Shorebird patch to 1.5.0+8:** Dart only, with no icon the app
+  didn't already have.

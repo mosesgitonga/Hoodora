@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/net_image.dart';
+import '../../core/photo_viewer.dart';
 import '../../core/theme.dart';
 import '../auth/auth_controller.dart';
 import '../chats/start_chat.dart';
@@ -33,6 +34,12 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> with Sing
   late int _group;
   late int _index;
 
+  /// A photo story's five seconds start only once its photo has arrived, so
+  /// nobody sees a story appear halfway through its time (decision U.6).
+  bool _waiting = false;
+  ImageStream? _stream;
+  ImageStreamListener? _listener;
+
   StoryGroup get _current => widget.groups[_group];
   Story get _story => _current.stories[_index];
 
@@ -59,13 +66,65 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> with Sing
 
   @override
   void dispose() {
+    _stopWaiting();
     _clock.dispose();
     super.dispose();
   }
 
   void _show() {
     if (!_mine) ref.read(storiesControllerProvider.notifier).markSeen(_story);
+    _stopWaiting();
+    _clock.value = 0;
+    final url = _story.isImage ? fullScreenSize(context, _story.image) : null;
+    if (url == null) {
+      _clock.forward(from: 0);
+    } else {
+      // Starts at once if the photo is cached; otherwise when it arrives, or
+      // fails (then the broken-image sign has its five seconds).
+      final story = _story;
+      setState(() => _waiting = true);
+      final stream = netImageProvider(url).resolve(createLocalImageConfiguration(context));
+      final listener = ImageStreamListener(
+        (_, _) => _arrived(story),
+        onError: (_, _) => _arrived(story),
+      );
+      _stream = stream;
+      _listener = listener;
+      stream.addListener(listener);
+    }
+    _prefetchNext();
+  }
+
+  void _arrived(Story story) {
+    _stopWaiting();
+    if (!mounted || story != _story) return;
+    setState(() => _waiting = false);
     _clock.forward(from: 0);
+  }
+
+  void _stopWaiting() {
+    final stream = _stream, listener = _listener;
+    if (stream != null && listener != null) stream.removeListener(listener);
+    _stream = null;
+    _listener = null;
+  }
+
+  /// Carries on after a pause, unless the photo hasn't arrived yet.
+  void _resume() {
+    if (mounted && !_waiting) _clock.forward();
+  }
+
+  /// Fetches the next story's photo while this one plays.
+  void _prefetchNext() {
+    Story? next;
+    if (_index < _current.stories.length - 1) {
+      next = _current.stories[_index + 1];
+    } else if (_group < widget.groups.length - 1) {
+      final group = widget.groups[_group + 1];
+      next = group.stories[group.firstUnseen];
+    }
+    final url = next != null && next.isImage ? fullScreenSize(context, next.image) : null;
+    if (url != null) precacheImage(netImageProvider(url), context, onError: (_, _) {});
   }
 
   void _next() {
@@ -98,7 +157,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> with Sing
   Future<void> _paused(Future<void> Function() action) async {
     _clock.stop();
     await action();
-    if (mounted) _clock.forward();
+    _resume();
   }
 
   Future<void> _showViewers() => _paused(() async {
@@ -227,7 +286,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> with Sing
       body: GestureDetector(
         onTapUp: (details) => details.localPosition.dx < width / 3 ? _previous() : _next(),
         onLongPressStart: (_) => _clock.stop(),
-        onLongPressEnd: (_) => _clock.forward(),
+        onLongPressEnd: (_) => _resume(),
         onVerticalDragEnd: (details) {
           if ((details.primaryVelocity ?? 0) > 300) Navigator.of(context).maybePop();
         },
@@ -235,12 +294,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> with Sing
           fit: StackFit.expand,
           children: [
             if (story.isImage)
-              NetImage(
-                sizeFor(story.image, ImageSize.large.width) ?? '',
-                fit: BoxFit.contain,
-                placeholder: const Center(child: CircularProgressIndicator(color: Palette.onPrimary)),
-                error: const Center(child: Icon(Icons.broken_image_outlined, color: Palette.onPrimary, size: 40)),
-              )
+              FullScreenImage(fullScreenSize(context, story.image) ?? '')
             else
               Container(
                 color: Color(storyColour(story.id)),
