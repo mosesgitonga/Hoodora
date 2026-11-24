@@ -11,7 +11,9 @@
 # --dry-run` to build and validate without publishing.
 #
 # Use it when a change can't go over the air: a new plugin, native code, a Flutter
-# upgrade, or new images or fonts. Bump `version:` in mobile/pubspec.yaml first;
+# upgrade, or new images or fonts. That includes an icon the app hasn't used
+# before: the icon font is cut down to the icons in use, so it changes, and
+# scripts/app_patch.sh refuses with "assets changed". Bump `version:` in mobile/pubspec.yaml first;
 # the number after `+` is the build number the app reports to the version check.
 # Every release needs its own version, so the tester APK and the Play bundle can't
 # share one. Phones need the new build installed once; patches then apply to it.

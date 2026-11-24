@@ -4476,3 +4476,25 @@ choice, so the real file is not committed until it's made.
   - app: six new in `explore_test.dart`, including a 320 dp screen.
 - **Not done:** seeding staging, and committing the dataset. Both wait on the
   source decision under the plan.
+
+## Release 1.4.1+7 on the phone (2026-11-24)
+
+- **Not a patch.** `scripts/app_patch.sh` was refused and published nothing:
+  the chip's pin and the starter-post wave are icons the app hadn't used, so
+  the cut-down icon font changed, and a patch can't carry that. The release
+  script now says so.
+- **Published** on Shorebird with `scripts/app_release.sh`: a 64-bit APK
+  (22.3 MB), signed with the upload key (CN=Hoodora, SHA-1 `549c4e9c…c4b1`).
+- **What's in it:**
+  - starter posts and stories by zone (L.3);
+  - "near Gatitu" on Home (L.4).
+- **Staging** runs `af576a2` at migration 0024. CI and the deploy passed. All
+  522 Nyeri places are seeded, every source included, as the product owner
+  chose for testing. The rights question stays open before the Play Store.
+- **Installed** on the product owner's Redmi A5 over adb, as an update to
+  1.4.0+6.
+  - **On screen:** Home reads "Around you" with "near Nyeri" beside it.
+- **Not yet seen:** a starter post from the phone. adb taps are blocked on this
+  phone, so compose wasn't opened.
+- **Not changed:** `APP_LATEST_BUILD` on the server, which would offer build 7
+  to older builds.
