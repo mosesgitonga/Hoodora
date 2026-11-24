@@ -243,15 +243,17 @@ class _StandingCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Starting conversations: ${me.presenceDaysThisWeek.clamp(0, me.contactUnlockDays)} '
+                    'Circle requests and People nearby: ${me.presenceDaysThisWeek.clamp(0, me.contactUnlockDays)} '
                     'of ${me.contactUnlockDays} days',
                     style: text.titleSmall?.copyWith(fontSize: 14),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    "You can message people you haven't talked to once you've been at home on "
-                    '${me.contactUnlockDays} of the last ${me.contactUnlockWindowDays} days. Hoodora checks once a day while the app is open. You can already post, comment, '
-                    'and reply to anyone who writes to you.',
+                    // Starting a chat needs no days at home any more (decision U.7).
+                    "You can ask people you haven't talked to into your Circle, see People nearby, and invite "
+                    "them to group chats once you've been at home on ${me.contactUnlockDays} of the last "
+                    '${me.contactUnlockWindowDays} days. Hoodora checks once a day while the app is open. '
+                    'You can already message anyone, post and comment.',
                     style: text.bodySmall?.copyWith(color: Palette.ink),
                   ),
                 ],

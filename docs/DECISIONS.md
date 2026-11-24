@@ -3110,3 +3110,33 @@ which is about 2.5 times the data a 720-pixel phone can show.
   It is always null in the app.
 - **Shipped as a Shorebird patch to 1.5.0+8:** Dart only, with no icon the app
   didn't already have.
+
+### U.7 Starting a chat needs no days at home (amends M.7) (2026-11-24)
+
+**Context.** Messaging didn't work for the product owner, a day-old account.
+Their first message to a neighbour was refused (403). Decision M.7's lock, no
+starting chats with strangers until 4 of the last 7 days at home, still
+applied, and the app showed only "Not sent", without the reason.
+
+**Choice, the product owner's: drop the lock, keep L.2's limits.**
+- **Starting a two-person chat** (a neighbour, a seller, a service) needs no
+  days at home. A newcomer is held to L.2 instead:
+  - the request is marked "New to this area";
+  - no link in their first 3 messages;
+  - one message until the other person replies.
+- **Still in force:** restricted accounts start no chats, and the daily request
+  caps stay, tighter for new accounts.
+- **The lock still applies to:**
+  - Circle requests to strangers;
+  - People nearby;
+  - inviting strangers to a group chat, group or event.
+  These weren't part of the question, so they were left for the product owner
+  to decide.
+- **A refused message now says why,** on the message itself and in its menu,
+  using the server's own wording. "Try again" is hidden when the server refused
+  on purpose (a 4xx other than a timeout or a rate limit), since sending it
+  again would fail the same way.
+- **The access log no longer records every WebSocket as a 500.** It records
+  101 once accepted and 403 if refused before accepting. A crash is still 500.
+  The old 500s were a logging artefact, but they looked like realtime failures
+  while this was being diagnosed.

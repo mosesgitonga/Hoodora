@@ -12,7 +12,6 @@ import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
 import '../../feed/widgets/post_card.dart';
 import '../../feed/widgets/report_sheet.dart';
-import '../../me/contact_gate.dart';
 import '../../profile/profile_screen.dart';
 import '../../reviews/review_models.dart';
 import '../../reviews/widgets/review_widgets.dart';
@@ -104,7 +103,6 @@ class _ListingScreenState extends ConsumerState<ListingScreen> {
 
   Future<void> _contact() async {
     final listing = _listing!;
-    if (listing.myConversationId == null && !await mayContactStrangers(context, ref)) return;
     try {
       final id =
           listing.myConversationId ?? (await ref.read(listingRepositoryProvider).contact(listing.id)).id;

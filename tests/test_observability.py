@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import logging
+from collections.abc import MutableMapping
 from typing import Any
 
 import httpx
@@ -105,3 +108,67 @@ async def test_worker_jobs_are_counted_and_their_last_success_recorded() -> None
     await heartbeat({})
     assert JOBS.labels("heartbeat", "success")._value.get() == before + 1
     assert JOB_LAST_SUCCESS.labels("heartbeat")._value.get() > 0
+
+
+# ---------------------------------------------------------------------------
+# WebSockets in the access log
+# ---------------------------------------------------------------------------
+async def _ws_status(settings: Settings, caplog: pytest.LogCaptureFixture, app: Any) -> object:
+    """Run `app` as a WebSocket behind the access-log middleware; the logged status."""
+    from app.core.middleware import RequestContextMiddleware
+
+    incoming: list[dict[str, Any]] = [
+        {"type": "websocket.connect"},
+        {"type": "websocket.disconnect", "code": 1000},
+    ]
+
+    async def receive() -> dict[str, Any]:
+        return incoming.pop(0) if incoming else {"type": "websocket.disconnect", "code": 1000}
+
+    async def send(message: MutableMapping[str, Any]) -> None:
+        return None
+
+    scope = {"type": "websocket", "path": "/v1/ws", "headers": [], "client": ("10.0.0.1", 1)}
+    access = logging.getLogger("app.access")
+    access.addHandler(caplog.handler)
+    caplog.set_level(logging.INFO, logger="app.access")
+    try:
+        middleware = RequestContextMiddleware(app, settings.model_copy(update={"log_access": True}))
+        with contextlib.suppress(RuntimeError):
+            await middleware(scope, receive, send)
+    finally:
+        access.removeHandler(caplog.handler)
+    record = next(r for r in caplog.records if r.getMessage() == "http_request")
+    return getattr(record, "status_code", None)
+
+
+async def test_a_websocket_that_closes_normally_is_not_logged_as_an_error(
+    settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def app(scope: Any, receive: Any, send: Any) -> None:
+        await receive()
+        await send({"type": "websocket.accept"})
+        await receive()  # the phone goes away
+
+    assert await _ws_status(settings, caplog, app) == 101
+
+
+async def test_a_websocket_refused_before_accepting_is_logged_as_refused(
+    settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def app(scope: Any, receive: Any, send: Any) -> None:
+        await receive()
+        await send({"type": "websocket.close", "code": 4401})
+
+    assert await _ws_status(settings, caplog, app) == 403
+
+
+async def test_a_websocket_that_crashes_is_still_logged_as_an_error(
+    settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def app(scope: Any, receive: Any, send: Any) -> None:
+        await receive()
+        await send({"type": "websocket.accept"})
+        raise RuntimeError("boom")
+
+    assert await _ws_status(settings, caplog, app) == 500

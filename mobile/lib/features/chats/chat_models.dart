@@ -19,6 +19,7 @@ class Message {
     this.localId,
     this.idempotencyKey,
     this.error,
+    this.refused = false,
     this.localImage,
   });
 
@@ -90,13 +91,17 @@ class Message {
   final String? idempotencyKey;
   final String? error;
 
+  /// The server turned it down on purpose (a rule, such as no links yet), not the
+  /// network: sending it again as it is would fail the same way.
+  final bool refused;
+
   /// The photo's bytes while it is still being sent, so it shows at once.
   final List<int>? localImage;
 
   bool get isSystem => kind == 'system';
   bool get isPending => sendState != SendState.sent;
 
-  Message copyWith({bool? deleted, SendState? sendState, String? error}) => Message(
+  Message copyWith({bool? deleted, SendState? sendState, String? error, bool? refused}) => Message(
         id: id,
         conversationId: conversationId,
         seq: seq,
@@ -111,6 +116,7 @@ class Message {
         localId: localId,
         idempotencyKey: idempotencyKey,
         error: error,
+        refused: refused ?? false,
         localImage: localImage,
       );
 }

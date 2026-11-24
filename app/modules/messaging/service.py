@@ -551,15 +551,18 @@ async def _check_request_allowance(
 
     A restricted account starts no new conversations at all. It can still reply in
     the ones it has.
+
+    Days at home are not needed to start a two-person chat (decision U.7, amending
+    M.7). A newcomer is held to L.2's limits instead: the request says they are new
+    to the area, it carries no link in their first messages, and they send one
+    message until the other person replies. These daily caps still apply, tighter
+    for a new account.
     """
     if is_restricted(user):
         raise ForbiddenError(
             "Your account is restricted and cannot start new conversations for now",
             details={"reason": "restricted"},
         )
-    # Someone not yet proven to live where they say starts no conversations with
-    # strangers (decision M.7). Replying to someone who wrote first is not this.
-    contact.require_can_contact_strangers(user, settings=settings, now=datetime.now(UTC))
     new = is_new_account(user, settings)
     if kind == ConversationKind.service:
         bucket = "service_inquiry"

@@ -174,35 +174,35 @@ async def test_a_newcomer_may_post_comment_and_react(
     assert reaction.status_code == 200, reaction.text
 
 
-async def test_a_newcomer_cannot_message_a_stranger_until_unlocked(
+async def test_a_newcomer_may_message_a_stranger_within_l2s_limits(
     db_session: AsyncSession, authenticate: Authenticate
 ) -> None:
+    """Decision U.7: no days at home needed to start a chat. L.2's limits hold
+    instead: no link at first, and one message until the other person replies."""
     user = await newcomer(db_session)
     stranger = await make_user(db_session, at=NYERI_TOWN)
+    client = await authenticate(user)
     conversation = (
-        await (await authenticate(user)).post(
-            "/v1/conversations/direct", json={"user_id": str(stranger.id)}
-        )
+        await client.post("/v1/conversations/direct", json={"user_id": str(stranger.id)})
     ).json()
 
-    refused = await (await authenticate(user)).post(
-        f"/v1/conversations/{conversation['id']}/messages", json={"body": "Hello neighbour"}
+    with_link = await client.post(
+        f"/v1/conversations/{conversation['id']}/messages",
+        json={"body": "Hello, see https://example.com"},
     )
-    assert refused.status_code == 403
-    details = refused.json()["error"]["details"]
-    assert details == {
-        "reason": "contact_locked",
-        "days_needed": 4,
-        "window_days": 7,
-        "days_so_far": 0,
-    }
+    assert with_link.status_code == 403
+    assert with_link.json()["error"]["details"]["reason"] == "links_not_allowed_yet"
 
-    await present_on_previous_days(db_session, user, 3)
-    await (await authenticate(user)).post("/v1/me/presence", json=reading())
-    sent = await (await authenticate(user)).post(
+    sent = await client.post(
         f"/v1/conversations/{conversation['id']}/messages", json={"body": "Hello neighbour"}
     )
     assert sent.status_code == 201, sent.text
+
+    again = await client.post(
+        f"/v1/conversations/{conversation['id']}/messages", json={"body": "Are you there?"}
+    )
+    assert again.status_code == 409
+    assert again.json()["error"]["details"]["reason"] == "awaiting_reply"
 
 
 async def test_a_newcomer_may_reply_to_someone_who_wrote_first(
@@ -225,7 +225,7 @@ async def test_a_newcomer_may_reply_to_someone_who_wrote_first(
     assert reply.status_code == 201, reply.text
 
 
-async def test_a_newcomer_cannot_ask_a_seller(
+async def test_a_newcomer_may_ask_a_seller(
     db_session: AsyncSession, authenticate: Authenticate
 ) -> None:
     seller = await make_user(db_session, at=NYERI_TOWN, created_days_ago=30)
@@ -246,11 +246,10 @@ async def test_a_newcomer_cannot_ask_a_seller(
         await (await authenticate(buyer)).post(f"/v1/listings/{listing['id']}/chat")
     ).json()
 
-    refused = await (await authenticate(buyer)).post(
+    asked = await (await authenticate(buyer)).post(
         f"/v1/conversations/{conversation['id']}/messages", json={"body": "Still available?"}
     )
-    assert refused.status_code == 403
-    assert refused.json()["error"]["details"]["reason"] == "contact_locked"
+    assert asked.status_code == 201, asked.text
 
 
 async def test_a_newcomer_cannot_invite_strangers_to_a_group_chat(

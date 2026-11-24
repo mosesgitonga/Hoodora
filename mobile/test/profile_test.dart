@@ -172,21 +172,18 @@ void main() {
       expect(adapter.requests.where((r) => r.path == '/users/u2/posts'), isNotEmpty);
     });
 
-    testWidgets('a newcomer is told why before a first message, and no chat opens', (tester) async {
+    testWidgets('a newcomer may start a chat at once (decision U.7)', (tester) async {
       profile = kamau();
-      me = {...meJson, 'can_contact_strangers': false, 'presence_days_this_week': 2, 'contact_unlock_days': 4};
+      me = {...meJson, 'can_contact_strangers': false, 'presence_days_this_week': 0, 'contact_unlock_days': 4};
       await openKamau(tester);
 
       await tester.tap(find.text('Message Kamau'));
       await tester.pumpAndSettle();
-      expect(find.text('Settle in first'), findsOneWidget);
-      expect(find.textContaining('So far: 2 of 4.'), findsOneWidget);
 
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      // Still on the profile, no message sent.
-      expect(find.text('Message Kamau'), findsOneWidget);
-      expect(adapter.requests.where((r) => r.path.endsWith('/messages') && r.method == 'POST'), isEmpty);
+      // No days-at-home wall: the chat is opened; the server holds L.2's limits.
+      expect(find.text('Settle in first'), findsNothing);
+      final opened = adapter.requests.lastWhere((r) => r.path == '/conversations/direct');
+      expect(opened.data, {'user_id': 'u2'});
     });
   });
 }

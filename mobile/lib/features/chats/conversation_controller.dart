@@ -271,7 +271,13 @@ class ConversationController extends Notifier<ConversationState> {
       if (_disposed) return;
       final pending = state.messages.where((m) => m.localId == localId).firstOrNull;
       if (pending != null) {
-        _replacePending(localId, pending.copyWith(sendState: SendState.failed, error: error.message));
+        // A 4xx other than a timeout or a rate limit is a rule, not a hiccup.
+        final status = error.statusCode ?? 0;
+        final refused = status >= 400 && status < 500 && status != 408 && status != 429;
+        _replacePending(
+          localId,
+          pending.copyWith(sendState: SendState.failed, error: error.message, refused: refused),
+        );
       }
       if (error.details['reason'] == 'awaiting_reply') unawaited(_reloadConversation());
     }

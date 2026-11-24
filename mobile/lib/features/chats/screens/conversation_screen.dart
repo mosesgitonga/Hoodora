@@ -117,14 +117,21 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (message.sendState == SendState.failed) ...[
-              ListTile(
-                leading: const Icon(Icons.refresh_rounded),
-                title: const Text('Try again'),
-                onTap: () {
-                  Navigator.of(sheet).pop();
-                  _controller.retry(message.localId!);
-                },
-              ),
+              if (message.error != null)
+                ListTile(
+                  leading: const Icon(Icons.info_outline_rounded),
+                  title: Text(message.error!),
+                ),
+              // Sending a refused message again as it is would fail the same way.
+              if (!message.refused)
+                ListTile(
+                  leading: const Icon(Icons.refresh_rounded),
+                  title: const Text('Try again'),
+                  onTap: () {
+                    Navigator.of(sheet).pop();
+                    _controller.retry(message.localId!);
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.delete_outline_rounded),
                 title: const Text("Don't send"),
@@ -719,7 +726,7 @@ class _Bubble extends StatelessWidget {
     final metaInk = mine ? const Color(0xFFF8D3C3) : Palette.muted;
     final meta = switch (message.sendState) {
       SendState.sending => 'Sending…',
-      SendState.failed => 'Not sent · tap for options',
+      SendState.failed => message.refused ? 'Not sent' : 'Not sent · tap for options',
       SendState.sent => read ? '${clockTime(message.createdAt)} · Read' : clockTime(message.createdAt),
     };
 
@@ -782,7 +789,16 @@ class _Bubble extends StatelessWidget {
                       ),
                     Align(alignment: Alignment.centerLeft, widthFactor: 1, child: content),
                     const SizedBox(height: 3),
-                    Text(meta, style: TextStyle(color: metaInk, fontSize: 11)),
+                    Text(meta, style: TextStyle(color: failed ? _onFailed : metaInk, fontSize: 11)),
+                    // Why it wasn't sent, from the server, on the message itself.
+                    if (failed && message.error != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        message.error!,
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(color: _onFailed, fontSize: 12.5, height: 1.3),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -793,3 +809,6 @@ class _Bubble extends StatelessWidget {
     );
   }
 }
+
+/// Text on a message that wasn't sent: dark on its salmon colour in both themes.
+const _onFailed = Color(0xFF3A1A0F);

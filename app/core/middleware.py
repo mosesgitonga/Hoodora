@@ -92,6 +92,13 @@ class RequestContextMiddleware:
                 status_code = int(message["status"])
                 headers = message.setdefault("headers", [])
                 headers.append((REQUEST_ID_HEADER.lower().encode(), request_id.encode()))
+            # A WebSocket sends no HTTP response, so without these every one was
+            # logged as a 500, even when it closed normally.
+            elif message["type"] == "websocket.accept":
+                status_code = 101
+            elif message["type"] == "websocket.close" and status_code == 500:
+                # Closed before it was accepted: refused (a bad token, a ban).
+                status_code = 403
             await send(message)
 
         try:

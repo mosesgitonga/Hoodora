@@ -207,6 +207,7 @@ void main() {
     late List<Map<String, dynamic>> messages;
     late Map<String, dynamic> conversation;
     var failSends = false;
+    var refuseSends = false;
 
     FakeReply handle(RequestOptions request) {
       final path = request.path;
@@ -229,6 +230,7 @@ void main() {
       }
       if (path == '/conversations/c1/messages' && method == 'POST') {
         if (failSends) return FakeReply(503, errorBody('unavailable', 'Try again shortly'));
+        if (refuseSends) return FakeReply(403, errorBody('forbidden', "Links can't be sent in the first few messages of a chat you started."));
         final sent = messageJson(messages.length + 1, from: 'u1', body: (request.data as Map)['body'] as String);
         messages.add(sent);
         return FakeReply(201, sent);
@@ -257,6 +259,7 @@ void main() {
 
     setUp(() {
       failSends = false;
+      refuseSends = false;
       sockets = FakeSockets();
       messages = [messageJson(1, from: 'u1', body: 'Is the stage moving?'), messageJson(2, body: 'Yes, from Monday')];
       conversation = conversationJson(unread: 1, lastRead: 1, lastBody: 'Yes, from Monday');
@@ -321,6 +324,28 @@ void main() {
           .lastWhere((r) => r.path == '/conversations/c1/messages' && r.method == 'POST')
           .headers['Idempotency-Key'];
       expect(retryKey, firstKey);
+    });
+
+    testWidgets('a refused message says why, and offers no retry that would fail the same way', (tester) async {
+      await openApp(tester);
+      await tester.tap(find.text('Chats').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Wanjiku M.'));
+      await tester.pumpAndSettle();
+
+      refuseSends = true;
+      await tester.enterText(find.byType(TextField), 'See https://example.test');
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not sent'), findsOneWidget);
+      expect(find.text("Links can't be sent in the first few messages of a chat you started."), findsOneWidget);
+
+      await tester.tap(find.text('See https://example.test'));
+      await tester.pumpAndSettle();
+      expect(find.text("Links can't be sent in the first few messages of a chat you started."), findsNWidgets(2));
+      expect(find.text('Try again'), findsNothing);
+      expect(find.text("Don't send"), findsOneWidget);
     });
 
     testWidgets('a request waits on me: no message box until I accept', (tester) async {
