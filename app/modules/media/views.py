@@ -14,17 +14,20 @@ from app.modules.media.service import variant_views
 
 
 def image_variants(
-    asset: MediaAsset | None, storage: StorageProvider
+    asset: MediaAsset | None, storage: StorageProvider, *, private: bool | None = None
 ) -> dict[str, ImageVariantOut] | None:
     """Served variants, or None for an asset that is missing or not ready.
 
     A not-ready asset yields None rather than an error: an image on someone
     else's post that is still processing should render as a placeholder, not
     break the whole page.
+
+    `private` asks for the short-lived signature, as for a photo in a group post;
+    by default it follows the asset's purpose (decision U.2).
     """
     if asset is None or not asset.is_ready:
         return None
     return {
         size: ImageVariantOut(width=view.width, height=view.height, url=view.url)
-        for size, view in variant_views(asset, storage).items()
+        for size, view in variant_views(asset, storage, private=private).items()
     }

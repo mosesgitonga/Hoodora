@@ -22,9 +22,9 @@ enum ImageSize {
 }
 
 /// What the cache knows an image by: the URL's path. A presigned or signed URL
-/// changes on every load, but its path names the media and the width and never
-/// changes (a new upload gets a new path), so the cache hits however the URL was
-/// signed, and wherever it is served from.
+/// changes on every load, but its path is the variant's storage key, unique to
+/// that size of that photo and never reused (a new upload gets a new key), so the
+/// cache hits however the URL was signed.
 String imageCacheKey(String url) {
   final uri = Uri.tryParse(url);
   return uri == null || uri.path.isEmpty ? url : uri.path;

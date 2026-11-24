@@ -217,6 +217,48 @@ differs from the sections above. Nothing here touches the other projects.
 - **Logs.** journald's retention is the host's, shared with the other projects,
   and was left as it was. Section 2's 30-day cap has not been applied here.
 
+### Media CDN (decision U.2, from 2026-11-24)
+
+Photos reach phones through a Bunny pull zone, `hoodora-staging-media` (zone
+7076924), at `https://media.myradius.chatara.co`, a CNAME to
+`hoodora-staging-media.b-cdn.net` set at Namecheap. The Bunny account and its
+billing are the product owner's.
+
+- **Secrets, all only in `/srv/myradius/.env.production` (600, root):**
+  - `BUNNY_API_KEY`: the account key, used to purge deleted media and to manage
+    the zone;
+  - `BUNNY_TOKEN_KEY`: the zone's token key, which signs every media URL;
+  - `CDN_ORIGIN_SECRET`: the header value the zone sends to the origin.
+  - None of them is in the repository or any other file.
+- **The zone:**
+  - token authentication on;
+  - query strings ignored in the cache key, so one cached copy serves every
+    token;
+  - a year at the edge, since variants never change;
+  - cookies stripped;
+  - IP addresses dropped from its logs;
+  - one edge rule that adds `X-Hoodora-Cdn: <CDN_ORIGIN_SECRET>` to origin
+    requests.
+- **The origin** is `https://myradius.chatara.co/cdn-origin/<key>`, a location
+  in Hoodora's nginx site.
+  - It answers only GETs for a variant's key shape, and only with the secret
+    header.
+  - It reads from the storage filer on `127.0.0.1:8033`, which is published to
+    localhost only.
+  - The secret reaches nginx through `/etc/nginx/snippets/myradius-cdn-origin.conf`
+    (600, root), which `bootstrap.sh` writes from `CDN_ORIGIN_SECRET`.
+  - The live site file was edited by hand to match the template, since certbot
+    owns it, and checked with `nginx -t` before reloading.
+- **The API:** `STORAGE_PUBLIC_BASE_URL=https://media.myradius.chatara.co` and
+  `BUNNY_TOKEN_KEY` turn signing on. `MEDIA_TOKEN_TTL_PUBLIC_SECONDS` (a week)
+  and `MEDIA_TOKEN_TTL_PRIVATE_SECONDS` (an hour) set the lifetimes. Uploads
+  still use presigned PUTs to `/myradius-media/`.
+- **HTTP/2** comes from Bunny's edge. Hoodora's nginx stays on HTTP/1.1,
+  because on nginx 1.24 turning HTTP/2 on applies to every site sharing port
+  443 (decision U.1).
+- **Rolling back:** empty `STORAGE_PUBLIC_BASE_URL` and `BUNNY_TOKEN_KEY` and
+  restart `api` and `worker`. Photos go back to presigned URLs straight away.
+
 ### Continuous deployment
 
 1. **CI first.** A push to `main` runs CI.

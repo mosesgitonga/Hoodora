@@ -857,6 +857,26 @@ drops an unsent message.
 Shorebird belongs in the privacy notice's list of processors, beside Google
 (Firebase Cloud Messaging), before launch.
 
+### Media through a CDN (2026-11-24)
+
+Decision U.2: processed photos are served by a Bunny pull zone.
+
+| What | Who sees it | Why | Kept |
+| --- | --- | --- | --- |
+| Processed photo variants, and their paths (`public/<purpose>/<uploader id>/<random>.webp`) | **Bunny** (BunnyWay d.o.o., CDN), as a processor | Serving photos from an edge near the viewer | At Bunny's edges until purged or evicted. Deleting media purges its variants in the same job that deletes them from storage |
+| Each photo request: the viewer's IP address, the URL with its token, the time | **Bunny**, as a processor | Delivering the photo, and its request logs | Logs are kept with the IP address dropped (`LogAnonymizationType` "Drop", set on the zone). Bunny's own handling is under its terms |
+
+- **Originals never reach Bunny.** The origin serves only the processed,
+  metadata-free variants.
+- **The uploader's account ID is in every path,** as it already was in the
+  presigned URLs. It is a random UUID, not a name or a phone number.
+- **Tokens limit who can fetch.** Every URL is signed and expires: a week for
+  posts, listings and avatars, an hour for chat photos, stories and group media.
+  A photo whose post is deleted is never signed again.
+
+Bunny belongs in the privacy notice's list of processors, beside Shorebird and
+Google, before launch.
+
 ---
 
 ## Data subject rights — implementation status

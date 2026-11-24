@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from app.core.config import Settings
+from app.core.providers.cdn import purge_variant, sign_cdn_url
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,9 @@ class StorageProvider(Protocol):
         """A URL the client can PUT one object to."""
         ...
 
-    def public_url(self, *, storage_key: str) -> str:
-        """A URL for serving a processed image."""
+    def public_url(self, *, storage_key: str, private: bool = False) -> str:
+        """A URL for serving a processed image. `private` media (chats, stories,
+        groups) gets a short-lived signature where URLs are signed (decision U.2)."""
         ...
 
     async def get_object(self, *, storage_key: str) -> bytes: ...
@@ -97,6 +99,9 @@ class MemoryStorageProvider:
 
     name: str = "memory"
     objects: dict[str, tuple[bytes, str]] = field(default_factory=dict)
+    settings: Settings | None = None
+    """With a CDN configured in these settings, deleting a variant purges it, as
+    the S3 provider does. None for most tests: no CDN, nothing to purge."""
 
     def presign_upload(
         self, *, storage_key: str, content_type: str, max_bytes: int
@@ -109,7 +114,7 @@ class MemoryStorageProvider:
             expires_in_seconds=900,
         )
 
-    def public_url(self, *, storage_key: str) -> str:
+    def public_url(self, *, storage_key: str, private: bool = False) -> str:
         return f"memory://object/{storage_key}"
 
     async def get_object(self, *, storage_key: str) -> bytes:
@@ -123,6 +128,8 @@ class MemoryStorageProvider:
 
     async def delete_object(self, *, storage_key: str) -> None:
         self.objects.pop(storage_key, None)
+        if self.settings is not None:
+            await purge_variant(self.settings, storage_key)
 
     async def object_exists(self, *, storage_key: str) -> bool:
         return storage_key in self.objects
@@ -226,16 +233,28 @@ class S3StorageProvider:
             expires_in_seconds=self._settings.presign_upload_ttl_seconds,
         )
 
-    def public_url(self, *, storage_key: str) -> str:
+    def public_url(self, *, storage_key: str, private: bool = False) -> str:
         """A CDN URL where one is configured, otherwise a presigned GET.
 
         The CDN path is strongly preferred: a presigned URL is unique per request,
         so it defeats client and CDN caching entirely, and on expensive mobile data
         re-downloading an avatar on every screen is a real cost.
+
+        With the pull zone's token key set, the CDN URL is signed: a week for
+        public media, an hour for `private` (decision U.2), both in config.
         """
         base = self._settings.storage_public_base_url.rstrip("/")
         if base:
-            return f"{base}/{storage_key}"
+            url = f"{base}/{storage_key}"
+            token_key = self._settings.bunny_token_key.get_secret_value()
+            if not token_key:
+                return url
+            ttl = (
+                self._settings.media_token_ttl_private_seconds
+                if private
+                else self._settings.media_token_ttl_public_seconds
+            )
+            return sign_cdn_url(url, security_key=token_key, ttl_seconds=ttl)
         try:
             return str(
                 self.presign_client.generate_presigned_url(
@@ -286,6 +305,8 @@ class S3StorageProvider:
             # A failed delete leaves an orphan, which costs storage but breaks
             # nothing. Logged for the sweeper rather than raised at the caller.
             logger.warning("storage_delete_failed", extra={"storage_key": storage_key})
+        # Gone from storage, so gone from the edge too, in the same job (decision U.2).
+        await purge_variant(self._settings, storage_key)
 
     def ensure_bucket(self) -> bool:
         """Create the bucket if it does not exist. For development only.

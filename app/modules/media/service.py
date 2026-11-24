@@ -72,15 +72,25 @@ class VariantView:
     url: str
 
 
-def variant_views(asset: MediaAsset, storage: StorageProvider) -> dict[str, VariantView]:
-    """The asset's variants as client-facing URLs, smallest first."""
+# Seen by few people, so their URLs get the short signature (decision U.2): a
+# chat photo, a story (the author's Circle and their zone), a group's cover.
+PRIVATE_PURPOSES = frozenset({MediaPurpose.message, MediaPurpose.story, MediaPurpose.group})
+
+
+def variant_views(
+    asset: MediaAsset, storage: StorageProvider, *, private: bool | None = None
+) -> dict[str, VariantView]:
+    """The asset's variants as client-facing URLs, smallest first. `private` decides
+    the signature's lifetime; by default it follows the asset's purpose."""
+    if private is None:
+        private = asset.purpose in PRIVATE_PURPOSES
     views: dict[str, VariantView] = {}
     for size in sorted(asset.variants, key=lambda value: int(value)):
         entry: dict[str, Any] = asset.variants[size]
         views[size] = VariantView(
             width=int(entry["width"]),
             height=int(entry["height"]),
-            url=storage.public_url(storage_key=str(entry["key"])),
+            url=storage.public_url(storage_key=str(entry["key"]), private=private),
         )
     return views
 

@@ -357,6 +357,18 @@ class Settings(BaseSettings):
     Empty falls back to presigned GETs, which work but cache badly."""
 
     storage_force_path_style: bool = True
+
+    # -- Media CDN (decision U.2) -------------------------------------------
+    bunny_token_key: SecretStr = SecretStr("")
+    """The pull zone's token authentication key. Set together with
+    `STORAGE_PUBLIC_BASE_URL` pointing at the zone, every media URL is signed with
+    it, and the edge refuses one without a valid token."""
+    bunny_api_key: SecretStr = SecretStr("")
+    """The Bunny account's API key, for purging deleted media from the edge."""
+    media_token_ttl_public_seconds: int = Field(default=604_800, ge=300, le=2_592_000)
+    """How long a signed URL works for public media: posts, listings, avatars."""
+    media_token_ttl_private_seconds: int = Field(default=3600, ge=300, le=86_400)
+    """For media seen by few: chat photos, stories, group posts and covers."""
     """MinIO and R2 want path-style addressing; AWS prefers virtual-hosted."""
 
     presign_upload_ttl_seconds: int = Field(default=900, ge=60, le=3600)

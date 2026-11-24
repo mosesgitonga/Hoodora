@@ -93,6 +93,29 @@ fi
 
 install -m 755 deploy/vps/deploy-gate.sh /usr/local/bin/myradius-deploy
 
+# The media CDN's origin secret, for nginx (decision U.2): outside the repository,
+# root-only, rewritten on every bootstrap. With no CDN_ORIGIN_SECRET the map
+# matches nothing, so the origin refuses everyone and nginx still loads.
+snippet=/etc/nginx/snippets/myradius-cdn-origin.conf
+secret=$(grep -m1 '^CDN_ORIGIN_SECRET=' .env.production | cut -d= -f2- || true)
+install -d -m 755 /etc/nginx/snippets
+(
+  umask 077
+  if [[ -n "$secret" ]]; then
+    printf 'map $http_x_hoodora_cdn $myradius_cdn_origin_ok {
+    default 0;
+    "%s" 1;
+}
+' "$secret"
+  else
+    printf 'map $http_x_hoodora_cdn $myradius_cdn_origin_ok {
+    default 0;
+}
+'
+  fi
+) > "$snippet"
+chmod 600 "$snippet"
+
 site=/etc/nginx/sites-available/$DOMAIN
 if [[ ! -f "$site" ]]; then
   echo "bootstrap: installing the nginx site for $DOMAIN"

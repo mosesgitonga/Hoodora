@@ -2927,9 +2927,10 @@ From the product owner's review of the app on a phone against staging
 **Choice.**
 - **One widget for every network image**, `NetImage` in
   `lib/core/net_image.dart`, keyed by the URL's path without its query. The path
-  names the media and the width and never changes, since a new upload gets a new
-  path, so a new signature still hits the cache.
-  - The brief suggested `${mediaId}_${variant}`. The path is the same thing and
+  is the variant's storage key, unique to that size of that photo and never
+  reused, since a new upload gets new keys, so a new signature still hits the
+  cache.
+  - The brief suggested `${mediaId}_${variant}`. The path is just as stable and
     also covers avatars and covers, which the app holds without a media id.
   - A test fails if any screen loads a network image another way.
 - **Sizes named by purpose** (`ImageSize`):
@@ -2951,9 +2952,9 @@ From the product owner's review of the app on a phone against staging
 connection. A stable key removes the repeat downloads, whoever signs the URL,
 and keeps working when the CDN (U.2) starts signing them differently.
 
-### U.2 Media through Bunny CDN, with signed URLs (2026-11-24, waiting on the account)
+### U.2 Media through Bunny CDN, with signed URLs (2026-11-24)
 
-**Choice, from the brief.**
+**Choice, from the brief, as built.**
 - **Provider:** a Bunny pull zone on a media subdomain, with an edge in
   Nairobi. Bunny suits because it needs only a CNAME and its token
   authentication keeps private media private while still caching it.
@@ -2963,10 +2964,26 @@ and keeps working when the CDN (U.2) starts signing them differently.
 - **Origin:** an nginx location on Hoodora's site serves only processed
   variants, and only with the pull zone's secret header.
 - **Purge:** deleting media also purges it from the edge.
-- **Not built yet.**
-  - The account is the product owner's to create.
-  - Whether Bunny keeps the token out of its cache key must be tested on the
-    real zone before building. The brief asks to stop and ask if it doesn't.
+- **The zone** (`hoodora-staging-media`) was created through the API from the
+  server, so the account key never left it. It has:
+  - token authentication on;
+  - `IgnoreQueryStrings`, which keeps the token and expiry out of the cache key;
+  - a year's edge cache;
+  - cookies stripped;
+  - viewers' IPs dropped from its logs.
+- **Expiries round up to the hour,** so within the hour the API hands out one
+  URL per variant.
+- **Which media is short-lived:**
+  - **by purpose:** chat photos, stories and group covers;
+  - **by context:** the photos of a group post.
+- **The purge lives in `StorageProvider.delete_object`,** so every place media
+  is deleted purges it too: account purge, story expiry, a deleted message,
+  moderation. A failed purge is logged, not raised. The photo is never signed
+  again, so it stops loading when its last token expires.
+- **The origin reads from the SeaweedFS filer,** published on localhost only.
+  The S3 gateway needs signatures, and making it readable anonymously would
+  also have opened the public `/myradius-media/` path.
+- **No new dependency:** `hmac` signs, and `httpx`, already used, purges.
 
 ### U.3 A post offers one reaction, by its category (2026-11-24)
 

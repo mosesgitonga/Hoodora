@@ -49,6 +49,10 @@ services:
     ports:
       # Uploads and downloads arrive through nginx, by presigned URL.
       - "127.0.0.1:8032:8333"
+      # The filer, for the CDN's origin only: nginx's /cdn-origin/ reads processed
+      # variants here, unsigned, behind the pull zone's secret header (decision U.2).
+      # Localhost only, like the rest; never published beyond nginx.
+      - "127.0.0.1:8033:8888"
     volumes:
       - storage-data:/data
       - ./secrets/s3.json:/run/myradius-s3.json:ro

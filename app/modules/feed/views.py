@@ -143,7 +143,12 @@ async def post_views(
                 images=[
                     PostImageOut(media_id=image.media_id, variants=variants)
                     for image in post.images
-                    if (variants := image_variants(assets.get(image.media_id), storage))
+                    # A group post's photos are for its members: short-lived URLs.
+                    if (
+                        variants := image_variants(
+                            assets.get(image.media_id), storage, private=post.group_id is not None
+                        )
+                    )
                 ],
                 area_label=towns[post.cell_res9] if post.id in far else labels[post.cell_res9],
                 distance_bucket=bucket,
