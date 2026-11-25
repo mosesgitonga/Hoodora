@@ -741,11 +741,6 @@ def record_home_presence(
         user.home_presence_mask |= 1
 
 
-def presence_days_recorded(mask: int) -> int:
-    """How many of the recorded days were spent in the home area."""
-    return bin(mask).count("1")
-
-
 @dataclass(frozen=True, slots=True)
 class Anchor:
     """Where a query is measured from: the cells, and the WKT of the centre.

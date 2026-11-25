@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from redis.asyncio import Redis
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -796,18 +796,3 @@ async def revoke_sessions_for_moderation(session: AsyncSession, *, user_id: uuid
         revoked_ids.append(device_session.id)
     _announce_revoked(session, user_id=user_id, session_ids=revoked_ids)
     return len(revoked_ids)
-
-
-async def count_live_sessions(session: AsyncSession, *, user_id: uuid.UUID) -> int:
-    statement = select(func.count(DeviceSession.id)).where(
-        DeviceSession.user_id == user_id,
-        DeviceSession.revoked_at.is_(None),
-        DeviceSession.expires_at > datetime.now(UTC),
-    )
-    return (await session.execute(statement)).scalar_one()
-
-
-async def raise_if_pending_deletion(user: User) -> None:
-    """Deletion-pending accounts can still sign in, to cancel the request."""
-    if user.status == UserStatus.deletion_pending and user.deletion_requested_at is None:
-        raise ConflictError("Account state is inconsistent")

@@ -24,7 +24,7 @@ from app.core.security import (
     hash_secret,
     verify_secret,
 )
-from app.modules.auth.phone import is_kenyan, mask_for_display, normalise_phone_number
+from app.modules.auth.phone import mask_for_display, normalise_phone_number
 
 
 # ---------------------------------------------------------------------------
@@ -82,8 +82,6 @@ def test_the_error_never_echoes_the_number() -> None:
 def test_an_international_number_is_honoured_as_given() -> None:
     """The launch market is Kenya, not the only possible market."""
     assert normalise_phone_number("+447911123456") == "+447911123456"
-    assert is_kenyan("+447911123456") is False
-    assert is_kenyan("+254712345678") is True
 
 
 def test_masking_hides_the_middle_but_keeps_it_recognisable() -> None:

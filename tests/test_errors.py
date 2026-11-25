@@ -219,9 +219,9 @@ def test_app_error_defaults_can_be_overridden_per_call_site() -> None:
 
     assert error.message == "custom message"
     assert error.details == {"field": "value"}
-    assert error.to_envelope().error.code == ErrorCode.internal_error
+    assert error.code == ErrorCode.internal_error
 
 
 def test_subclass_messages_default_sensibly() -> None:
     assert NotFoundError().message
-    assert ForbiddenError().to_envelope().error.code == ErrorCode.forbidden
+    assert ForbiddenError().code == ErrorCode.forbidden

@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_PREFIX = "radius:feed"
 
-RadiusSource = Literal["computed", "cached", "stabilised"]
+RadiusSource = Literal["computed", "stabilised"]
 
 LimitedBy = Literal["users", "posts", "both", "floor", "ceiling"]
 """What set the feed radius: the condition that needed the last ring, both of
@@ -464,14 +464,3 @@ class RadiusEngine:
         except CACHE_ERRORS:
             # Losing the cache costs performance and stability, not correctness.
             logger.warning("radius_cache_write_failed", exc_info=True)
-
-    async def invalidate(self, anchor_cell_res8: int) -> None:
-        """Drop a cached radius. Used by tests and by density backfills."""
-        try:
-            await self._redis.delete(self.cache_key(anchor_cell_res8))
-        except CACHE_ERRORS:
-            logger.warning("radius_cache_invalidate_failed", exc_info=True)
-
-
-def rule_for(settings: Settings, feature: RadiusFeature) -> RadiusRule:
-    return settings.radius_rules[feature]

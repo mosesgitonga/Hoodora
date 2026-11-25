@@ -110,11 +110,6 @@ class AppError(Exception):
         self.headers = headers or {}
         super().__init__(self.message)
 
-    def to_envelope(self) -> ErrorEnvelope:
-        return ErrorEnvelope(
-            error=ErrorBody(code=self.code, message=self.message, details=self.details)
-        )
-
 
 class BadRequestError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST

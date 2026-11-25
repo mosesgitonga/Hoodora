@@ -284,7 +284,6 @@ class Settings(BaseSettings):
     active_user_window_days: int = Field(default=14, ge=1, le=365)
     """A user counts as active if the app was opened within this window."""
 
-    cell_activity_refresh_minutes: int = Field(default=15, ge=1, le=1440)
     radius_cache_ttl_seconds: int = Field(default=900, ge=30, le=86_400)
 
     radius_hysteresis_ratio: float = Field(default=0.20, ge=0.0, le=1.0)
@@ -711,7 +710,6 @@ class Settings(BaseSettings):
 
     events_per_day: int = Field(default=5, ge=1)
     new_account_events_per_day: int = Field(default=1, ge=1)
-    event_invites_per_day: int = Field(default=200, ge=1)
 
     listing_expiry_reminder_hours: int = Field(default=24, ge=1, le=168)
     """When a seller is told their listing is about to expire."""

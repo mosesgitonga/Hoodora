@@ -119,12 +119,6 @@ def validate_coordinates(latitude: float, longitude: float) -> None:
         raise InvalidCoordinatesError("longitude must be between -180 and 180")
 
 
-def to_cell(latitude: float, longitude: float, resolution: int) -> int:
-    """One coordinate pair to one cell, as an integer."""
-    validate_coordinates(latitude, longitude)
-    return int(h3.str_to_int(h3.latlng_to_cell(latitude, longitude, resolution)))
-
-
 def parent_cell(cell: int, resolution: int) -> int:
     """The containing cell at a coarser resolution."""
     return int(h3.str_to_int(h3.cell_to_parent(h3.int_to_str(cell), resolution)))

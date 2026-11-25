@@ -6,9 +6,11 @@ Backend API for **Hoodora**, a hyperlocal community app for Kenya: everything ha
 around you — your neighbours, local sellers, services, groups, and events, all within
 your radius.
 
-Every user has their own radius, which adapts to how many active users are nearby: it
-shrinks in dense areas so the feed stays genuinely local, and widens in quiet ones so
-there is always something to see. Exact locations are never stored, shown, or logged.
+Every user has their own radius, which adapts to the area around them. It grows from
+1 km until it holds enough active neighbours (200) and enough recent posts (60 in the
+last 30 days), up to 15 km. In busy areas the feed stays genuinely local; in quiet ones
+it widens until there is something to read (decisions T.1 and T.2). Exact locations are
+never stored, shown, or logged.
 
 The mobile app (Flutter, Android and iOS) lives in [`mobile/`](mobile/README.md), in this
 repository. This service is a modular monolith: FastAPI, PostgreSQL with PostGIS, Redis,
@@ -26,14 +28,15 @@ cp .env.example .env     # defaults match docker-compose.yml
 docker compose up --build
 ```
 
-That brings up four services:
+That brings up five services:
 
-| Service    | What it is                          | Address                 |
-| ---------- | ----------------------------------- | ----------------------- |
-| `api`      | FastAPI under Uvicorn, auto-reload  | http://localhost:8000   |
-| `worker`   | arq background worker               | —                       |
-| `postgres` | PostgreSQL 16 + PostGIS 3 + pg_trgm | `localhost:5432`        |
-| `redis`    | Redis 7                             | `localhost:6379`        |
+| Service    | What it is                                  | Address                 |
+| ---------- | ------------------------------------------- | ----------------------- |
+| `api`      | FastAPI under Uvicorn, auto-reload          | http://localhost:8000   |
+| `worker`   | arq background worker                       | —                       |
+| `postgres` | PostgreSQL 16 + PostGIS 3 + pg_trgm         | `localhost:5432`        |
+| `redis`    | Redis 7                                     | `localhost:6379`        |
+| `storage`  | SeaweedFS, S3-compatible storage for photos | http://localhost:8333   |
 
 Then:
 
@@ -73,13 +76,16 @@ spatial indexes or enum changes right.
 ```
 app/
   main.py          application factory and router wiring
-  core/            config, db, errors, logging, middleware, pagination, rate limiting
+  core/            config, db, errors, logging, middleware, pagination, rate
+                   limiting, and providers (SMS, push, storage, CDN, sign-in)
   modules/         one package per feature area: models, schemas, service, router
   workers/         arq settings and background tasks
 migrations/        Alembic
 mobile/            the Flutter app (see mobile/README.md)
+scripts/           seeding (areas, places), admin, backups, app releases, benchmarks
+deploy/vps/        the staging server: nginx, bootstrap, compose overrides
 tests/
-docs/              ARCHITECTURE.md, DECISIONS.md, DATA_MAP.md
+docs/              brief, architecture, decisions, data map, deployment, security
 ```
 
 Routers stay thin and business logic lives in `service.py`. Modules call each other
@@ -92,3 +98,6 @@ through service functions, never through each other's routers.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the pieces fit together
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — decisions taken, with alternatives
 - [`docs/DATA_MAP.md`](docs/DATA_MAP.md) — personal data held, why, and for how long
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — running it: the server, secrets, backups,
+  the media CDN, continuous deployment
+- [`docs/SECURITY.md`](docs/SECURITY.md) — the API against the OWASP API Top 10

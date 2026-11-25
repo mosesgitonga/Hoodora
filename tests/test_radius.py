@@ -232,17 +232,6 @@ async def test_a_repeated_request_is_served_from_the_cache(
     assert await redis_client.get(RadiusEngine.cache_key(anchor)) is not None
 
 
-async def test_invalidating_the_cache_forces_a_recompute(
-    db_session: AsyncSession, redis_client: Redis, radius_engine: RadiusEngine
-) -> None:
-    anchor = await set_cell_density(db_session, origin=NYERI_TOWN, active_per_cell=60, rings=8)
-    await radius_engine.radius_for(RadiusFeature.feed, anchor)
-
-    await radius_engine.invalidate(anchor)
-
-    assert await redis_client.get(RadiusEngine.cache_key(anchor)) is None
-
-
 async def test_the_engine_works_without_redis(db_session: AsyncSession, settings: Settings) -> None:
     """Losing the cache costs performance and stability, not correctness."""
 

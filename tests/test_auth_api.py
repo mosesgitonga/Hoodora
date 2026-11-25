@@ -10,7 +10,7 @@ from __future__ import annotations
 import httpx
 import pytest
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -670,8 +670,13 @@ async def test_old_sessions_are_evicted_past_the_limit(
         )
     await db_session.flush()
 
-    live = await auth_service.count_live_sessions(db_session, user_id=user.id)
+    live = await db_session.scalar(
+        select(func.count(DeviceSession.id)).where(
+            DeviceSession.user_id == user.id, DeviceSession.revoked_at.is_(None)
+        )
+    )
 
+    assert live is not None
     assert live <= settings.max_sessions_per_user
 
 

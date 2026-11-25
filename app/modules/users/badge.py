@@ -94,27 +94,6 @@ async def withdraw_vouch(session: AsyncSession, *, voucher: User, vouchee_id: uu
     )
 
 
-async def has_vouched(
-    session: AsyncSession, *, voucher_id: uuid.UUID, vouchee_id: uuid.UUID
-) -> bool:
-    found = await session.scalar(
-        select(Vouch.id).where(Vouch.voucher_id == voucher_id, Vouch.vouchee_id == vouchee_id)
-    )
-    return found is not None
-
-
-async def vouches_given(session: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
-    return list(
-        (
-            await session.execute(
-                select(Vouch.vouchee_id)
-                .where(Vouch.voucher_id == user_id)
-                .order_by(Vouch.created_at.desc())
-            )
-        ).scalars()
-    )
-
-
 async def vouches_received_count(session: AsyncSession, user_id: uuid.UUID) -> int:
     return int(
         await session.scalar(select(func.count(Vouch.id)).where(Vouch.vouchee_id == user_id)) or 0

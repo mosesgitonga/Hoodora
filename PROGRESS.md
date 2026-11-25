@@ -5095,6 +5095,77 @@ Decision T.2.
     exclusions, a moved author, post-only cells, a slow reference count,
     hysteresis on each condition, the old cache form, and the reach estimate;
   - app: `test/recent_posts_test.dart` (10).
-- **Staging before the change, at named places:** Nyeri, King'ong'o, Mathari,
-  DeKUT and Kamakwa were all at 15 km, set by the ceiling, with 3 active users
-  within reach.
+- **Staging at named places** (Nyeri, King'ong'o, Mathari, DeKUT, Kamakwa):
+  - before the change: all at 15 km, set by the ceiling, with 3 active users
+    within reach;
+  - after it (deployed as `7c59c19`, migration 0026, first refresh 06:43 UTC):
+    unchanged at 15 km, still set by the ceiling, with 3 active users and 3
+    counted recent posts within reach. Both conditions are far short of their
+    targets (200 and 60) until staging has real use.
+
+## Removing unused code (2026-11-25)
+
+Asked for by the product owner. Found with vulture on the server and a
+declared-but-never-referenced scan of the app, each candidate then checked
+by hand against the whole repository, tests and deployment files included.
+
+### Removed
+
+- **Server functions nothing called:**
+  - `auth.service.raise_if_pending_deletion`;
+  - `location.radius.rule_for`;
+  - `location.service.presence_days_recorded`;
+  - `users.badge.has_vouched` and `vouches_given`.
+- **Server code only its own test kept alive:**
+  - `auth.phone.is_kenyan`, meant for "later phases" that never used it;
+  - `location.cells.to_cell`, where the tests now use `cells.locate`;
+  - `auth.service.count_live_sessions`, where its one test counts sessions
+    itself;
+  - `RadiusEngine.invalidate` and its test (its docstring named density
+    backfills, which don't exist);
+  - `AppError.to_envelope`, which the error handler never used.
+- **`RadiusSource` "cached":** no radius is ever reported as that.
+- **Settings nothing read:**
+  - `CELL_ACTIVITY_REFRESH_MINUTES`: the refresh is scheduled every quarter
+    hour in the worker;
+  - `EVENT_INVITES_PER_DAY`: the route has its own limit (200 a day). It is
+    gone from `.env.example` too. Staging's env file still sets it, which is
+    harmless: unknown settings are ignored.
+- **App code nothing used:**
+  - `AppConfig.countryCode`;
+  - `ApiException.isUnauthenticated` and `isRateLimited`.
+- **App packages nothing imported:** `freezed_annotation` and
+  `json_annotation`, and the generators `freezed`, `json_serializable` and
+  `build_runner`. No generated code was ever checked in, and the lock file
+  drops 28 packages they pulled in.
+
+### Kept on purpose
+
+- The providers' test seams: `set_*_provider`, the recording fakes and their
+  inspection methods (`messages_to`, `last_message`, `peek`, `names`).
+- The checks tests use to prove promises hold:
+  - `media.images.has_exif` and `read_gps_tags`, to prove a stored photo
+    carries no location;
+  - `providers.cdn.verify_cdn_url`, to prove signed links verify.
+- Things vulture can't see used:
+  - routes;
+  - `gunicorn_hooks.child_exit`, called by gunicorn by name;
+  - `WorkerSettings`, loaded by arq;
+  - SQLAlchemy event listeners in the scripts;
+  - the `CursorResult` import, which a string `cast` uses.
+- In the app: `MemoryTokenStore`, `ApiClient.hasAccessToken` and
+  `Palette.isDark`, which tests use to see state that is otherwise private.
+
+### Docs
+
+- **README:**
+  - the radius paragraph now says it needs active neighbours *and* recent
+    posts;
+  - the `storage` service (SeaweedFS) joins the services table;
+  - the layout now lists `scripts/` and `deploy/vps/`;
+  - the documentation list now includes `DEPLOYMENT.md` and `SECURITY.md`.
+- **`mobile/README.md`:** how to ship (Shorebird patch or release), and how to
+  build for a phone over USB. A plain `flutter build apk` points at the
+  emulator's `10.0.2.2:8000`, so the build needs `API_BASE_URL` and
+  `APP_BUILD`.
+

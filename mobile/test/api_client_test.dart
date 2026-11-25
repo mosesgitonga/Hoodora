@@ -67,7 +67,7 @@ void main() {
     expect(error!.code, 'rate_limited');
     expect(error.message, startsWith('A code was sent recently'));
     expect(error.retryAfterSeconds, 42);
-    expect(error.isRateLimited, isTrue);
+    expect(error.statusCode, 429);
   });
 
   test('a create keeps its idempotency key across the retry', () async {

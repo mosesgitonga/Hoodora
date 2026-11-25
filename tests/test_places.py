@@ -81,7 +81,7 @@ async def test_the_place_covering_the_cell_is_named(db_session: AsyncSession) ->
     await _seed(db_session, _feature("Gatitu", NYERI_TOWN))
 
     near = await location_service.place_near(
-        db_session, cell_res9=cells.to_cell(NYERI_TOWN.latitude, NYERI_TOWN.longitude, 9)
+        db_session, cell_res9=cells.locate(*NYERI_TOWN.as_tuple()).cell_res9
     )
 
     assert near == location_service.NearPlace(name="Gatitu", level="village", ward="Ruring'u")
@@ -92,7 +92,7 @@ async def test_outside_every_place_there_is_no_name(db_session: AsyncSession) ->
     await _seed(db_session, _feature("Gatitu", NYERI_TOWN))
 
     near = await location_service.place_near(
-        db_session, cell_res9=cells.to_cell(KARATINA.latitude, KARATINA.longitude, 9)
+        db_session, cell_res9=cells.locate(*KARATINA.as_tuple()).cell_res9
     )
 
     assert near is None
@@ -108,7 +108,7 @@ async def test_the_smaller_of_two_overlapping_places_wins(db_session: AsyncSessi
     )
 
     near = await location_service.place_near(
-        db_session, cell_res9=cells.to_cell(NYERI_TOWN.latitude, NYERI_TOWN.longitude, 9)
+        db_session, cell_res9=cells.locate(*NYERI_TOWN.as_tuple()).cell_res9
     )
 
     assert near is not None

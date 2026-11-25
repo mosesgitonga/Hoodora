@@ -27,8 +27,6 @@ class ApiException implements Exception {
   final int? retryAfterSeconds;
 
   bool get isNetwork => code == 'network';
-  bool get isUnauthenticated => statusCode == 401;
-  bool get isRateLimited => statusCode == 429;
 
   /// Builds one from a response body, falling back to a plain message for
   /// anything that is not the envelope (a proxy's error page, say).

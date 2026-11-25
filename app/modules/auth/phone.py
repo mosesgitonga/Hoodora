@@ -59,19 +59,6 @@ def normalise_phone_number(raw: str, *, region: str = DEFAULT_REGION) -> str:
     return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
 
-def is_kenyan(e164: str) -> bool:
-    """Whether a normalised number is Kenyan.
-
-    Not used to reject anyone. It exists so later phases can reason about reach —
-    M-Pesa works on Kenyan numbers, and SMS costs differ by destination.
-    """
-    try:
-        parsed = phonenumbers.parse(e164, None)
-    except phonenumbers.NumberParseException:
-        return False
-    return phonenumbers.region_code_for_number(parsed) == DEFAULT_REGION
-
-
 def mask_for_display(e164: str) -> str:
     """A number with its middle hidden, for "we sent a code to +2547••••678".
 
