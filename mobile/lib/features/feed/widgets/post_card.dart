@@ -44,22 +44,27 @@ class InitialsAvatar extends StatelessWidget {
 
 /// The line under an author's name: area · distance band · time. The generic
 /// fallback label ("nearby", shown where too few people live to name the area)
-/// is left out, since the distance band says as much (decision U.4).
+/// is left out, since the distance band says as much (decision U.4). A stale
+/// alert's time is written in full, "3 weeks ago" (decision T.2).
 String postMeta(Post post) => [
       if (post.areaLabel.precision != 'generic') post.areaLabel.label,
       ?distanceLabel(post.distanceBucket),
-      timeAgo(post.createdAt),
+      post.isStaleAlert ? timeAgoInFull(post.createdAt) : timeAgo(post.createdAt),
       if (post.editedAt != null) 'edited',
     ].join(' · ');
 
 class CategoryTag extends StatelessWidget {
-  const CategoryTag(this.category, {super.key});
+  const CategoryTag(this.category, {super.key, this.quiet = false});
 
   final String category;
+
+  /// In the neutral colours whatever the category: an alert past its days.
+  final bool quiet;
 
   @override
   Widget build(BuildContext context) {
     final (bg, ink) = switch (category) {
+      _ when quiet => (Palette.sand, Palette.inkSoft),
       'alert' => (Palette.alertTint, Palette.alertInk),
       'lost_and_found' => (Palette.foundTint, Palette.foundInk),
       'question' => (Palette.trustTint, Palette.trustInk),
@@ -143,7 +148,7 @@ class PostCard extends StatelessWidget {
                     ),
                   ),
                   // An Update needs no label; the others are worth flagging (decision U.4).
-                  if (post.category != 'general') CategoryTag(post.category),
+                  if (post.category != 'general') CategoryTag(post.category, quiet: post.isStaleAlert),
                   if (onMore != null)
                     IconButton(
                       onPressed: onMore,

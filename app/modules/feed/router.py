@@ -221,6 +221,7 @@ async def get_feed(
         ),
         next_cursor=page.next_cursor,
         radius_km=page.radius.display_km(settings.radius_display_rounding_km),
+        recent_post_days=settings.feed_recent_post_days,
     )
 
 
@@ -273,6 +274,7 @@ async def get_guest_feed(
         next_cursor=page.next_cursor,
         area_label=AreaLabelOut(label=page.area.label, precision=page.area.precision),
         radius_km=page.radius.display_km(settings.radius_display_rounding_km),
+        recent_post_days=settings.feed_recent_post_days,
     )
 
 

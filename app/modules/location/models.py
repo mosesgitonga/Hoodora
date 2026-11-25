@@ -137,6 +137,11 @@ class CellActivity(Base):
     """Everyone whose home is in this cell, active or not. Used for k-anonymity,
     where what matters is how many people a label could refer to."""
 
+    recent_post_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    """Feed posts placed in this cell within `FEED_RECENT_POST_DAYS`, at most
+    `FEED_MAX_POSTS_PER_AUTHOR` per author across the whole window: the radius
+    engine's second condition (decision T.2). A count, nothing about who."""
+
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -145,6 +150,7 @@ class CellActivity(Base):
 
     __table_args__ = (
         CheckConstraint("active_user_count >= 0", name="cell_activity_active_non_negative"),
+        CheckConstraint("recent_post_count >= 0", name="cell_activity_recent_posts_non_negative"),
         CheckConstraint(
             "registered_user_count >= active_user_count",
             name="cell_activity_active_within_registered",

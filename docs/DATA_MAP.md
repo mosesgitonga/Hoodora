@@ -113,9 +113,10 @@ a user. Listed here because it is what makes location labels possible.
 
 ### `cell_activity`
 
-Aggregate counts per H3 cell: active and registered users. **Not personal data** —
-no row identifies anyone, and a cell with fewer than K users is exactly what
-causes a label to be withheld.
+Aggregate counts per H3 cell: active and registered users, and recent feed
+posts (`recent_post_count`, at most three per author, decision T.2). **Not
+personal data** — no row identifies anyone or says who posted, and a cell with
+fewer than K users is exactly what causes a label to be withheld.
 
 ### `audit_events`
 
@@ -141,7 +142,7 @@ log redaction filter uses, rather than trusting callers.
 | `signup:<hash>` | Phone number awaiting signup completion | Single-use ticket between verify and signup | 15 minutes |
 | `explore:<user id>` | **Where the phone is, as cells**, while it's away from home | Lists read from it, and new content is placed in it (decision L.1). The app sends it at launch and on coming back to the app | ~2 hours, renewed while the app is in use |
 | `arealabel:<cell>` | A resolved area label | Avoids recomputing k-anonymity per profile render | 1 hour |
-| `radius:feed:<cell>` | A cached feed radius | Stability and cost | 15 minutes |
+| `radius:feed:<cell>` | A cached feed radius: its ring, what set it (`limited_by`) and its km | Stability and cost | 15 minutes |
 | `rl:<bucket>:<identity>` | Rate-limit counters | Abuse and cost control | Window length |
 
 Two things to note. OTP keys are keyed by a **hash** of the phone number, not the

@@ -4935,3 +4935,166 @@ showed 0 requests at the time; they arrive with a delay.
   Cached photos are unaffected.
 - **Before launch,** Bunny joins the privacy notice's list of processors
   (DATA_MAP).
+
+## The feed radius also counts recent posts (2026-11-25)
+
+### Plan
+
+Asked for by the product owner. The feed radius grows ring by ring until it holds
+enough active users **and** enough recent posts. Older posts stay in the feed
+but no longer count toward it.
+
+#### What the code says (checked before building)
+
+- **The user target** is `FEED_TARGET_ACTIVE_USERS` and is **200**, not the
+  brief's 100 (decision T.1). **Decided: keep 200.**
+- **What the feed returns** (`feed_page`):
+  - status `visible` (so not `hidden_pending_review` or `removed`);
+  - not deleted;
+  - `group_id` null;
+  - within the radius;
+  - not from someone the viewer has blocked.
+  - Some consequences:
+    - **Group posts** never reach the feed, so they don't count.
+    - **Posts made as a service** (`service_post_id`) *do* reach it, so they
+      count.
+    - **Listings and service posts** are separate tables and never count.
+    - **Deleted accounts:** the purge soft-deletes their posts, so they don't
+      count.
+    - **Suspended and deletion-pending accounts:** their posts stay visible in
+      the feed. The brief says both "count exactly what the feed returns" and
+      "not from a suspended account". **Decided: they don't count.**
+- **Where a post is counted:** since L.1, a post carries the cell where the
+  phone was when it was posted, not the author's home. Counting each post in
+  "the cell it already carries" (`posts.cell_res8`) still holds: an author moving
+  home moves nothing. Exploring doesn't change it either way.
+- **Hysteresis today:** a cached radius is replaced only when the new one
+  differs by more than 20% *in km*.
+- **The reach estimate** ("visible to about N neighbours") reads only
+  `cell_activity.active_user_count` within the post's feed radius. It stays a
+  count of people. The radius it uses may now grow with posts, which only
+  widens who can see the post, so the meaning holds. It never counts posts.
+- **The other radii** (groups ×2, market ×2, services ×3, events ×2) are
+  multiples of the feed radius, so they follow it. That's confirmed in
+  `radius_rules`.
+
+#### Server
+
+- **Settings**, named after the existing one:
+
+  | Setting | Default |
+  | --- | --- |
+  | `FEED_TARGET_ACTIVE_USERS` | as decided |
+  | `FEED_TARGET_RECENT_POSTS` | 60 |
+  | `FEED_RECENT_POST_DAYS` | 30 |
+  | `FEED_MAX_POSTS_PER_AUTHOR` | 3 |
+  | `ALERT_FRESH_DAYS` | 3 |
+
+- **Counting:** `cell_activity.recent_post_count` (migration 0026), filled by
+  `refresh_cell_activity` (every 15 minutes) in one SQL statement per
+  resolution. The steps:
+  1. Take the feed-eligible posts in the window.
+  2. Rank each author's newest first (`row_number()` over `author_id`), across
+     the whole window, not per cell.
+  3. Keep the top 3 of each author.
+  4. Count by cell.
+  - Cells with posts but no residents get rows too.
+  - The stale-cell clean-up must not delete those rows.
+  - Query plan to be checked on a seeded table. The existing
+    `ix_posts_status_created_at_id` may cover the window; an index is added
+    only if the plan needs one.
+- **The engine:**
+  - One pass over the rings gives two running totals.
+  - `k_users` is the first ring where active users ≥ target, and `k_posts` the
+    first where counted posts ≥ target.
+  - The radius is ring `max(k_users, k_posts)`, with the same floor (1 km),
+    ceiling (15 km) and distance per ring.
+  - `limited_by` records which condition set it: users, posts, both, floor or
+    ceiling.
+- **Hysteresis per condition,** with `RADIUS_HYSTERESIS_RATIO` (0.2) on counts
+  rather than km. Against a cached radius R:
+  - **Grow** when *either* condition inside R falls below 80% of its target:
+    move out to the first ring where both are met.
+  - **Shrink** only when *both* are at least 120% of their targets inside the
+    smaller ring: move in to the first ring where both have that margin.
+  - **Otherwise keep R.**
+  - A week's burst of posts can't pull the radius in unless users are also
+    comfortably above target, and a quiet spell doesn't push it out until it's
+    20% short.
+- **Debugging:**
+  - `limited_by` goes in the radius log line and the cached entry.
+  - Not exposed to the app.
+  - The admin console doesn't get it in this round.
+
+#### Feed API and app
+
+- **`GET /v1/feed`** gains `recent_post_days` (30), so the app places an "Older
+  posts" divider where `created_at` crosses the window. No 30 is hard-coded in
+  the app.
+- **Every post** gains `fresh_alert`: true only for an alert younger than
+  `ALERT_FRESH_DAYS`. It is per post, because alerts also show on profiles, in
+  groups and on a post's own page.
+- **The app:**
+  - **Divider:** "Older posts" in the neighbourhood feed.
+  - **Stale alerts:** a stale alert's chip is neutral, and its time is written
+    in full ("3 weeks ago").
+  - **No recent posts:** if the first page has no recent post, "Ask your
+    neighbours something" shows at the top.
+
+#### Tests
+
+- **Engine:**
+  - users met but not posts, and the reverse;
+  - both met in ring 0 (floor);
+  - neither met by the ceiling (15 km).
+- **The window:** a post just inside and just outside its edge.
+- **The cap:** one author's ten posts count as three.
+- **Exclusions:** removed, hidden, deleted, group, listing and service posts
+  don't count.
+- **An author who moved home:** their posts stay in the cell they were posted
+  in.
+- **Hysteresis:** on each condition.
+- **`refresh_cell_activity`** against a slow Python reference count on a seeded
+  dataset.
+- **The reach estimate** still counts people only.
+- **App:**
+  - the divider's placement;
+  - a stale alert's chip and time;
+  - the prompt when nothing is recent.
+
+#### Shipping
+
+- **Server deploy:** the migration, the engine and the new fields.
+- **App:** Dart only, with no new icons, so it can ship as a Shorebird patch.
+  The product owner's phone has a local build, so it gets the change by adb.
+
+### Done
+
+Decision T.2.
+
+- **Server:**
+  - settings `FEED_TARGET_RECENT_POSTS` (60), `FEED_RECENT_POST_DAYS` (30),
+    `FEED_MAX_POSTS_PER_AUTHOR` (3), `ALERT_FRESH_DAYS` (3), `ALERT_CATEGORY`;
+  - migration 0026 adds `cell_activity.recent_post_count`, round-tripped on a
+    scratch database, and `alembic check` is clean;
+  - `refresh_cell_activity` counts posts in one statement per resolution;
+  - the engine totals both counts per ring, keeps `limited_by`, and applies
+    hysteresis to each count;
+  - the cache entry is now `<ring>|<limited_by>|<km>`; the old form is a miss.
+- **Query plan:** 200,000 posts (48,000 in the window) on a scratch database
+  took 78 ms per resolution, through the existing
+  `ix_posts_status_created_at_id`, so no index was added.
+- **Feed API:** `recent_post_days` on the member and guest feeds, and
+  `fresh_alert` on every post.
+- **App:** the "Older posts" divider; a stale alert gets a neutral chip and its
+  time in full; "Ask your neighbours something" goes to the top when nothing
+  on the first page is recent.
+- **Tests:**
+  - server: `tests/test_radius_posts.py` (22): both conditions, the floor and
+    the ceiling, the window's edge, the cap across the window, the
+    exclusions, a moved author, post-only cells, a slow reference count,
+    hysteresis on each condition, the old cache form, and the reach estimate;
+  - app: `test/recent_posts_test.dart` (10).
+- **Staging before the change, at named places:** Nyeri, King'ong'o, Mathari,
+  DeKUT and Kamakwa were all at 15 km, set by the ceiling, with 3 active users
+  within reach.

@@ -45,6 +45,10 @@ class RadiusRule(BaseModel, frozen=True):
     """Density target. Only the feed has one; the rest are multiples of the feed
     radius, so that every feature widens and narrows together as an area fills up."""
 
+    target_recent_posts: int | None = None
+    """The feed's second target: counted recent posts inside the rings (decision
+    T.2). None or 0 means no posts condition."""
+
     feed_multiplier: float | None = None
     min_km: float
     max_km: float
@@ -304,6 +308,22 @@ class Settings(BaseSettings):
     feed_target_active_users: int = Field(default=200, ge=1)
     feed_radius_min_km: float = Field(default=1.0, gt=0)
     feed_radius_max_km: float = Field(default=15.0, gt=0)
+
+    # The feed's rings must also hold enough recent posts (decision T.2), so an
+    # area where people rarely post widens until there is something to read.
+    feed_target_recent_posts: int = Field(default=60, ge=0)
+    """Counted recent posts the rings must hold as well as the active users. 0
+    turns the condition off."""
+    feed_recent_post_days: int = Field(default=30, ge=1, le=365)
+    """How recent a post must be to count. Older posts stay in the feed; the app
+    marks where they begin from `recent_post_days` in the feed response."""
+    feed_max_posts_per_author: int = Field(default=3, ge=1, le=100)
+    """Most posts one author counts across the window, so one busy poster cannot
+    shrink everyone's radius alone."""
+    alert_fresh_days: int = Field(default=3, ge=1, le=60)
+    """After this an alert stops looking urgent: `fresh_alert` turns false."""
+    alert_category: str = "alert"
+    """The post category that `fresh_alert` applies to."""
 
     groups_radius_multiplier: float = Field(default=2.0, gt=0)
     groups_radius_min_km: float = Field(default=2.0, gt=0)
@@ -894,6 +914,7 @@ class Settings(BaseSettings):
         return {
             RadiusFeature.feed: RadiusRule(
                 target_active_users=self.feed_target_active_users,
+                target_recent_posts=self.feed_target_recent_posts,
                 min_km=self.feed_radius_min_km,
                 max_km=self.feed_radius_max_km,
                 user_filter_max_km=None,

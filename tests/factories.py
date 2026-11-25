@@ -240,6 +240,7 @@ async def set_cell_density(
     active_per_cell: int,
     rings: int,
     registered_per_cell: int | None = None,
+    posts_per_cell: int | None = None,
     resolution: int = 8,
 ) -> int:
     """Populate `cell_activity` directly around a point.
@@ -248,10 +249,15 @@ async def set_cell_density(
     algorithm rather than about how the counts were derived. Tests of the refresh
     worker itself create real users instead.
 
+    Recent posts default to one per active user, so with the default targets
+    (200 users, 60 posts) the users condition is the one that binds, as it was
+    before decision T.2. Pass `posts_per_cell` to test the posts condition.
+
     Returns the anchor cell.
     """
     anchor = cells.locate(origin.latitude, origin.longitude).cell_at(resolution)
     registered = active_per_cell if registered_per_cell is None else registered_per_cell
+    posts = active_per_cell if posts_per_cell is None else posts_per_cell
     for k in range(rings + 1):
         for cell in cells.ring(anchor, k):
             session.add(
@@ -260,6 +266,7 @@ async def set_cell_density(
                     cell=cell,
                     active_user_count=active_per_cell,
                     registered_user_count=max(registered, active_per_cell),
+                    recent_post_count=posts,
                 )
             )
     await session.flush()

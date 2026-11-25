@@ -102,6 +102,13 @@ class PostOut(BaseModel):
     edited_at: datetime | None = Field(
         default=None, description="When the author last changed the text or category."
     )
+    fresh_alert: bool = Field(
+        default=False,
+        description=(
+            "True for an alert younger than `ALERT_FRESH_DAYS` (3). An older alert is "
+            "shown like any other post, so last month's warning does not read as news."
+        ),
+    )
     created_at: datetime
 
 
@@ -133,6 +140,13 @@ class FeedOut(BaseModel):
             "The radius this page was drawn from, rounded up to the next half "
             "kilometre, so every post on it is within this distance."
         )
+    )
+    recent_post_days: int = Field(
+        description=(
+            "How many days count as recent for the radius (`FEED_RECENT_POST_DAYS`). "
+            "Older posts still appear; the app marks where they begin."
+        ),
+        examples=[30],
     )
     sort: Literal["recent"] = Field(
         default="recent",
@@ -228,6 +242,13 @@ class GuestPostOut(BaseModel):
     distance_bucket: DistanceBucket | None = None
     comment_count: int
     reaction_count: int
+    fresh_alert: bool = Field(
+        default=False,
+        description=(
+            "True for an alert younger than `ALERT_FRESH_DAYS` (3). An older alert is "
+            "shown like any other post, so last month's warning does not read as news."
+        ),
+    )
     created_at: datetime
 
 
@@ -236,6 +257,7 @@ class GuestFeedOut(BaseModel):
     next_cursor: str | None = None
     area_label: AreaLabelOut = Field(description="Where the visitor is, as a member would see it.")
     radius_km: float
+    recent_post_days: int = Field(description="As on the member feed.", examples=[30])
 
 
 class StoryCreateIn(BaseModel):

@@ -2651,6 +2651,81 @@ other features follow, since they are multiples of the feed.
 **Trade-off.** Each feed draws on fewer neighbours, so a small reach can be
 quieter. The setting can be tuned per deployment without a release.
 
+### T.2 The feed radius also counts recent posts (2026-11-25)
+
+**Context.** The radius counted active people only. Where many people use the
+app but few post, the feed shrank to 1 to 2 km and showed little. The product
+owner asked for a second condition, so that an area widens until there is
+something to read.
+
+**Choice.** The rings grow until both hold:
+- at least `FEED_TARGET_ACTIVE_USERS` (200, kept) active users;
+- at least `FEED_TARGET_RECENT_POSTS` (60) counted recent posts.
+
+The floor (1 km), the ceiling (15 km) and the ring geometry are unchanged.
+
+**What counts as a recent post:**
+- made within `FEED_RECENT_POST_DAYS` (30);
+- one the neighbourhood feed can show: visible, not deleted, not in a group;
+  a post made as a service counts, since the feed shows it;
+- not from a suspended, banned or deletion-pending account (the product
+  owner's choice, though the feed still shows such posts);
+- at most `FEED_MAX_POSTS_PER_AUTHOR` (3) per author, their newest across the
+  whole window, so one busy poster can't shrink everyone's radius;
+- counted in the cell the post carries (where it was made, decision L.1), so
+  an author moving home moves none of them.
+
+Listings and service offerings are separate tables and never count.
+
+**How.**
+- `refresh_cell_activity` (every 15 minutes) stores the count in
+  `cell_activity.recent_post_count` (migration 0026): one statement per
+  resolution, ranking each author's posts with `row_number()`.
+  - Cells with posts but no residents get a row, kept until their posts age
+    out.
+  - Checked on 200,000 posts (48,000 in the window): 78 ms per resolution,
+    through the existing `ix_posts_status_created_at_id`, so no new index.
+- The engine reads both counts in its one query and totals them ring by ring.
+  `limited_by` records what set the radius: `users`, `posts`, `both`, `floor`
+  or `ceiling`. It goes in the `radius_moved` log line and the cache entry,
+  never to the app.
+
+**Hysteresis, per condition.** `RADIUS_HYSTERESIS_RATIO` (0.2) now applies to
+the counts, not to kilometres. Against the cached ring:
+- **Grow** when either count inside it falls below 80% of its target: out to
+  the first ring where both are met.
+- **Shrink** only when both reach 120% of their targets in a smaller ring: in
+  to the first ring where both have that margin.
+- **Otherwise keep** the cached ring.
+
+A burst of posts can't pull the radius in unless the people are comfortably
+there too.
+
+The cache entry is now `<ring>|<limited_by>|<km>`. An entry in the old
+kilometres-only form is a miss, so every radius is recounted once on deploy.
+
+**What follows from it:**
+- The other radii (groups, market, services, events) are multiples of the
+  feed's, so they widen with it.
+- The reach estimate ("visible to about N neighbours") still counts people
+  only. It is counted over the feed radius, which may now be wider, so it
+  still means who can see the post.
+
+**In the app:**
+- `GET /v1/feed` gains `recent_post_days`; the feed shows an "Older posts"
+  divider above the first post older than that.
+- If nothing on the first page is recent, "Ask your neighbours something" moves
+  from the end of the feed to the top.
+- Every post gains `fresh_alert`, true only for an alert younger than
+  `ALERT_FRESH_DAYS` (3). An older alert gets a neutral chip and its time in
+  full ("3 weeks ago"), so last month's warning doesn't read as news.
+- An older server sends neither field, and the app then behaves as before.
+
+**Trade-off.** In quiet areas the feed is wider, so it mixes places further
+apart, but it has something in it. Older posts still show; they just stop
+holding the radius in. All five settings can be tuned per deployment without
+a release, and `FEED_TARGET_RECENT_POSTS=0` turns the condition off.
+
 ## Sign-in
 
 ### A.1 Sign up with Google, or with a phone number (2026-11-23)

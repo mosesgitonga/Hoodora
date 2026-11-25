@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -97,6 +98,13 @@ async def _town_labels(
     return labels
 
 
+def is_fresh_alert(post: Post, settings: Settings, now: datetime) -> bool:
+    """An alert young enough to look urgent (`ALERT_FRESH_DAYS`)."""
+    return post.category == settings.alert_category and post.created_at > now - timedelta(
+        days=settings.alert_fresh_days
+    )
+
+
 async def post_views(
     session: AsyncSession,
     redis: Redis,
@@ -125,6 +133,7 @@ async def post_views(
         session, redis, (post.cell_res9 for post in posts if post.id in far), settings
     )
     mine = await reactions_by(session, user_id=viewer.id, post_ids=[post.id for post in posts])
+    now = datetime.now(UTC)
 
     views: list[PostOut] = []
     for post in posts:
@@ -162,6 +171,7 @@ async def post_views(
                 approval_status=post.approval_status,
                 pinned=post.pinned_at is not None,
                 edited_at=post.edited_at,
+                fresh_alert=is_fresh_alert(post, settings, now),
                 created_at=post.created_at,
             )
         )
@@ -182,6 +192,7 @@ async def guest_post_views(
         return []
     assets = await load_assets(session, [image.media_id for post in posts for image in post.images])
     labels = await _labels(session, redis, (post.cell_res9 for post in posts), settings)
+    now = datetime.now(UTC)
     return [
         GuestPostOut(
             id=post.id,
@@ -196,6 +207,7 @@ async def guest_post_views(
             distance_bucket=cells.bucket_between_cells(viewer_cell_res8, post.cell_res8),
             comment_count=post.comment_count,
             reaction_count=post.reaction_count,
+            fresh_alert=is_fresh_alert(post, settings, now),
             created_at=post.created_at,
         )
         for post in posts

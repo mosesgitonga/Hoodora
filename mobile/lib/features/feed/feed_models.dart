@@ -113,6 +113,7 @@ class Post {
     this.approvalStatus,
     this.pinned = false,
     this.editedAt,
+    this.freshAlert,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
@@ -135,6 +136,7 @@ class Post {
         approvalStatus: json['approval_status'] as String?,
         pinned: json['pinned'] as bool? ?? false,
         editedAt: json['edited_at'] == null ? null : DateTime.parse(json['edited_at'] as String),
+        freshAlert: json['fresh_alert'] as bool?,
       );
 
   final String id;
@@ -160,6 +162,14 @@ class Post {
   /// When the author last changed the text or category; null if never.
   final DateTime? editedAt;
 
+  /// From the server: an alert young enough to look urgent (`ALERT_FRESH_DAYS`).
+  /// Null from a server that predates it, which leaves every alert as it was.
+  final bool? freshAlert;
+
+  /// An alert past its days: shown like any other post, its time in full, so
+  /// last month's warning does not read as news (decision T.2).
+  bool get isStaleAlert => category == 'alert' && freshAlert == false;
+
   bool get isHeld => status == 'hidden_pending_review';
   bool get awaitsApproval => approvalStatus == 'pending';
   String get categoryLabel => postCategories[category] ?? category;
@@ -182,6 +192,7 @@ class Post {
       approvalStatus: approvalStatus,
       pinned: pinned,
       editedAt: editedAt,
+      freshAlert: freshAlert,
     );
   }
 }
@@ -261,8 +272,21 @@ class ResultPage<T> {
 }
 
 class FeedPage extends ResultPage<Post> {
-  const FeedPage(super.items, super.nextCursor, {required this.radiusKm});
+  const FeedPage(super.items, super.nextCursor, {required this.radiusKm, this.recentPostDays});
   final double radiusKm;
+
+  /// How many days count as recent (`FEED_RECENT_POST_DAYS`); older posts sit
+  /// under an "Older posts" divider. Null from a server that predates it.
+  final int? recentPostDays;
+}
+
+/// Where the older posts begin in a newest-first list: the index of the first
+/// one older than [days], or null if there is none (or [days] is unknown).
+int? firstOlderPost(List<Post> posts, int? days, {DateTime? now}) {
+  if (days == null) return null;
+  final since = (now ?? DateTime.now()).subtract(Duration(days: days));
+  final index = posts.indexWhere((post) => post.createdAt.isBefore(since));
+  return index < 0 ? null : index;
 }
 
 /// The one reaction a post offers, by its category, as the server's
@@ -285,4 +309,18 @@ String timeAgo(DateTime moment, {DateTime? now}) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   final date = '${local.day} ${months[local.month - 1]}';
   return local.year == current.year ? date : '$date ${local.year}';
+}
+
+/// How long ago, in words: "5 days ago", "3 weeks ago", "2 months ago". For a
+/// stale alert, where the age is the point (decision T.2).
+String timeAgoInFull(DateTime moment, {DateTime? now}) {
+  final elapsed = (now ?? DateTime.now()).difference(moment);
+  String ago(int n, String unit) => '$n $unit${n == 1 ? '' : 's'} ago';
+  if (elapsed.inMinutes < 60) return ago(elapsed.inMinutes < 1 ? 1 : elapsed.inMinutes, 'minute');
+  if (elapsed.inHours < 24) return ago(elapsed.inHours, 'hour');
+  final days = elapsed.inDays;
+  if (days < 14) return ago(days, 'day');
+  if (days < 60) return ago(days ~/ 7, 'week');
+  if (days < 365) return ago(days ~/ 30, 'month');
+  return ago(days ~/ 365, 'year');
 }

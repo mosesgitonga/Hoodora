@@ -143,6 +143,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         (hints.contains(Hint.posted(me.id)) ||
             me.starterPostsLeft < 3 ||
             feed.posts.any((post) => post.author.id == me.id));
+    // Where the posts older than the radius's window begin (decision T.2).
+    final olderFrom = firstOlderPost(feed.posts, feed.recentPostDays);
+    final askButton = OutlinedButton.icon(
+      onPressed: () => context.push(Routes.compose, extra: 'question'),
+      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+      icon: const Icon(Icons.help_outline_rounded, size: 18),
+      label: const Text('Ask your neighbours something'),
+    );
 
     return Scaffold(
       drawer: HomeMenu(area: home, radiusKm: radius),
@@ -264,13 +272,27 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   ),
                 )
               else ...[
+                // Nothing recent on the first page: the way on is to ask (decision T.2).
+                if (olderFrom == 0)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                      child: Column(
+                        children: [
+                          Text('Nothing new around here lately', style: text.bodySmall),
+                          const SizedBox(height: 8),
+                          askButton,
+                        ],
+                      ),
+                    ),
+                  ),
                 SliverList.separated(
                   itemCount: feed.posts.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final post = feed.posts[index];
                     final mine = post.author.id == me?.id;
-                    return Padding(
+                    final card = Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: PostCard(
                         post: post,
@@ -281,6 +303,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         onAuthor: () => openProfile(context, ref, post.author.id),
                       ),
                     );
+                    if (index != olderFrom) return card;
+                    return Column(children: [const _OlderPostsDivider(), card]);
                   },
                 ),
                 SliverToBoxAdapter(
@@ -291,17 +315,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           ? CircularProgressIndicator(color: Palette.primary)
                           : feed.hasMore
                               ? const SizedBox.shrink()
-                              // The end of the feed is a nudge to start something (decision U.4).
+                              // The end of the feed is a nudge to start something
+                              // (decision U.4), unless the top already is.
                               : Column(
                                   children: [
                                     Text("You're all caught up", style: text.bodySmall),
-                                    const SizedBox(height: 8),
-                                    OutlinedButton.icon(
-                                      onPressed: () => context.push(Routes.compose, extra: 'question'),
-                                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
-                                      icon: const Icon(Icons.help_outline_rounded, size: 18),
-                                      label: const Text('Ask your neighbours something'),
-                                    ),
+                                    if (olderFrom != 0) ...[const SizedBox(height: 8), askButton],
                                   ],
                                 ),
                     ),
@@ -311,6 +330,29 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Above the first post older than the radius's window. The posts under it
+/// are still near; they just no longer count toward the radius.
+class _OlderPostsDivider extends StatelessWidget {
+  const _OlderPostsDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: Palette.line, height: 1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text('Older posts', style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Palette.muted)),
+          ),
+          Expanded(child: Divider(color: Palette.line, height: 1)),
+        ],
       ),
     );
   }

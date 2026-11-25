@@ -38,6 +38,8 @@ async def test_a_visitor_sees_nearby_posts_without_authors(
     assert str(author.id) not in response.text
     assert body["area_label"]["label"]
     assert body["radius_km"] > 0
+    assert body["recent_post_days"] == 30
+    assert item["fresh_alert"] is False
 
 
 async def test_hidden_removed_deleted_and_group_posts_stay_out(

@@ -36,6 +36,7 @@ class FeedRepository {
       [for (final item in data['items'] as List) Post.fromJson(Map<String, dynamic>.from(item as Map))],
       data['next_cursor'] as String?,
       radiusKm: (data['radius_km'] as num).toDouble(),
+      recentPostDays: data['recent_post_days'] as int?,
     );
   }
 

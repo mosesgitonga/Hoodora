@@ -10,6 +10,7 @@ class FeedState {
     this.posts = const [],
     this.nextCursor,
     this.radiusKm,
+    this.recentPostDays,
     this.loading = true,
     this.loadingMore = false,
     this.error,
@@ -18,6 +19,9 @@ class FeedState {
   final List<Post> posts;
   final String? nextCursor;
   final double? radiusKm;
+
+  /// Days that count as recent, from the first page (see [FeedPage]).
+  final int? recentPostDays;
   final bool loading;
   final bool loadingMore;
   final ApiException? error;
@@ -38,6 +42,8 @@ class FeedState {
       posts: posts ?? this.posts,
       nextCursor: clearCursor ? null : (nextCursor ?? this.nextCursor),
       radiusKm: radiusKm ?? this.radiusKm,
+      // Kept: set by a first page, which builds a new state.
+      recentPostDays: recentPostDays,
       loading: loading ?? this.loading,
       loadingMore: loadingMore ?? this.loadingMore,
       error: clearError ? null : (error ?? this.error),
@@ -79,6 +85,7 @@ class FeedController extends Notifier<FeedState> {
         posts: page.items,
         nextCursor: page.nextCursor,
         radiusKm: page.radiusKm,
+        recentPostDays: page.recentPostDays,
         loading: false,
       );
     } on ApiException catch (error) {

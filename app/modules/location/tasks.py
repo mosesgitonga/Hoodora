@@ -47,8 +47,50 @@ GROUP BY {column}
 ON CONFLICT (resolution, cell) DO UPDATE SET
     active_user_count = EXCLUDED.active_user_count,
     registered_user_count = EXCLUDED.registered_user_count,
+    recent_post_count = 0,
     computed_at = EXCLUDED.computed_at
 """
+
+# Recent posts per cell (decision T.2), after the users' statement above has
+# zeroed the old counts. Exactly the posts the neighbourhood feed can show
+# (visible, undeleted, outside groups) from an active account, within the window;
+# each author's newest `per_author` across the whole window, not per cell; placed
+# in the cell each post carries. Cells with posts but no residents get a row.
+_RECENT_POSTS_SQL = """
+WITH ranked AS (
+    SELECT
+        p.{column} AS cell,
+        row_number() OVER (
+            PARTITION BY p.author_id ORDER BY p.created_at DESC, p.id DESC
+        ) AS rank
+    FROM posts AS p
+    JOIN users AS u ON u.id = p.author_id
+    WHERE p.created_at >= :recent_since
+      AND p.status = 'visible'
+      AND p.deleted_at IS NULL
+      AND p.group_id IS NULL
+      AND u.status = 'active'
+      AND u.deleted_at IS NULL
+)
+INSERT INTO cell_activity (
+    resolution, cell, active_user_count, registered_user_count, recent_post_count, computed_at
+)
+SELECT :resolution, cell, 0, 0, count(*), :computed_at
+FROM ranked
+WHERE rank <= :per_author
+GROUP BY cell
+ON CONFLICT (resolution, cell) DO UPDATE SET
+    recent_post_count = EXCLUDED.recent_post_count,
+    computed_at = EXCLUDED.computed_at
+"""
+
+# Resolution to the post column holding it: posts carry the cell they were made
+# in, so an author moving home moves none of them.
+POST_RESOLUTION_COLUMNS: dict[int, str] = {
+    8: "cell_res8",
+    7: "cell_res7",
+    6: "cell_res6",
+}
 
 # Resolution to the user column holding it. Fixed in code: these are the only
 # resolutions stored, and the mapping is what keeps the SQL above injection-free.
@@ -81,6 +123,7 @@ async def refresh_cell_activity(
     """
     computed_at = now or datetime.now(UTC)
     active_since = computed_at - timedelta(days=settings.active_user_window_days)
+    recent_since = computed_at - timedelta(days=settings.feed_recent_post_days)
 
     updated = 0
     for resolution, column in RESOLUTION_COLUMNS.items():
@@ -90,6 +133,16 @@ async def refresh_cell_activity(
             {
                 "resolution": resolution,
                 "active_since": active_since,
+                "computed_at": computed_at,
+            },
+        )
+        await execute_dml(
+            session,
+            text(_RECENT_POSTS_SQL.format(column=POST_RESOLUTION_COLUMNS[resolution])),
+            {
+                "resolution": resolution,
+                "recent_since": recent_since,
+                "per_author": settings.feed_max_posts_per_author,
                 "computed_at": computed_at,
             },
         )
