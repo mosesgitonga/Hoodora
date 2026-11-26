@@ -214,7 +214,7 @@ describe("My account", () => {
     const api = await openAs("moderator", "/account", { "POST /me/password": { status: 204 } });
     await userEvent.type(await screen.findByLabelText("Current password", {}, { timeout: 8000 }), "old password here");
     await userEvent.type(screen.getByLabelText("New password"), "a much longer password");
-    await userEvent.type(screen.getByLabelText("Authenticator code"), "654321");
+    await userEvent.type(await screen.findByLabelText("Authenticator code"), "654321");
     await userEvent.click(screen.getByRole("button", { name: "Change password" }));
     expect(await findText("Password changed.")).toBeInTheDocument();
     expect(api.calls.find((c) => c.path === "/me/password")?.body).toEqual({

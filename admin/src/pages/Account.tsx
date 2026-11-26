@@ -47,7 +47,7 @@ export function Account() {
           <Form.Item name="new_password" label="New password" rules={[{ required: true, min: 12, message: "At least 12 characters." }]}>
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          {needsCode !== false ? (
+          {needsCode === true ? (
             <Form.Item name="code" label="Authenticator code" rules={[{ required: true, pattern: /^\d{6}$/, message: "The 6 digits from your authenticator app." }]}>
               <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
             </Form.Item>

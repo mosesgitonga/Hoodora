@@ -21,7 +21,9 @@ const REASONS = {
 export function SignIn() {
   const { mutate: login, isPending } = useLogin<Values>();
   const [failure, setFailure] = useState<string | null>(null);
-  // Whether to ask for the authenticator code (decision D.7); asked once.
+  // Whether to ask for the authenticator code (decision D.7), asked once. The
+  // field only appears once it is known to be needed (or the answer can't be
+  // had), so nobody starts typing into a field that then goes away.
   const needsCode = useCodeRequired();
   // Why the last session ended, if it did not end by choice.
   const reason = signOutReason();
@@ -54,7 +56,7 @@ export function SignIn() {
           <Form.Item name="password" label="Password" rules={[{ required: true, message: "Enter your password." }]}>
             <Input.Password autoComplete="current-password" />
           </Form.Item>
-          {needsCode !== false ? (
+          {needsCode === true ? (
             <Form.Item
               name="code"
               label="Authenticator code"

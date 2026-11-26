@@ -12,7 +12,7 @@ async function fillSignIn(code = "123456") {
   const user = userEvent.setup();
   await user.type(await screen.findByLabelText("Email"), "otieno@hoodora.test");
   await user.type(screen.getByLabelText("Password"), "correct horse battery");
-  await user.type(screen.getByLabelText("Authenticator code"), code);
+  await user.type(await screen.findByLabelText("Authenticator code"), code);
   await user.click(screen.getByRole("button", { name: "Sign in" }));
 }
 
