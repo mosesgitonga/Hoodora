@@ -5430,7 +5430,21 @@ Decisions D.1 to D.6.
      - the moderator was deactivated (now Disabled).
   4. **Clean-up:** the two test user accounts were closed (deleted, as a purge
      leaves them) and the helper script removed.
-- **Still to do:** an admin account for the product owner (their temporary
-  password and authenticator key go in a root-only file on the server, not in
-  chat), then the test admin is deactivated.
+- **The product owner's admin:**
+  - created from the API by the test admin;
+  - its temporary password and authenticator key went straight into
+    `/root/hoodora-admin.txt` (mode 600), never into the chat or a log;
+  - the 9-character password they suggested was under the 12-character
+    minimum, so they set their own after signing in;
+  - their account is the only active staff account.
+- **The test admin was deactivated by hand,** because no admin can deactivate
+  itself through the API, in one transaction:
+  - `disabled_at` set and its sessions revoked;
+  - an audit row (`staff_account_updated`, actor `system`) saying why.
+
+  Signing in as it now gets 401. Both test staff accounts are disabled, and my
+  local copies of their details are deleted.
+- **Deploys run by themselves again:** `33b1a54` (the readable-build fix) went out
+  through CI and the Deploy workflow. Its dashboard build is served without a
+  hand step.
 
