@@ -187,3 +187,41 @@ jobs:
 
       - name: Test
         run: flutter test
+
+  admin:
+    name: Admin dashboard tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to the Node the VPS builds with (admin/Dockerfile).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.3"
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Install packages
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        env:
+          VITE_API_BASE_URL: https://myradius.chatara.co
+        run: npm run build
+
+      # The same image the deploy builds on the VPS, so a broken one fails here.
+      - name: Build as the VPS does
+        run: >-
+          docker build -f Dockerfile
+          --build-arg VITE_API_BASE_URL=https://myradius.chatara.co
+          --output type=local,dest=${{ runner.temp }}/admin-dist .
+          && test -f ${{ runner.temp }}/admin-dist/index.html

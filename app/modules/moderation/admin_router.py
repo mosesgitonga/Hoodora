@@ -7,9 +7,11 @@ and the audit log are for admins.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, status
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,10 +19,12 @@ from app.core.config import Settings, get_settings
 from app.core.db import SessionDep
 from app.core.pagination import CursorPage, PageParams, page_params, paginate
 from app.core.providers.storage import StorageProvider, get_storage_provider
+from app.core.ratelimit import rate_limit
+from app.core.redis import get_redis
 from app.modules.auth.phone import normalise_phone_number
 from app.modules.feed.views import load_assets
 from app.modules.media.views import image_variants
-from app.modules.moderation import console
+from app.modules.moderation import console, stats
 from app.modules.moderation.admin_schemas import (
     AccountSummaryOut,
     ActionOut,
@@ -32,17 +36,20 @@ from app.modules.moderation.admin_schemas import (
     ContentDetailOut,
     ContentImageOut,
     ContentOut,
+    LookupIn,
     NoteIn,
     PhoneBanIn,
     QueueItemOut,
     RemoveIn,
     ResolveIn,
     RestrictIn,
+    StatsOut,
     SuspendIn,
     UserHistoryOut,
     WarnIn,
     WarningOut,
 )
+from app.modules.moderation.audit import record_audit_event
 from app.modules.moderation.models import (
     AuditAction,
     AuditActorType,
@@ -63,6 +70,7 @@ router = APIRouter(prefix="/admin", tags=["admin: moderation"])
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 StorageDep = Annotated[StorageProvider, Depends(get_storage_provider)]
 PageDep = Annotated[PageParams, Depends(page_params)]
+RedisDep = Annotated[Redis, Depends(get_redis)]
 
 
 def _report_out(report: Report) -> AdminReportOut:
@@ -267,6 +275,43 @@ async def resolve_reports(
 # ---------------------------------------------------------------------------
 # Accounts
 # ---------------------------------------------------------------------------
+_lookup_limit = rate_limit(bucket="staff_lookup", limit=60, window_seconds=3600, scope="user")
+
+
+@router.post(
+    "/users/lookup",
+    response_model=list[AccountSummaryOut],
+    summary="Find a person by phone number",
+    description=(
+        "An exact match on the normalised number: one account or none. The number "
+        "goes in the body so it never reaches an access log, and is never sent back. "
+        "Every lookup is audited, found or not (decision D.2). 60 an hour per staff "
+        "member."
+    ),
+)
+async def lookup_user(
+    payload: LookupIn,
+    staff: CurrentStaff,
+    session: SessionDep,
+    # After `staff`, so the limit counts per staff member rather than per IP.
+    _limit: Annotated[None, Depends(_lookup_limit)],
+) -> list[AccountSummaryOut]:
+    number = normalise_phone_number(payload.phone_number)
+    found = await session.scalar(
+        select(User).where(User.phone_number == number, User.deleted_at.is_(None))
+    )
+    await record_audit_event(
+        session,
+        action=AuditAction.user_looked_up,
+        actor_type=AuditActorType.moderator,
+        actor_id=staff.id,
+        target_type="user" if found else None,
+        target_id=found.id if found else None,
+        context={"by": "phone", "found": found is not None},
+    )
+    return [AccountSummaryOut.of(found)] if found else []
+
+
 @router.get(
     "/users/{user_id}",
     response_model=UserHistoryOut,
@@ -472,7 +517,7 @@ async def unban_user(
     "/audit",
     response_model=CursorPage[AuditEventOut],
     summary="The audit log (admin)",
-    description="Newest first. Filter by actor, action or target.",
+    description="Newest first. Filter by actor, action, target or time.",
 )
 async def get_audit_log(
     admin: AdminStaff,
@@ -482,8 +527,16 @@ async def get_audit_log(
     actor_id: Annotated[uuid.UUID | None, Query()] = None,
     action: Annotated[AuditAction | None, Query()] = None,
     target_id: Annotated[uuid.UUID | None, Query()] = None,
+    since: Annotated[
+        datetime | None, Query(description="From this moment, inclusive (decision D.2).")
+    ] = None,
+    until: Annotated[datetime | None, Query(description="Before this moment.")] = None,
 ) -> CursorPage[AuditEventOut]:
     statement = select(AuditEvent)
+    if since is not None:
+        statement = statement.where(AuditEvent.created_at >= since)
+    if until is not None:
+        statement = statement.where(AuditEvent.created_at < until)
     if actor_type is not None:
         statement = statement.where(AuditEvent.actor_type == actor_type)
     if actor_id is not None:
@@ -583,3 +636,23 @@ async def list_device_bans(
 )
 async def lift_device_ban(ban_id: uuid.UUID, admin: AdminStaff, session: SessionDep) -> None:
     await console.lift_ban_entry(session, staff=admin, model=BannedDevice, ban_id=ban_id)
+
+
+# ---------------------------------------------------------------------------
+# The overview (admin)
+# ---------------------------------------------------------------------------
+@router.get(
+    "/stats",
+    response_model=StatsOut,
+    summary="The dashboard's overview numbers (admin)",
+    description=(
+        "Counts only, never a person (decision D.3): the last 30 days in Nairobi "
+        "time, the current totals, and the feed radius across the people using the "
+        "app. Cached for `ADMIN_STATS_CACHE_SECONDS` (300); `generated_at` says when "
+        "it was counted."
+    ),
+)
+async def get_stats(
+    admin: AdminStaff, session: SessionDep, redis: RedisDep, settings: SettingsDep
+) -> StatsOut:
+    return await stats.overview(session, redis, settings=settings)

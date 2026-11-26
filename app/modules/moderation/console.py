@@ -165,14 +165,10 @@ def _decode_queue_cursor(cursor: str) -> tuple[int, datetime, uuid.UUID]:
         raise InvalidCursorError from exc
 
 
-async def queue(
-    session: AsyncSession,
-    *,
-    limit: int,
-    cursor: str | None,
-    target_type: ReportTargetType | None = None,
-) -> tuple[list[QueueItem], str | None]:
-    """One page of the queue: worst first, then longest waiting."""
+def _queue_rows() -> Any:
+    """Everything waiting for a moderator, one row per thing: pending reports
+    grouped by target, and held content. Shared by the queue and its summary, so
+    the overview's numbers are the queue's own."""
     reported = (
         select(
             cast(Report.target_type, String).label("target_type"),
@@ -191,7 +187,7 @@ async def queue(
     for kind, model in STATUS_MODELS.items():
         parts.append(_held_rows(kind, model))
     combined = union_all(*parts).subquery("combined")
-    grouped = (
+    return (
         select(
             combined.c.target_type,
             combined.c.target_id,
@@ -203,6 +199,54 @@ async def queue(
         .group_by(combined.c.target_type, combined.c.target_id)
         .subquery("grouped")
     )
+
+
+@dataclass(frozen=True, slots=True)
+class QueueSummary:
+    waiting: int
+    """Things in the queue: reported, held, or both."""
+    held: int
+    """Held or hidden content waiting for a moderator."""
+    open_reports: int
+    oldest_open_report_at: datetime | None
+    oldest_waiting_since: datetime | None
+
+
+async def queue_summary(session: AsyncSession) -> QueueSummary:
+    """The queue's size and age, for the dashboard's overview (decision D.3)."""
+    grouped = _queue_rows()
+    waiting, oldest = (
+        await session.execute(select(func.count(), func.min(grouped.c.since)).select_from(grouped))
+    ).one()
+    held = 0
+    for kind, model in STATUS_MODELS.items():
+        rows = _held_rows(kind, model).subquery()
+        held += int(await session.scalar(select(func.count()).select_from(rows)) or 0)
+    reports, oldest_report = (
+        await session.execute(
+            select(func.count(Report.id), func.min(Report.created_at)).where(
+                Report.status == ReportStatus.pending
+            )
+        )
+    ).one()
+    return QueueSummary(
+        waiting=int(waiting or 0),
+        held=held,
+        open_reports=int(reports or 0),
+        oldest_open_report_at=oldest_report,
+        oldest_waiting_since=oldest,
+    )
+
+
+async def queue(
+    session: AsyncSession,
+    *,
+    limit: int,
+    cursor: str | None,
+    target_type: ReportTargetType | None = None,
+) -> tuple[list[QueueItem], str | None]:
+    """One page of the queue: worst first, then longest waiting."""
+    grouped = _queue_rows()
     statement = select(grouped)
     if target_type is not None:
         statement = statement.where(grouped.c.target_type == target_type.value)

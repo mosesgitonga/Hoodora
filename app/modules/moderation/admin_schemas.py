@@ -6,6 +6,7 @@ history. Never a phone number, a location, or a cell.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from datetime import datetime
 from typing import Any, Literal
@@ -21,6 +22,14 @@ from app.modules.moderation.models import (
 )
 from app.modules.users.models import User, UserStatus
 from app.modules.users.standing import is_restricted
+
+
+class LookupIn(BaseModel):
+    """In the body, not the query string, so the number never reaches an access log."""
+
+    phone_number: str = Field(
+        min_length=4, max_length=32, description="As typed; normalised as at sign-in."
+    )
 
 
 class AccountSummaryOut(BaseModel):
@@ -195,3 +204,61 @@ class BanEntryOut(BaseModel):
     reason: str | None
     staff_id: uuid.UUID | None
     created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# The overview (decision D.3): counts only, never a person
+# ---------------------------------------------------------------------------
+class DayCountsOut(BaseModel):
+    date: dt.date = Field(description="A day in Nairobi time.")
+    sign_ups: int
+    posts: int = Field(description="Created that day, wherever they are now.")
+    listings: int
+    reports_opened: int
+    reports_resolved: int
+
+
+class ActiveUsersOut(BaseModel):
+    """Accounts in good standing that opened the app within each window. Only
+    the latest activity is kept, so there is no history per day."""
+
+    last_day: int
+    last_7_days: int
+    last_14_days: int = Field(description="The radius engine's own definition of active.")
+    last_30_days: int
+
+
+class TotalsOut(BaseModel):
+    users: int = Field(description="Accounts not deleted.")
+    active: ActiveUsersOut
+    open_reports: int
+    held_items: int
+    waiting: int = Field(description="Things in the moderation queue: reported, held, or both.")
+    oldest_open_report_at: datetime | None
+    oldest_waiting_since: datetime | None = Field(
+        description="When the thing that has waited longest in the queue began waiting."
+    )
+
+
+class RadiusBandOut(BaseModel):
+    from_km: float = Field(description="Exclusive, except for the first band.")
+    to_km: float = Field(description="Inclusive.")
+    people: int
+
+
+class RadiusSpreadOut(BaseModel):
+    """Active people by the feed radius their home gets now (decision T.2)."""
+
+    people: int
+    bands: list[RadiusBandOut]
+    by_condition: dict[str, int] = Field(
+        description="What set each radius: `users`, `posts`, `both`, `floor` or `ceiling`."
+    )
+
+
+class StatsOut(BaseModel):
+    generated_at: datetime
+    timezone: Literal["Africa/Nairobi"] = "Africa/Nairobi"
+    days: list[DayCountsOut] = Field(description="The last 30 days, oldest first, today last.")
+    totals: TotalsOut
+    radius: RadiusSpreadOut

@@ -262,6 +262,78 @@ billing are the product owner's.
 - **Rolling back:** empty `STORAGE_PUBLIC_BASE_URL` and `BUNNY_TOKEN_KEY` and
   restart `api` and `worker`. Photos go back to presigned URLs straight away.
 
+### Admin dashboard (decision D.6, from 2026-11-25)
+
+The moderation dashboard (`admin/`) is static files on its own subdomain. It
+calls the API at `https://myradius.chatara.co`, which allows its origin on
+`/v1/admin` only.
+
+**On the server:**
+
+| What | Where |
+| --- | --- |
+| The site | `/etc/nginx/sites-available/myradius-admin.chatara.co`, from `deploy/vps/nginx-myradius-admin.conf` |
+| Its files | `/srv/myradius-admin/current`, a symlink to `releases/<sha>` (the last three are kept) |
+| The IP allowlist | `/etc/nginx/snippets/myradius-admin-allow.conf`, included by the dashboard's site and by the API's `location /v1/admin/` |
+| The API's setting | `ADMIN_CORS_ORIGINS=https://myradius-admin.chatara.co` in `.env.production` |
+
+**Setting it up, once:**
+
+1. **DNS (the product owner's job).** Add this record where `chatara.co` is
+   managed:
+
+   | Name | Type | Value | Proxy |
+   | --- | --- | --- | --- |
+   | `myradius-admin` | `A` | `77.237.238.14` | DNS only |
+
+   There is no AAAA record: the server is reached over IPv4, like
+   `myradius.chatara.co`.
+2. **The site, the allowlist and the releases folder.** `bootstrap.sh`
+   installs all three, or install them by hand. Either way, test before reloading,
+   because the other projects' sites share this nginx:
+   ```sh
+   nginx -t && systemctl reload nginx
+   ```
+3. **The certificate,** once the name resolves to the server:
+   ```sh
+   certbot --nginx -d myradius-admin.chatara.co
+   ```
+   It adds the TLS lines and the HTTP-to-HTTPS redirect to the site file.
+4. **The API's setting.** Set `ADMIN_CORS_ORIGINS` in `.env.production`. The next
+   deploy picks it up, or run `docker compose ... up -d api`.
+
+**Each deploy:**
+- `deploy.sh` builds `admin/` for the commit, in `node:24.22.3-alpine`, before
+  the API restarts. A failed build stops the deploy with nothing changed.
+- Once `/ready` answers, it moves `current` to the new build.
+- The API address the build calls comes from `ADMIN_API_BASE_URL` in
+  `.env.production`, defaulting to `https://myradius.chatara.co`.
+
+**The headers,** to check after any change:
+```sh
+curl -sI https://myradius-admin.chatara.co/ | grep -iE 'content-security|x-frame|referrer|robots'
+```
+- The CSP carries a fresh `nonce-…` on every request, and the same value is in
+  the page's `csp-nonce` meta (decision D.5).
+- `index.html` is served with `Cache-Control: no-cache`; `/assets/` is cached for a
+  year.
+
+**Turning the IP allowlist on.** It is off by default, because the product
+owner's mobile IP changes. To restrict the dashboard and `/v1/admin` to fixed
+addresses:
+```sh
+cat > /etc/nginx/snippets/myradius-admin-allow.conf <<'ALLOW'
+allow 203.0.113.7;      # the office
+allow 198.51.100.0/24;  # a VPN's range
+deny all;
+ALLOW
+nginx -t && systemctl reload nginx
+```
+- Anyone else gets 403 from nginx, before the API sees the request.
+- The mobile app is unaffected: it never calls `/v1/admin`.
+- To turn it off again, leave only comments in the file and reload.
+- If a changed IP locks you out, SSH in and edit the file: SSH isn't behind it.
+
 ### Continuous deployment
 
 1. **CI first.** A push to `main` runs CI.
@@ -274,10 +346,13 @@ billing are the product owner's.
    - checks that commit out;
    - runs `deploy/vps/deploy.sh`.
 4. **`deploy.sh`:**
+   - builds the admin dashboard for the commit (decision D.6). A failed build
+     stops here, with nothing changed;
    - backs up the database first if the release changes migrations;
    - runs `docker compose up -d --build`, and the API migrates as it starts;
    - waits for `/ready`. If it never comes, it checks the previous commit out,
-     starts that again, and fails the workflow.
+     starts that again, and fails the workflow;
+   - once the API is live, moves the dashboard's `current` to the new build.
 5. **The final check:** the workflow then calls `https://myradius.chatara.co/ready`.
 
 Repository secrets: `DEPLOY_SSH_KEY` (the deploy key's private half) and

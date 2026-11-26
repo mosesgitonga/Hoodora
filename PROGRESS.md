@@ -5169,3 +5169,224 @@ by hand against the whole repository, tests and deployment files included.
   emulator's `10.0.2.2:8000`, so the build needs `API_BASE_URL` and
   `APP_BUILD`.
 
+## The admin dashboard (web) (2026-11-25)
+
+### Plan
+
+Asked for by the product owner: a web dashboard over the Phase 8 admin API, in a
+new top-level `admin/`, plus one new endpoint, `GET /v1/admin/stats`.
+
+#### What the admin API offers (checked before planning)
+
+- **Staff sign-in:**
+  - `POST /v1/admin/auth/sign-in` takes email, password and code together, and
+    gives every failure the same answer. It is limited to 10 tries per IP per
+    15 minutes, and repeated failures lock the account.
+  - It returns a bearer token, valid for `STAFF_SESSION_TTL_HOURS` (8).
+  - **There is no refresh.** When the token ends, the person signs in again.
+    `POST /auth/sign-out` ends the session at once. `GET /me` gives the role,
+    and `POST /me/password` changes the password.
+- **Moderators and admins:**
+  - the queue: one row per thing, worst reason first, then longest waiting;
+  - a thing in full, with its images and reports;
+  - remove, restore, and resolve (upheld or dismissed);
+  - a person's history;
+  - warn, suspend and unsuspend, restrict and unrestrict, badge revoke (with
+    a lock) and unlock.
+- **Admins only:** ban and unban, the audit log, the phone and device ban
+  lists, and staff (list, create, rename, change role, disable, reset
+  credentials).
+- **Gaps against the brief:**
+  - **People can only be looked up by ID.** **Decided:** add an exact lookup by
+    phone number (`GET /v1/admin/users?phone=`), for moderators and admins,
+    with every lookup audited. The number is never shown back.
+  - **The audit log can't be filtered by date** (it filters by actor, action
+    and target). **Decided:** add `since` and `until`.
+  - **Device bans** are added only by banning an account. The list offers view
+    and lift, so the screen does too.
+  - **Suspend takes a number of days, not an end date.** The screen offers a
+    date and sends the days to it. No API change.
+  - **There is no daily history of active users.** Only each person's latest
+    activity (`last_active_at`) is kept, and the brief allows no new tracking.
+    **Decided:** totals only, active in the last 1, 7, 14 and 30 days, and no
+    daily line.
+  - **The admin `MINIMUM_ROLE` table, and a test calling every admin route
+    with every role, don't exist yet.** The brief assumes they do, so I will
+    create them:
+    - `app/modules/staff/permissions.py` names the minimum role of every
+      `/v1/admin` route;
+    - a test calls each route with no token, a user's token, a moderator's
+      and an admin's, and checks the answer against the table;
+    - a sweep fails if a route is missing from the table.
+
+    No route's behaviour changes.
+
+#### Server
+
+- **`GET /v1/admin/stats`, admin only, aggregates only:**
+  - `days`: the last 30 days in Nairobi time, each with sign-ups, posts,
+    listings, reports opened and reports resolved;
+  - `totals`: users, active users (last 14 days, the radius's definition),
+    open reports, held items (what the queue shows as held), and the oldest
+    open report's age;
+  - `radius`: people by feed radius band, and by what set it (users, posts,
+    both, floor or ceiling, as the engine records since decision T.2).
+- **The radius spread** is computed for each home cell with active people, in
+  one pass over `cell_activity`, weighted by the active people in each cell.
+  It is the radius the engine would compute now, without the 15-minute
+  smoothing.
+  - Bands: 1 km (the floor), 1–3, 3–5, 5–10, 10–15, and 15 km (the ceiling).
+  - It is timed on the 50,000-user seed (`scripts/seed_perf.py`) and cached in
+    Redis for a few minutes if it is slow.
+- **CORS:** a new `ADMIN_CORS_ORIGINS` setting, honoured only under
+  `/v1/admin`.
+  - No credentials (the token travels in the `Authorization` header).
+  - Only the methods and headers the dashboard uses.
+  - The rest of the API keeps `CORS_ORIGINS` as it is.
+
+#### The web app (`admin/`)
+
+- **Stack:** React, TypeScript and Vite, with Refine and Ant Design 5.
+  - Refine's Ant Design kit needs Ant Design 5, not 6.
+  - Refine gets its own data and auth providers over `fetch`.
+  - **Refine's anonymous telemetry is switched off.** The CSP would block it
+    anyway.
+- **Extra packages:** the approved ones need some unnamed peers and test
+  helpers. **Approved:** react-dom, react-router, antd, @ant-design/icons,
+  @tanstack/react-query, dayjs, typescript, @types/react, @types/react-dom,
+  @vitejs/plugin-react, jsdom, and @testing-library/dom, user-event and
+  jest-dom.
+- **A new staff member's authenticator secret is shown as text** (the secret
+  and the otpauth link, with copy buttons), not as a QR code, so no QR
+  package is needed. Decided by the product owner.
+- **The token** lives in a module variable only: never in storage, a cookie or
+  the URL. A reload signs the person out.
+- **Signing out:**
+  - after `VITE_IDLE_TIMEOUT_MINUTES` (15) without input, which also ends the
+    server session;
+  - on any 401.
+- **Roles:** the menu, the routes and the buttons follow the role from
+  `GET /me`. A moderator never sees Staff, Ban lists, the Audit log, Ban or
+  the Overview (stats are admin only).
+- **Screens:**
+  - Overview;
+  - Reports queue, and a thing's detail page;
+  - People: look-up, history and standing, and actions;
+  - Ban lists;
+  - Audit log;
+  - Staff;
+  - My account (password).
+
+  Every screen has plain-language empty and error states. Every destructive
+  action asks for confirmation, and for a reason where the API takes one.
+- **Look:**
+  - Ant Design defaults, with Red soil (#C4502E) as the primary colour;
+  - the app icon as the favicon;
+  - light mode only, laid out for a laptop;
+  - dates in Africa/Nairobi time.
+
+#### Hosting
+
+- **Site:** a new nginx site, `myradius-admin.chatara.co`, serving the built
+  files.
+- **Headers:**
+  - CSP: scripts and styles from `'self'`, `connect-src` the API, `img-src`
+    the API and the media CDN, and `frame-ancestors 'none'`;
+  - `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+    `X-Robots-Tag: noindex`;
+  - `index.html` is never cached.
+  - Ant Design 5 writes its styles at runtime, which a strict `style-src
+    'self'` blocks. **Decided:** a per-request nonce. nginx puts a fresh random
+    nonce in the CSP header and in `index.html`, and Ant Design tags its
+    styles with it. No `'unsafe-inline'`.
+- **DNS:** `myradius-admin.chatara.co  A  77.237.238.14` (DNS only, not
+  proxied). The certificate comes from certbot once the record resolves.
+- **IP allowlist:** an nginx snippet covering the admin site and `/v1/admin`
+  on the API site. It allows everyone by default and is documented in
+  DEPLOYMENT.
+- **Deploy:**
+  - CI tests and builds the admin app on every push.
+  - The deploy gate stays as it is: `deploy <sha>` also builds `admin/` from
+    the same commit in a pinned Node container on the VPS.
+  - It swaps a symlink, so the old files serve until the new ones are ready.
+
+  The deploy key gains no new powers.
+
+#### Tests
+
+- **Admin app (Vitest):** everything the brief lists, against a mocked API.
+- **Server:**
+  - the stats numbers on a seeded dataset;
+  - admin only;
+  - no personal data in the response;
+  - the CORS rule;
+  - the role table and sweep above.
+
+#### Then
+
+1. The full server suite, the admin tests and build, CI and the staging deploy.
+2. The nginx site and certificate.
+3. On staging: create a moderator, sign in as each role, work one test report
+   to resolution, and report what I saw and the admin site's headers.
+
+### Done
+
+Decisions D.1 to D.6.
+
+- **Server:**
+  - `POST /v1/admin/users/lookup`: by phone number, audited as `user_looked_up`
+    (migration 0027), 60 an hour per staff member. It was approved as a GET; it
+    is a POST so the number never reaches an access log;
+  - `since` and `until` on the audit log;
+  - `GET /v1/admin/stats` for admins (D.3);
+  - `ADMIN_CORS_ORIGINS`, honoured on `/v1/admin` only (`app/core/cors.py`);
+  - the role table, `app/modules/staff/permissions.py` (D.4).
+- **Speed on the 50,000-user seed:** the overview took 3.2 s, nearly all the
+  radius spread. The spread now stops at the first ring that holds both targets:
+  0.10 s, the overview 0.35 s, and a test checks it against the feed cell by
+  cell. It is cached for 5 minutes all the same.
+- **`admin/`:**
+  - screens: sign-in, Overview, Reports queue and detail, People (look-up,
+    history, actions), Ban lists, Audit log, Staff and My account;
+  - React 19.3.1, Refine 5, Ant Design 5.29.3, Vite 8, Vitest 5, every version
+    pinned and at least two weeks old.
+- **Tests:**
+  - server: `tests/test_admin_dashboard_api.py` (13): every admin route with
+    every role, the sweep, the look-up and its audit row, the audit time filter,
+    the stats numbers on a seeded month (Nairobi day boundaries included), no
+    personal data in the stats, the cache, the CORS rule both ways, and the
+    spread against the feed;
+  - admin app (50): sign-in and its one message, the token never in storage,
+    the idle timeout and sign-out on a 401, nothing sent to anywhere but the
+    API, role hiding, every screen's loaded, empty and error states, and every
+    destructive action asking first.
+- **A real browser under the real policy.** The built app ran against a local
+  API on the perf seed and walked through every screen in headless Edge, with
+  the nginx headers and a fresh nonce per request. Signing in, every screen and a
+  dialog all worked; storage and cookies stayed empty; a reload signed out. The
+  first walk found 7 blocked styles from helpers under Ant Design; with every
+  created style element tagged (D.5), it found none.
+- **Hosting:**
+  - `deploy/vps/nginx-myradius-admin.conf`;
+  - the allowlist snippet, also included in the API site's `/v1/admin/`;
+  - `bootstrap.sh` and `deploy.sh` (build on the server, switch once the API is
+    live);
+  - a CI job that also runs the server's Docker build;
+  - `docs/DEPLOYMENT.md`, "Admin dashboard".
+
+### Waiting on the product owner
+
+1. **The DNS record:** `myradius-admin  A  77.237.238.14`, DNS only.
+2. **Deploys:** the GitHub repository now refuses anonymous reads, and the VPS
+   fetches over plain HTTPS, so `deploy <sha>` can't fetch. Either make the
+   repository public again, or add a read-only deploy key for the VPS. Staging is
+   still on `7c59c19`.
+
+### Then
+
+1. Install the nginx sites and the allowlist, testing before each reload.
+2. Set `ADMIN_CORS_ORIGINS` on staging.
+3. Deploy, then issue the certificate.
+4. On staging, as the brief asks: create a moderator, sign in as each role,
+   work one test report to resolution, and check the site's headers.
+

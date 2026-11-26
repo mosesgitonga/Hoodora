@@ -82,6 +82,7 @@ app/
   workers/         arq settings and background tasks
 migrations/        Alembic
 mobile/            the Flutter app (see mobile/README.md)
+admin/             the moderation dashboard: React, Refine and Ant Design (decision D.1)
 scripts/           seeding (areas, places), admin, backups, app releases, benchmarks
 deploy/vps/        the staging server: nginx, bootstrap, compose overrides
 tests/

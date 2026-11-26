@@ -130,6 +130,13 @@ class Settings(BaseSettings):
     """Comma-separated allowed origins. Empty disables CORS, which is the right
     default: the Flutter clients are native and send no Origin header."""
 
+    admin_cors_origins: str = ""
+    """Origins of the admin dashboard (decision D.1), allowed on `/v1/admin` and
+    nowhere else. Comma-separated; empty allows none."""
+
+    admin_stats_cache_seconds: int = Field(default=300, ge=0, le=3600)
+    """How long `GET /v1/admin/stats` is kept in Redis. 0 computes it every time."""
+
     trust_forwarded_for: bool = False
     """Enable only when the API sits behind a reverse proxy that overwrites
     `X-Forwarded-For`. Trusting it otherwise lets clients forge their own IP and
@@ -895,6 +902,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def admin_cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.admin_cors_origins.split(",") if o.strip()]
 
     @property
     def access_log_excluded_paths(self) -> frozenset[str]:

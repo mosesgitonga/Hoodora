@@ -17,6 +17,7 @@ set -euo pipefail
 
 REPO=/srv/myradius
 DOMAIN=myradius.chatara.co
+ADMIN_DOMAIN=myradius-admin.chatara.co
 ORIGIN=https://github.com/mosesgitonga/radius.git
 
 if [[ ! -d "$REPO/.git" ]]; then
@@ -109,6 +110,23 @@ install -d -m 755 /etc/nginx/snippets
 ) > "$snippet"
 chmod 600 "$snippet"
 
+# The admin allowlist (decision D.6): shared by the dashboard's site and the API's
+# /v1/admin/. Written once, allowing everyone; an operator's list is never
+# overwritten. See docs/DEPLOYMENT.md.
+allow=/etc/nginx/snippets/myradius-admin-allow.conf
+if [[ ! -f "$allow" ]]; then
+  cat > "$allow" <<'ALLOW'
+# Who may reach the admin dashboard and /v1/admin (decision D.6).
+# Everyone, until lines like these are added and nginx reloaded:
+#   allow 203.0.113.7;
+#   deny all;
+ALLOW
+  chmod 644 "$allow"
+fi
+
+# Where deploy.sh puts each build of the dashboard; nginx serves `current`.
+install -d -m 755 /srv/myradius-admin/releases
+
 site=/etc/nginx/sites-available/$DOMAIN
 if [[ ! -f "$site" ]]; then
   echo "bootstrap: installing the nginx site for $DOMAIN"
@@ -121,6 +139,21 @@ if [[ ! -f "$site" ]]; then
     rm -f "/etc/nginx/sites-enabled/$DOMAIN"
     nginx -t
     echo "bootstrap: nginx rejected the site; removed it again" >&2
+    exit 1
+  fi
+fi
+
+admin_site=/etc/nginx/sites-available/$ADMIN_DOMAIN
+if [[ ! -f "$admin_site" ]]; then
+  echo "bootstrap: installing the nginx site for $ADMIN_DOMAIN"
+  install -m 644 deploy/vps/nginx-myradius-admin.conf "$admin_site"
+  ln -sf "$admin_site" "/etc/nginx/sites-enabled/$ADMIN_DOMAIN"
+  if nginx -t 2>/dev/null; then
+    systemctl reload nginx
+  else
+    rm -f "/etc/nginx/sites-enabled/$ADMIN_DOMAIN"
+    nginx -t
+    echo "bootstrap: nginx rejected the admin site; removed it again" >&2
     exit 1
   fi
 fi

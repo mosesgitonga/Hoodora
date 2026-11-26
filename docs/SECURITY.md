@@ -65,6 +65,19 @@ Two properties cut across everything below:
 - **Bootstrap:** the first admin comes from a script that refuses once an admin
   exists.
 
+**The admin dashboard (decision D.1)**
+- **The token:** held in the page's memory only, never in web storage, a cookie
+  or a URL. A script injected into the page could use it while the tab is open,
+  but there is nothing stored for it to take away, and the CSP (API8) is what
+  keeps scripts out.
+- **Ending a session:**
+  - after 15 minutes without input (`VITE_IDLE_TIMEOUT_MINUTES`), which also
+    ends the server session;
+  - on any 401;
+  - either way, the screens' data is dropped.
+- **Sign-in:** one form with all three factors. It shows one message for every
+  failure, as the API answers.
+
 **Configuration:** the app refuses to boot in staging or production with:
 - the development `SECRET_KEY`, or one under 32 bytes;
 - `DEBUG` on;
@@ -113,6 +126,15 @@ limit tests in each module.
 
 ## API5 — Broken function level authorization
 
+**Staff roles (decision D.4).**
+- `app/modules/staff/permissions.py` names the minimum role of every
+  `/v1/admin` route.
+- `tests/test_admin_dashboard_api.py` calls each route with no token, a user's
+  token, a moderator's and an admin's, and fails on any route missing from the
+  table.
+- The dashboard hides what a moderator can't do (the overview, ban lists, audit
+  log, staff, ban and unban). The server still decides.
+
 **Controls**
 - **Admin API:** `/v1/admin` accepts staff tokens only. Within it, bans, the ban
   lists, the audit log and staff management are admin-only.
@@ -154,6 +176,27 @@ untrusted reports), `test_services.py`, `test_badge.py`.
 **Tests:** none needed beyond review. There is no fetch-by-URL code path to test.
 
 ## API8 — Security misconfiguration
+
+**The admin dashboard's site (decisions D.5 and D.6).**
+- **CSP:**
+  - `default-src 'none'`;
+  - scripts from `'self'` only;
+  - styles from `'self'` plus a nonce fresh for each response, for Ant Design's
+    runtime styles, with no `'unsafe-inline'`. Every style element the page's
+    own scripts create gets the nonce, including a few from helpers Ant Design
+    can't pass it to. Injected markup still gets none;
+  - `connect-src` the API only, `img-src` the site, the API and the media CDN;
+  - `base-uri`, `form-action` and `frame-ancestors` all `'none'`.
+- **Other headers:** `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+  `X-Robots-Tag: noindex, nofollow`, `nosniff`,
+  `Cross-Origin-Opener-Policy: same-origin`, and a `Permissions-Policy` that
+  turns off camera, microphone, location and payment.
+- **CORS:** the dashboard's origin is allowed on `/v1/admin` only, without
+  credentials, and only for the methods and headers it sends. Other origins get
+  nothing there, and the dashboard's origin gets nothing elsewhere (tests in
+  `test_admin_dashboard_api.py`).
+- **Optional IP allowlist** in nginx, for the site and `/v1/admin`, off by
+  default (`docs/DEPLOYMENT.md`).
 
 **Controls**
 - **Production guards** at boot (see API2).
@@ -218,3 +261,7 @@ oversight.
    refuses it outside local and test.
 6. **One-machine deployment.** Backups and the weekly restore test bound the damage
    (`docs/DEPLOYMENT.md` §8).
+7. **The admin IP allowlist is off.** The product owner's mobile IP changes, so
+   the dashboard and `/v1/admin` are open to the internet behind sign-in with all
+   three factors and the sign-in rate limit. Turn the allowlist on once staff
+   work from fixed addresses or a VPN.

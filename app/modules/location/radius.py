@@ -172,6 +172,16 @@ class _RingTotals:
 
 
 @dataclass(frozen=True, slots=True)
+class SpreadEntry:
+    """One home cell's share of the radius spread: how many active people live
+    there, the feed radius they get, and what set it."""
+
+    people: int
+    radius_km: float
+    limited_by: LimitedBy
+
+
+@dataclass(frozen=True, slots=True)
 class _CachedRadius:
     ring: int
     limited_by: LimitedBy
@@ -407,6 +417,71 @@ class RadiusEngine:
             target_users=rule.target_active_users or 1,
             target_posts=rule.target_recent_posts or 0,
         )
+
+    async def spread(self) -> list[SpreadEntry]:
+        """The feed radius of every home cell with active people in it, for the
+        admin dashboard's overview (decision D.3).
+
+        What the engine would compute now, from one read of `cell_activity`:
+        without the cache and its smoothing, which belong to a person's feed
+        over time rather than to a picture of the whole map.
+        """
+        rule = self._settings.radius_rules[RadiusFeature.feed]
+        rows = (
+            await self._session.execute(
+                select(
+                    CellActivity.cell,
+                    CellActivity.active_user_count,
+                    CellActivity.recent_post_count,
+                ).where(
+                    CellActivity.resolution == self._settings.h3_radius_resolution,
+                    or_(CellActivity.active_user_count > 0, CellActivity.recent_post_count > 0),
+                )
+            )
+        ).all()
+        counts = {int(cell): (int(active), int(recent)) for cell, active, recent in rows}
+
+        target_users = rule.target_active_users or 1
+        target_posts = rule.target_recent_posts or 0
+        cap = self._settings.radius_max_ring_k
+        entries: list[SpreadEntry] = []
+        for anchor, (people, _) in counts.items():
+            if people <= 0:
+                continue
+            # Out one ring at a time, stopping at the first ring that holds both
+            # targets, or at the first that reaches the ceiling. The same answer
+            # as the feed's walk (which measures every ring up to the ceiling
+            # first), without measuring rings a busy area never needs.
+            users: list[int] = []
+            posts: list[int] = []
+            target_ring: int | None = None
+            k = 0
+            while True:
+                ring_users = ring_posts = 0
+                for cell in cells.ring(anchor, k):
+                    found = counts.get(cell)
+                    if found is not None:
+                        ring_users += found[0]
+                        ring_posts += found[1]
+                users.append(ring_users + (users[-1] if users else 0))
+                posts.append(ring_posts + (posts[-1] if posts else 0))
+                if users[k] >= target_users and posts[k] >= target_posts:
+                    target_ring = k
+                    break
+                if k >= cap or cells.ring_distance_km(anchor, k) >= rule.max_km:
+                    break
+                k += 1
+            totals = _RingTotals(
+                users=tuple(users),
+                posts=tuple(posts),
+                target_users=target_users,
+                target_posts=target_posts,
+            )
+            feed = self._at_target(anchor, totals, target_ring, k, rule)
+            entries.append(
+                SpreadEntry(people=people, radius_km=feed.radius_km, limited_by=feed.limited_by)
+            )
+        return entries
 
     async def active_users_within(self, anchor_cell_res8: int, radius_km: float) -> int:
         """Active users whose home cell lies within `radius_km` of the anchor.

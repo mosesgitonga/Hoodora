@@ -3215,3 +3215,170 @@ applied, and the app showed only "Not sent", without the reason.
   101 once accepted and 403 if refused before accepting. A crash is still 500.
   The old 500s were a logging artefact, but they looked like realtime failures
   while this was being diagnosed.
+
+## Admin dashboard
+
+### D.1 A web dashboard over the admin API, on its own origin (2026-11-25)
+
+**Context.** Phase 8 built the moderation console as an API under `/v1/admin`,
+with no interface. The product owner asked for a web dashboard on top of it.
+
+**Choice.**
+- **Where:** a new top-level `admin/`, separate from the server and the mobile
+  app.
+- **Stack:** React, TypeScript and Vite, with Refine and Ant Design 5 (Refine's
+  Ant Design kit needs 5, not 6), and Vitest with Testing Library.
+  - The product owner approved these and their unnamed peers and helpers:
+    react-dom, react-router, @ant-design/icons, @tanstack/react-query, dayjs,
+    TypeScript and the React types, @vitejs/plugin-react, jsdom, and Testing
+    Library's dom, user-event and jest-dom.
+  - Every version is exact, at least two weeks old, and in a lock file.
+- **Nothing third-party at run time:** no analytics, no external scripts, fonts or
+  images. Refine's anonymous telemetry is switched off, and the CSP would block it
+  anyway.
+- **The staff token lives in memory only:**
+  - never in localStorage, sessionStorage, a cookie or a URL;
+  - a reload signs the person out, which is acceptable;
+  - staff sessions have no refresh token (8 hours, `STAFF_SESSION_TTL_HOURS`), so
+    there is no refresh flow to build.
+- **Signing out:** after `VITE_IDLE_TIMEOUT_MINUTES` (15) without input, which
+  also ends the server session, and on any 401. Either way the screens' cached
+  data is dropped.
+- **Roles:** the menu, the routes and the buttons follow the role from sign-in.
+  The server stays the authority (D.4).
+- **Errors:**
+  - shown where they happen: a failed load in place of the screen, a refused
+    action in its dialog, a failed sign-in on the form;
+  - signing in answers every failure the same way, as the API does;
+  - Refine's error toasts are switched off, so nothing is said twice.
+- **Dates:** Nairobi time throughout.
+- **CORS:** `ADMIN_CORS_ORIGINS` is honoured on `/v1/admin` only, with no
+  credentials, and only the methods and headers the dashboard sends.
+  `CORS_ORIGINS` keeps the rest of the API, and is never honoured on
+  `/v1/admin`. Neither policy leaks into the other's routes.
+
+**Trade-off.** A reload means signing in again, with a fresh code. In exchange, a
+cross-site script has no stored token to steal, and a stolen laptop with the tab
+closed holds none.
+
+### D.2 What the dashboard needed from the API (2026-11-25)
+
+**Context.** The brief said to use the admin API as it is, and to ask before
+changing it.
+
+**Added, with the product owner's approval:**
+- **Finding a person by phone number.**
+  - `POST /v1/admin/users/lookup` takes `{"phone_number": ...}` and returns
+    one account or none: an exact match on the normalised number, for
+    moderators and admins.
+  - The approved shape was `GET ?phone=`. It became a POST because a query
+    string reaches nginx's access logs, and a number in a log is personal data.
+    The guest feed puts coordinates in its body for the same reason.
+  - Every lookup is audited as `user_looked_up` (migration 0027), found or not,
+    with the target when found. The number is never stored or sent back.
+  - The limit is 60 an hour per staff member.
+- **The audit log by time:** `GET /v1/admin/audit` takes `since` and `until`.
+
+**Not changed:**
+- **Suspensions:** the API takes days, not an end date. The dashboard offers a
+  date and sends the days.
+- **Device bans:** the list has no "add", because devices are banned by banning
+  an account. The dashboard lists and lifts them.
+
+### D.3 The overview counts what the database already holds (2026-11-25)
+
+**Choice.** `GET /v1/admin/stats` is for admins only and returns aggregates only.
+- **`days`:** the last 30 days in Nairobi time, each with sign-ups, posts,
+  listings, reports opened and reports resolved. A row counts on the day it was
+  created, whatever has happened to it since.
+- **`totals`:** accounts not deleted, the open reports and held items, what
+  waits in the queue, and the oldest open report and longest wait.
+  - These come from the queue's own query, so the two can't disagree.
+  - **Active people:** in good standing and opened the app within 1, 7, 14 and
+    30 days. 14 is the radius engine's own definition.
+- **`radius`:** active people by the feed radius their home gets, in bands
+  (1 km, 1–3, 3–5, 5–10, 10–15, 15 km), and by what set it (decision T.2). It is
+  what the engine would compute now, without the 15-minute smoothing.
+
+**No active users by day.** Only each person's latest visit is kept, so a daily
+history would mean new tracking, which the brief rules out. The product owner
+chose totals without a daily line.
+
+**Speed, on the 50,000-user seed:**
+- The first version took 3.2 s, nearly all in the radius spread: every home cell
+  measured every ring out to 15 km before counting.
+- The spread now walks out ring by ring and stops at the first ring that holds
+  both targets, measuring distance only as it goes. That is the same answer,
+  checked cell by cell against the feed in a test, in 0.10 s.
+- The whole overview takes 0.35 s.
+- It is still cached in Redis for `ADMIN_STATS_CACHE_SECONDS` (300), since the
+  radius part only changes every 15 minutes. `generated_at` says when it was
+  counted.
+
+### D.4 One table of who may call what (2026-11-25)
+
+**Context.** The brief asked to add the stats endpoint to `MINIMUM_ROLE` and to
+the test that calls every admin endpoint with every role. Neither existed for the
+admin API: only groups had a `MINIMUM_ROLE`.
+
+**Choice.**
+- **The table:** `app/modules/staff/permissions.py` names the minimum role of
+  every `/v1/admin` route. The routers still enforce it through `CurrentStaff`
+  and `AdminStaff`, so no behaviour changed.
+- **The test** calls every route with no token, a user's token, a moderator's
+  and an admin's:
+  - no token and a user's token get 401 (sign-in aside);
+  - a moderator gets 403 exactly where an admin is needed;
+  - nobody allowed is refused or gets a server error.
+- **The sweep** fails on a route missing from the table, or a table entry no
+  route serves.
+- **The dashboard** hides the same things: moderators never see the overview,
+  ban lists, audit log, staff, or ban and unban.
+
+### D.5 A strict CSP, with a nonce for Ant Design's styles (2026-11-25)
+
+**Context.** The brief asked for scripts and styles from the same origin only.
+Ant Design 5 writes its styles into the page at runtime, which `style-src
+'self'` blocks, and the layout breaks.
+
+**Choice, the product owner's:** a nonce for each request.
+- nginx puts `$request_id`, fresh for every response, into the CSP header and
+  into `index.html`'s `csp-nonce` meta.
+- Ant Design (`ConfigProvider csp`) tags its styles with it.
+- Scripts are `'self'` only, and there is no `'unsafe-inline'` anywhere.
+- `index.html` is never cached; the hashed bundles are cached for a year.
+- **Every style element the page creates gets the nonce** (`admin/src/csp.ts`),
+  because a few helpers under Ant Design add their own and can't take one: a
+  dialog's scroll lock, and a scrollbar measurement.
+  - A walk through every screen in headless Edge, under the real policy, found 7
+    blocked styles. With this, it finds none.
+  - It doesn't widen the policy. Only the page's own scripts create elements,
+    and they could read the nonce from the page anyway. What a nonce keeps out is
+    injected markup, which still never gets one.
+
+### D.6 Hosting: its own subdomain, built on the server from the deployed commit (2026-11-25)
+
+**Choice.**
+- **Address:** `myradius-admin.chatara.co` on staging, a new nginx site serving
+  static files, with these headers:
+  - the CSP (D.5): `connect-src` the API, `img-src` the API and the media CDN,
+    `frame-ancestors 'none'`;
+  - `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+    `X-Robots-Tag: noindex, nofollow` (plus a `robots.txt` that disallows
+    everything), `nosniff`, `Cross-Origin-Opener-Policy` and a
+    `Permissions-Policy`.
+- **Deploying through the existing gate,** unchanged:
+  - CI tests and builds `admin/` on every push, including the exact Docker build
+    the server uses.
+  - `deploy <sha>` then builds the same commit on the VPS, in a pinned Node image
+    whose final stage is just the files.
+  - It builds before the API restarts, so a failed build stops the deploy with
+    nothing changed.
+  - Once the API is ready, it points `/srv/myradius-admin/current` at the new
+    build, and keeps the last three builds.
+  - Uploading CI's build instead would have needed the deploy key to do more than
+    `deploy <sha>`.
+- **Optional IP allowlist:** `/etc/nginx/snippets/myradius-admin-allow.conf`,
+  included by the dashboard's site and by the API's `/v1/admin/`. It allows
+  everyone by default, since the product owner's mobile IP changes.
+  `docs/DEPLOYMENT.md` says how to turn it on.

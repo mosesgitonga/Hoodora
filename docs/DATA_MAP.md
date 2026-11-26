@@ -133,6 +133,11 @@ and the deletion flow should say so.
 `moderation.service.record_audit_event` enforces this with the same key rule the
 log redaction filter uses, rather than trusting callers.
 
+A staff member looking someone up by phone number (decision D.2) is audited as
+`user_looked_up`, found or not. The row holds who looked, the account found if
+any, and `{"by": "phone", "found": …}`: never the number itself. The number
+travels in the request body, which neither nginx nor the API logs.
+
 ### Redis
 
 | Key pattern | Contents | Why | Retention |
@@ -144,6 +149,7 @@ log redaction filter uses, rather than trusting callers.
 | `arealabel:<cell>` | A resolved area label | Avoids recomputing k-anonymity per profile render | 1 hour |
 | `radius:feed:<cell>` | A cached feed radius: its ring, what set it (`limited_by`) and its km | Stability and cost | 15 minutes |
 | `rl:<bucket>:<identity>` | Rate-limit counters | Abuse and cost control | Window length |
+| `admin:stats:v1` | The admin overview: counts per day and in total, and the radius spread (decision D.3). Aggregates only: no ID, name or number | Speed: not recounted on every visit | `ADMIN_STATS_CACHE_SECONDS` (5 minutes) |
 
 Two things to note. OTP keys are keyed by a **hash** of the phone number, not the
 number, because Redis keys appear in slow logs and `MONITOR` output. And the
@@ -879,6 +885,23 @@ Bunny belongs in the privacy notice's list of processors, beside Shorebird and
 Google, before launch.
 
 ---
+
+## The admin dashboard — what stays in the browser (2026-11-25)
+
+The moderation dashboard (decision D.1) is a web page for staff. It keeps
+nothing:
+- **The staff token is held in the page's memory only.** It is never in
+  localStorage, sessionStorage, a cookie or a URL, so it ends with the tab, a
+  reload, 15 minutes without activity, or sign-out. Signing out also ends the
+  server session.
+- **What the screens load stays in memory too:** people's names and standing,
+  reported content and the audit log. It is dropped at every sign-out.
+- **The overview's numbers are counts only** (decision D.3). Small numbers can
+  still point at someone in a small place, but only admins see them, the same
+  admins who can open any account.
+- **Nothing third-party:** no analytics, fonts or scripts from elsewhere.
+  Refine's telemetry is switched off, and the CSP allows connections to the API
+  only.
 
 ## Data subject rights — implementation status
 

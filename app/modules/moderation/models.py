@@ -121,6 +121,9 @@ class AuditAction(StrEnum):
     phone_unbanned = "phone_unbanned"
     device_banned = "device_banned"
     device_unbanned = "device_unbanned"
+    user_looked_up = "user_looked_up"
+    """A staff member looked a person up by phone number (decision D.2). Audited
+    because a lookup is how a number becomes a name."""
 
 
 _actor_type = db_enum(AuditActorType, name="audit_actor_type", length=20)

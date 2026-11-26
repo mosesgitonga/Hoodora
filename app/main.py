@@ -13,9 +13,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import Settings, get_settings
+from app.core.cors import ScopedCORSMiddleware
 from app.core.db import dispose_engine
 from app.core.errors import ErrorEnvelope, register_exception_handlers
 from app.core.health import router as health_router
@@ -285,15 +285,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Middleware runs outermost-last: CORS is added after the request context so
     # that even a rejected preflight is logged and carries a request ID.
     app.add_middleware(RequestContextMiddleware, settings=settings)
-    if origins := settings.cors_origin_list:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-            expose_headers=["X-Request-ID"],
-        )
+    # The admin dashboard's origin on /v1/admin only; CORS_ORIGINS elsewhere.
+    app.add_middleware(
+        ScopedCORSMiddleware,
+        general_origins=settings.cors_origin_list,
+        admin_origins=settings.admin_cors_origin_list,
+    )
     # Outermost, so the time measured is the time the client waited.
     app.add_middleware(MetricsMiddleware)
 
