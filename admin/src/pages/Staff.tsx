@@ -4,12 +4,14 @@ import { useState } from "react";
 
 import { ActionButton, EmptyState, ErrorState, Loading } from "../components";
 import { when } from "../format";
+import { useCodeRequired } from "../options";
 import { currentStaff } from "../session";
 import type { IssuedCredentials, Staff } from "../types";
 
 /** Shown once, after creating an account or resetting one: the API never
  * shows these again. As text, for typing into the authenticator by hand. */
 function Credentials({ issued, onClose }: { issued: IssuedCredentials | null; onClose: () => void }) {
+  const needsCode = useCodeRequired();
   if (!issued) return null;
   const copy = (value: string) => void navigator.clipboard?.writeText(value);
   return (
@@ -22,7 +24,9 @@ function Credentials({ issued, onClose }: { issued: IssuedCredentials | null; on
         Authenticator key: <Typography.Text code copyable>{issued.totp_secret}</Typography.Text>
       </Typography.Paragraph>
       <Typography.Paragraph type="secondary">
-        In the authenticator app, choose to enter a key by hand and type this key, or open this link on the phone:
+        {needsCode === false
+          ? "Sign-in codes are off for now, so the key isn't needed to sign in. Keep it for when they come back: in the authenticator app, enter it by hand, or open this link on the phone:"
+          : "In the authenticator app, choose to enter a key by hand and type this key, or open this link on the phone:"}
       </Typography.Paragraph>
       <Typography.Paragraph>
         <Typography.Text code copyable style={{ wordBreak: "break-all" }}>{issued.totp_uri}</Typography.Text>

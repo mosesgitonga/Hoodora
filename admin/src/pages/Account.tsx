@@ -2,12 +2,13 @@ import { useCustomMutation } from "@refinedev/core";
 import { Alert, App, Button, Card, Descriptions, Form, Input } from "antd";
 import { useState } from "react";
 
+import { useCodeRequired } from "../options";
 import { currentStaff } from "../session";
 
 interface Values {
   current_password: string;
   new_password: string;
-  code: string;
+  code?: string;
 }
 
 export function Account() {
@@ -16,6 +17,7 @@ export function Account() {
   const { message } = App.useApp();
   const [failure, setFailure] = useState<string | null>(null);
   const [form] = Form.useForm<Values>();
+  const needsCode = useCodeRequired();
 
   const submit = async (values: Values) => {
     setFailure(null);
@@ -45,9 +47,11 @@ export function Account() {
           <Form.Item name="new_password" label="New password" rules={[{ required: true, min: 12, message: "At least 12 characters." }]}>
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Form.Item name="code" label="Authenticator code" rules={[{ required: true, pattern: /^\d{6}$/, message: "The 6 digits from your authenticator app." }]}>
-            <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
-          </Form.Item>
+          {needsCode !== false ? (
+            <Form.Item name="code" label="Authenticator code" rules={[{ required: true, pattern: /^\d{6}$/, message: "The 6 digits from your authenticator app." }]}>
+              <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
+            </Form.Item>
+          ) : null}
           {failure ? <Alert type="error" showIcon message={failure} style={{ marginBottom: 16 }} /> : null}
           <Button type="primary" htmlType="submit" loading={mutation.isPending}>
             Change password

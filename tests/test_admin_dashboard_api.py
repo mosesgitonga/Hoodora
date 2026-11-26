@@ -22,7 +22,7 @@ from redis.asyncio import Redis
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import RadiusFeature, Settings
+from app.core.config import RadiusFeature, Settings, get_settings
 from app.main import create_app
 from app.modules.auth import service as auth_service
 from app.modules.feed.models import Post
@@ -40,9 +40,10 @@ from app.modules.moderation.models import (
     ReportStatus,
     ReportTargetType,
 )
-from app.modules.staff.credentials import create_staff_token
+from app.modules.staff.credentials import create_staff_token, totp_code, totp_step
 from app.modules.staff.models import StaffRole, StaffSession
 from app.modules.staff.permissions import MINIMUM_ROLE
+from app.modules.staff.service import SIGN_IN_FAILED
 from app.modules.users.models import User, UserStatus
 from tests.factories import (
     KARATINA,
@@ -126,9 +127,10 @@ async def test_every_admin_route_answers_each_role_as_the_table_says(
             return response.status_code
 
         if required is None:
-            # Signing in needs no token: an empty body reaches validation.
-            if (status := await call({})) != 422:
-                problems.append(f"{method} {template}: no token got {status}, wanted 422")
+            # Public: signing in (an empty body reaches validation) and what it asks for.
+            wanted = 422 if method == "POST" else 200
+            if (status := await call({})) != wanted:
+                problems.append(f"{method} {template}: no token got {status}, wanted {wanted}")
             continue
 
         for who, headers in (("no token", {}), ("a user's token", bearer(user_token))):
@@ -567,3 +569,85 @@ async def test_the_spread_gives_each_home_the_radius_its_feed_gets(
     got = [(e.people, round(e.radius_km, 6), e.limited_by) for e in entries]
     assert sorted(got) == sorted(expected)
     assert {limit for _, _, limit in got} >= {"ceiling"}
+
+
+# ---------------------------------------------------------------------------
+# Sign-in codes, on and off (decision D.7)
+# ---------------------------------------------------------------------------
+def codes(app: FastAPI, settings: Settings, *, required: bool) -> None:
+    configured = settings.model_copy(update={"staff_totp_required": required})
+    app.dependency_overrides[get_settings] = lambda: configured
+
+
+async def test_by_default_a_code_is_required_and_its_absence_gets_the_one_answer(
+    app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, settings: Settings
+) -> None:
+    issued = await make_staff(db_session)
+    assert (await client.get("/v1/admin/auth/options")).json() == {
+        "authenticator_code_required": True
+    }
+
+    response = await client.post(
+        "/v1/admin/auth/sign-in", json={"email": issued.account.email, "password": issued.password}
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["message"] == SIGN_IN_FAILED
+
+
+async def test_with_codes_off_email_and_password_sign_in(
+    app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, settings: Settings
+) -> None:
+    codes(app, settings, required=False)
+    issued = await make_staff(db_session)
+    email = issued.account.email
+    assert (await client.get("/v1/admin/auth/options")).json() == {
+        "authenticator_code_required": False
+    }
+
+    wrong = await client.post(
+        "/v1/admin/auth/sign-in", json={"email": email, "password": "not it at all"}
+    )
+    assert wrong.status_code == 401
+    assert wrong.json()["error"]["message"] == SIGN_IN_FAILED
+
+    signed_in = await client.post(
+        "/v1/admin/auth/sign-in", json={"email": email, "password": issued.password}
+    )
+    assert signed_in.status_code == 200, signed_in.text
+    token = signed_in.json()["access_token"]
+
+    changed = await client.post(
+        "/v1/admin/me/password",
+        headers=bearer(token),
+        json={"current_password": issued.password, "new_password": "a long new password"},
+    )
+    assert changed.status_code == 204, changed.text
+    again = await client.post(
+        "/v1/admin/auth/sign-in", json={"email": email, "password": "a long new password"}
+    )
+    assert again.status_code == 200
+
+
+async def test_with_codes_on_a_password_change_still_needs_one(
+    app: FastAPI, client: httpx.AsyncClient, db_session: AsyncSession, settings: Settings
+) -> None:
+    issued = await make_staff(db_session)
+    token = (
+        await client.post(
+            "/v1/admin/auth/sign-in",
+            json={
+                "email": issued.account.email,
+                "password": issued.password,
+                "code": totp_code(issued.totp_secret, totp_step()),
+            },
+        )
+    ).json()["access_token"]
+
+    refused = await client.post(
+        "/v1/admin/me/password",
+        headers=bearer(token),
+        json={"current_password": issued.password, "new_password": "a long new password"},
+    )
+
+    assert refused.status_code == 400

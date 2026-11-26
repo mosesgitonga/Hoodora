@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -60,7 +60,53 @@ describe("signing in", () => {
     renderAt("/sign-in");
     await fillSignIn("12ab");
     expect(await findText("The 6 digits from your authenticator app.")).toBeInTheDocument();
-    expect(api.calls).toHaveLength(0);
+    // Only the question of what to ask for went out; no sign-in.
+    expect(api.calls.filter((c) => c.path === "/auth/sign-in")).toHaveLength(0);
+  });
+});
+
+describe("with sign-in codes off (decision D.7)", () => {
+  const OFF = { "GET /auth/options": { status: 200, body: { authenticator_code_required: false } } };
+
+  it("signs in with email and password alone", async () => {
+    const api = mockApi({
+      ...OFF,
+      "POST /auth/sign-in": SIGN_IN("moderator"),
+      "GET /queue": { status: 200, body: { items: [], next_cursor: null } },
+    });
+    renderAt("/sign-in");
+    await screen.findByLabelText("Email");
+    await waitFor(() => expect(screen.queryByLabelText("Authenticator code")).not.toBeInTheDocument());
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Email"), "otieno@hoodora.test");
+    await user.type(screen.getByLabelText("Password"), "correct horse battery");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await findText("Nothing is waiting")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.path === "/auth/sign-in")?.body).toEqual({
+      email: "otieno@hoodora.test",
+      password: "correct horse battery",
+    });
+  });
+
+  it("changes the password without a code", async () => {
+    const api = await openAs("moderator", "/account", { ...OFF, "POST /me/password": { status: 204 } });
+    await userEvent.type(await screen.findByLabelText("Current password", {}, { timeout: 8000 }), "old password here");
+    await waitFor(() => expect(screen.queryByLabelText("Authenticator code")).not.toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText("New password"), "a much longer password");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(await findText("Password changed.")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.path === "/me/password")?.body).toEqual({
+      current_password: "old password here",
+      new_password: "a much longer password",
+    });
+  });
+
+  it("still asks for a code if the server can't say", async () => {
+    mockApi({ "GET /auth/options": { status: 500, body: {} } });
+    renderAt("/sign-in");
+    expect(await screen.findByLabelText("Authenticator code", {}, { timeout: 8000 })).toBeInTheDocument();
   });
 });
 

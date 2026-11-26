@@ -57,7 +57,8 @@ Two properties cut across everything below:
   request, with one answer for every failure. A wrong email costs the same time as a
   wrong password.
 - **Codes:** each is accepted once (replay protection), with one step of clock drift
-  either way.
+  either way. Required unless `STAFF_TOTP_REQUIRED` is off, which it is on staging
+  for now (decision D.7, open item 8).
 - **Lockout:** after `STAFF_MAX_FAILED_LOGINS` failures, the account locks for
   `STAFF_LOCKOUT_MINUTES`.
 - **Tokens:** a separate token type and audience; 8-hour sessions with no refresh
@@ -262,6 +263,12 @@ oversight.
 6. **One-machine deployment.** Backups and the weekly restore test bound the damage
    (`docs/DEPLOYMENT.md` §8).
 7. **The admin IP allowlist is off.** The product owner's mobile IP changes, so
-   the dashboard and `/v1/admin` are open to the internet behind sign-in with all
-   three factors and the sign-in rate limit. Turn the allowlist on once staff
-   work from fixed addresses or a VPN.
+   the dashboard and `/v1/admin` are open to the internet behind sign-in and the
+   sign-in rate limit. Turn the allowlist on once staff work from fixed addresses
+   or a VPN.
+8. **Staff sign-in codes are off on staging (decision D.7).** At the product
+   owner's request, `STAFF_TOTP_REQUIRED=false`, so a staff password alone signs
+   in. The one answer for every failure, the rate limit, the lockout and the
+   12-character minimum remain. Codes stay on by default. Turn them back on, or
+   turn on the IP allowlist, before staging holds anything that matters, and
+   certainly before production.

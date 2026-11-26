@@ -301,6 +301,9 @@ calls the API at `https://myradius.chatara.co`, which allows its origin on
    It adds the TLS lines and the HTTP-to-HTTPS redirect to the site file.
 4. **The API's setting.** Set `ADMIN_CORS_ORIGINS` in `.env.production`. The next
    deploy picks it up, or run `docker compose ... up -d api`.
+5. **Sign-in codes (decision D.7).** On unless `STAFF_TOTP_REQUIRED=false` is in
+   `.env.production`, as it is on staging for now. To turn them back on, remove
+   that line or set it to `true`, then redeploy.
 
 **Each deploy:**
 - `deploy.sh` builds `admin/` for the commit, in `node:24.22.3-alpine`, before

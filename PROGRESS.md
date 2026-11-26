@@ -5448,3 +5448,24 @@ Decisions D.1 to D.6.
   through CI and the Deploy workflow. Its dashboard build is served without a
   hand step.
 
+## Sign-in codes off for now (2026-11-26)
+
+Asked for by the product owner: "for now remove the authenticator app thingy".
+Decision D.7.
+
+- **A setting, not a removal:** `STAFF_TOTP_REQUIRED`, on by default, off on
+  staging. Bringing codes back is one line and a deploy.
+- **Server:**
+  - the code is optional in `POST /v1/admin/auth/sign-in` and
+    `POST /v1/admin/me/password` when it is off; when on, a missing code gets
+    the same one answer as any failure;
+  - a new public `GET /v1/admin/auth/options` (in the role table as public);
+  - tests: required by default, sign-in and password change without a code when
+    off, and still needed for a password change when on.
+- **Dashboard:** hides the code fields when codes are off, and keeps asking for
+  one if it can't find out. New staff still get a key, with a note that it
+  isn't needed yet. 3 new tests.
+- **Risk, recorded:** with codes off, a staff password alone reaches the
+  moderation console (SECURITY open item 8). The IP allowlist is the suggested
+  companion; it is still off, as the product owner chose.
+

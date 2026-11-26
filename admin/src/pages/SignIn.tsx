@@ -3,12 +3,13 @@ import { Alert, Button, Card, Form, Input, Typography } from "antd";
 import { useState } from "react";
 
 import { config } from "../config";
+import { useCodeRequired } from "../options";
 import { signOutReason } from "../session";
 
 interface Values {
   email: string;
   password: string;
-  code: string;
+  code?: string;
 }
 
 const REASONS = {
@@ -20,6 +21,8 @@ const REASONS = {
 export function SignIn() {
   const { mutate: login, isPending } = useLogin<Values>();
   const [failure, setFailure] = useState<string | null>(null);
+  // Whether to ask for the authenticator code (decision D.7); asked once.
+  const needsCode = useCodeRequired();
   // Why the last session ended, if it did not end by choice.
   const reason = signOutReason();
   const notice = reason ? REASONS[reason] : null;
@@ -51,13 +54,15 @@ export function SignIn() {
           <Form.Item name="password" label="Password" rules={[{ required: true, message: "Enter your password." }]}>
             <Input.Password autoComplete="current-password" />
           </Form.Item>
-          <Form.Item
-            name="code"
-            label="Authenticator code"
-            rules={[{ required: true, pattern: /^\d{6}$/, message: "The 6 digits from your authenticator app." }]}
-          >
-            <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" />
-          </Form.Item>
+          {needsCode !== false ? (
+            <Form.Item
+              name="code"
+              label="Authenticator code"
+              rules={[{ required: true, pattern: /^\d{6}$/, message: "The 6 digits from your authenticator app." }]}
+            >
+              <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" />
+            </Form.Item>
+          ) : null}
           {failure ? <Alert type="error" showIcon message={failure} style={{ marginBottom: 16 }} /> : null}
           <Button type="primary" htmlType="submit" block loading={isPending}>
             Sign in

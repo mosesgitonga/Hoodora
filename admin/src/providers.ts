@@ -17,7 +17,7 @@ import type { CursorPage } from "./types";
 // Auth
 // ---------------------------------------------------------------------------
 export const authProvider: AuthProvider = {
-  async login({ email, password, code }: { email: string; password: string; code: string }) {
+  async login({ email, password, code }: { email: string; password: string; code?: string }) {
     try {
       const staff = await signIn(email, password, code);
       return { success: true, redirectTo: staff.role === "admin" ? "/overview" : "/queue" };

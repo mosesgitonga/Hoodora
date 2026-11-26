@@ -3382,3 +3382,32 @@ Ant Design 5 writes its styles into the page at runtime, which `style-src
   included by the dashboard's site and by the API's `/v1/admin/`. It allows
   everyone by default, since the product owner's mobile IP changes.
   `docs/DEPLOYMENT.md` says how to turn it on.
+
+### D.7 Sign-in codes can be turned off, and are off on staging for now (2026-11-26)
+
+**Context.** Staff sign in with email, password and a code from an authenticator
+app (Phase 8). The product owner asked to remove the authenticator step for now.
+
+**Choice.** A setting, `STAFF_TOTP_REQUIRED`, rather than removing the code:
+- **On by default.** Production keeps codes unless someone turns them off.
+- **Off on staging,** at the product owner's request.
+- **With it off:**
+  - email and password sign in, and a password change needs only the current
+    password;
+  - a code sent anyway is ignored;
+  - every failure still gets the one answer, and the per-IP rate limit, the
+    lockout after `STAFF_MAX_FAILED_LOGINS` failures and the 12-character
+    minimum all still apply.
+- **The dashboard asks** a new public `GET /v1/admin/auth/options` and hides the
+  code fields when the answer is off. If it can't get an answer, it keeps asking
+  for a code.
+- **New staff still get an authenticator key,** shown once, so turning codes back
+  on doesn't need new credentials for everyone. While codes are off, the
+  dashboard says the key isn't needed yet.
+
+**Trade-off.** While codes are off, a leaked or guessed staff password is enough
+to reach the moderation console: bans, people's histories and the audit log. The
+rate limit and lockout slow guessing; the IP allowlist (D.6) would stop it from
+anywhere else, and is worth turning on while codes are off. To bring codes back,
+set `STAFF_TOTP_REQUIRED=true` and redeploy. Each staff member then enrols the
+key they were given, or an admin resets their sign-in for a new one.

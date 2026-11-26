@@ -208,11 +208,11 @@ async def change_password(
     account: StaffAccount,
     current_password: str,
     new_password: str,
-    code: str,
+    code: str | None,
     settings: Settings,
 ) -> None:
-    """Needs the current password and a fresh code, so a stolen staff token alone
-    cannot take the account over."""
+    """Needs the current password, and a fresh code while codes are required, so a
+    stolen staff token alone cannot take the account over."""
     if len(new_password) < settings.staff_password_min_length:
         raise BadRequestError(
             f"Use at least {settings.staff_password_min_length} characters",
@@ -220,10 +220,13 @@ async def change_password(
         )
     if not credentials.verify_password(current_password, account.password_hash):
         raise BadRequestError(SIGN_IN_FAILED)
-    step = credentials.verify_totp(account.totp_secret, code, last_step=account.totp_last_step)
-    if step is None:
-        raise BadRequestError(SIGN_IN_FAILED)
-    account.totp_last_step = step
+    if settings.staff_totp_required:
+        step = credentials.verify_totp(
+            account.totp_secret, code or "", last_step=account.totp_last_step
+        )
+        if step is None:
+            raise BadRequestError(SIGN_IN_FAILED)
+        account.totp_last_step = step
     account.password_hash = credentials.hash_password(new_password)
     await record_audit_event(
         session,
@@ -244,11 +247,13 @@ async def sign_in(
     *,
     email: str,
     password: str,
-    code: str,
+    code: str | None,
     ip_address: str | None,
     settings: Settings,
 ) -> SignedIn:
-    """Check all three factors and open a staff session, or `UnauthenticatedError`.
+    """Check the factors and open a staff session, or `UnauthenticatedError`: email
+    and password, and the authenticator code unless `STAFF_TOTP_REQUIRED` is off
+    (decision D.7). Every failure gets the same answer.
 
     A failure must be committed, not rolled back — the counter and the audit row
     are the point — so the router commits before letting the error through.
@@ -270,12 +275,12 @@ async def sign_in(
         raise UnauthenticatedError(SIGN_IN_FAILED)
 
     password_ok = credentials.verify_password(password, account.password_hash)
-    step = (
-        credentials.verify_totp(account.totp_secret, code, last_step=account.totp_last_step)
-        if password_ok
-        else None
-    )
-    if step is None:
+    step: int | None = None
+    if password_ok and settings.staff_totp_required:
+        step = credentials.verify_totp(
+            account.totp_secret, code or "", last_step=account.totp_last_step
+        )
+    if not password_ok or (settings.staff_totp_required and step is None):
         account.failed_logins += 1
         locked = account.failed_logins >= settings.staff_max_failed_logins
         if locked:
@@ -286,7 +291,8 @@ async def sign_in(
         )
         raise UnauthenticatedError(SIGN_IN_FAILED)
 
-    account.totp_last_step = step
+    if step is not None:
+        account.totp_last_step = step
     account.failed_logins = 0
     account.locked_until = None
     account.last_login_at = now

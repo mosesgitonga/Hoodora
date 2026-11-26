@@ -30,12 +30,13 @@ export function signOutReason(): SignOutReason | null {
 /** The API answers every failure the same way, and so does this. */
 export const SIGN_IN_FAILED = "Those details are not right. Check them and try again.";
 
-export async function signIn(email: string, password: string, code: string): Promise<Staff> {
+export async function signIn(email: string, password: string, code?: string): Promise<Staff> {
   try {
     const out = await request<SignInOut>(
       "POST",
       "/auth/sign-in",
-      { body: { email: email.trim(), password, code: code.trim() }, auth: false },
+      // No code at all while the server has codes off (decision D.7).
+      { body: { email: email.trim(), password, ...(code?.trim() ? { code: code.trim() } : {}) }, auth: false },
     );
     setToken(out.access_token);
     staff = out.staff;

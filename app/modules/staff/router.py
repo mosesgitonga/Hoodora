@@ -18,6 +18,7 @@ from app.modules.staff.schemas import (
     IssuedCredentialsOut,
     PasswordChangeIn,
     SignInIn,
+    SignInOptionsOut,
     SignInOut,
     StaffCreateIn,
     StaffOut,
@@ -39,14 +40,27 @@ def _issued(issued: IssuedCredentials) -> IssuedCredentialsOut:
     )
 
 
+@router.get(
+    "/auth/options",
+    response_model=SignInOptionsOut,
+    summary="What signing in asks for",
+    description=(
+        "Whether the sign-in form needs the authenticator code (decision D.7). Public: "
+        "the dashboard asks before anyone has signed in."
+    ),
+)
+async def sign_in_options(settings: SettingsDep) -> SignInOptionsOut:
+    return SignInOptionsOut(authenticator_code_required=settings.staff_totp_required)
+
+
 @router.post(
     "/auth/sign-in",
     response_model=SignInOut,
     summary="Sign in as staff",
     description=(
-        "Email, password and a code from the authenticator app, all at once. Every "
-        "failure gets the same answer. Repeated failures lock the account for a "
-        "while, and each code works only once."
+        "Email, password and, unless `STAFF_TOTP_REQUIRED` is off, a code from the "
+        "authenticator app, all at once. Every failure gets the same answer. Repeated "
+        "failures lock the account for a while, and each code works only once."
     ),
     dependencies=[
         Depends(rate_limit(bucket="staff_sign_in", limit=10, window_seconds=900, scope="ip"))

@@ -7,7 +7,7 @@ every `/v1/admin` route with no token, a user's token, a moderator's and an
 admin's, and expects exactly what this table says. A route missing from it fails
 that test.
 
-`None` means no staff token is needed: signing in.
+`None` means no staff token is needed: signing in, and what it asks for.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ ADMIN = StaffRole.admin
 
 MINIMUM_ROLE: Final[dict[tuple[str, str], StaffRole | None]] = {
     # Signing in and out, and one's own account.
+    ("GET", "/v1/admin/auth/options"): None,
     ("POST", "/v1/admin/auth/sign-in"): None,
     ("POST", "/v1/admin/auth/sign-out"): MOD,
     ("GET", "/v1/admin/me"): MOD,

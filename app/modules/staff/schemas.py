@@ -13,7 +13,12 @@ from app.modules.staff.models import StaffAccount, StaffRole
 class SignInIn(BaseModel):
     email: str = Field(max_length=320, examples=["moderator@example.com"])
     password: str = Field(min_length=1, max_length=256)
-    code: str = Field(min_length=6, max_length=10, description="From the authenticator app.")
+    code: str | None = Field(
+        default=None,
+        min_length=6,
+        max_length=10,
+        description="From the authenticator app. Not needed while `STAFF_TOTP_REQUIRED` is off.",
+    )
 
 
 class StaffOut(BaseModel):
@@ -73,4 +78,15 @@ class IssuedCredentialsOut(BaseModel):
 class PasswordChangeIn(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=1, max_length=256)
-    code: str = Field(min_length=6, max_length=10)
+    code: str | None = Field(
+        default=None,
+        min_length=6,
+        max_length=10,
+        description="From the authenticator app. Not needed while `STAFF_TOTP_REQUIRED` is off.",
+    )
+
+
+class SignInOptionsOut(BaseModel):
+    authenticator_code_required: bool = Field(
+        description="Whether signing in asks for a code from an authenticator app (decision D.7)."
+    )

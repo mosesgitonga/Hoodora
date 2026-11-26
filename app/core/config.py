@@ -476,6 +476,10 @@ class Settings(BaseSettings):
     staff_max_failed_logins: int = Field(default=5, ge=1, le=20)
     staff_lockout_minutes: int = Field(default=15, ge=1, le=1440)
     staff_password_min_length: int = Field(default=12, ge=8, le=128)
+    staff_totp_required: bool = True
+    """Whether staff also give a code from an authenticator app, to sign in and to
+    change their password (decision D.7). On by default. Off, a password alone
+    signs in, with the same rate limit, lockout and minimum length."""
 
     ban_list_key: SecretStr = SecretStr("")
     """Keys the phone and device hashes on the ban lists. Defaults to `SECRET_KEY`;

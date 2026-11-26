@@ -4,6 +4,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 import { endSession } from "../api";
+import { resetOptions } from "../options";
 import { stopIdleWatch } from "../session";
 
 // Ant Design's grid and responsive props ask the browser about the screen: a
@@ -30,6 +31,7 @@ afterEach(() => {
   cleanup();
   endSession("signed_out");
   stopIdleWatch();
+  resetOptions();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   localStorage.clear();
