@@ -3411,3 +3411,51 @@ rate limit and lockout slow guessing; the IP allowlist (D.6) would stop it from
 anywhere else, and is worth turning on while codes are off. To bring codes back,
 set `STAFF_TOTP_REQUIRED=true` and redeploy. Each staff member then enrols the
 key they were given, or an admin resets their sign-in for a new one.
+
+### D.8 God's view: people per hexagon and the named places, for admins (2026-11-26)
+
+**Context.** The product owner asked for an admin-only map of Kenya, showing:
+- the hexagons people live in, each with how many;
+- the places people see as "near …", with their boundaries and names.
+
+**Choice.**
+- **Data already held:**
+  - people per hexagon come from `cell_activity`, the density job's counts;
+  - the places come from `places` (decision L.4).
+  - No account is read for it, and nothing new is tracked.
+- **Two admin-only reads:**
+  - `GET /v1/admin/map/cells`: per H3 cell, the people living there, the
+    active ones and recent posts, with the cell's outline. Resolution 8
+    (~0.7 km²), 7 (~5 km²) or 6 (~36 km²), and an optional box. At most 20,000
+    cells at once.
+  - `GET /v1/admin/map/places`: GeoJSON, simplified to about 10 m, with each
+    place's name, level, ward, sub-county, county and where to put its label.
+- **Exact counts, audited (the product owner's choice):**
+  - a hexagon is about 900 m across, so a small number can point at a single
+    home; counts below the k-anonymity threshold are still shown;
+  - instead, every opening of the map is recorded as `people_map_viewed`
+    (migration 0028), at most once an hour per admin so panning doesn't flood
+    the log.
+- **Drawn with Leaflet 1.9.4 (product owner's choice), with no map tiles:**
+  - Kenya's outline is Natural Earth's (1:50m, public domain), bundled in the
+    app, along with the place boundaries and the hexagons;
+  - nothing is fetched from anyone else's servers, and the CSP is unchanged;
+  - an OpenStreetMap base map was the alternative, but every view would have
+    told a tile server what admins look at.
+- **Reading it:**
+  - the hexagon size follows the zoom: 36 km² down to 10, 5 km² for 11 and 12,
+    0.7 km² from 13;
+  - each size is kept until the next is big enough on screen for its numbers,
+    so every zoom from 9 inward shows counts;
+  - names appear as you zoom in: wards and towns first, then sublocations and
+    villages;
+  - a name shows once in 3 km, at its highest level, because places at
+    different levels often share one;
+  - hovering a hexagon gives people, active and recent posts, and hovering a
+    place gives its level, ward and county.
+- **Names are text:** every label and tooltip is set as text, never HTML (Leaflet
+  would read a string as HTML), because place names come from outside data.
+
+**Checked** in headless Edge under the real CSP, against a local copy of the API
+on the 50,000-user seed with staging's 816 Nyeri places: counts at every level,
+names deduplicated, no console or CSP messages.

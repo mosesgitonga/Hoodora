@@ -211,7 +211,7 @@ describe("roles", () => {
     for (const label of ["Reports", "People", "My account"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
-    for (const label of ["Staff", "Ban lists", "Audit log", "Overview"]) {
+    for (const label of ["Staff", "Ban lists", "Audit log", "Overview", "God's view"]) {
       expect(screen.queryByText(label)).not.toBeInTheDocument();
     }
   });
@@ -225,7 +225,7 @@ describe("roles", () => {
   it("an admin sees everything", async () => {
     await openAs("admin", "/queue", EMPTY_QUEUE);
     await findText("Nothing is waiting");
-    for (const label of ["Overview", "Reports", "People", "Ban lists", "Audit log", "Staff"]) {
+    for (const label of ["Overview", "God's view", "Reports", "People", "Ban lists", "Audit log", "Staff"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });

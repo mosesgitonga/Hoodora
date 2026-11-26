@@ -133,8 +133,11 @@ limit tests in each module.
 - `tests/test_admin_dashboard_api.py` calls each route with no token, a user's
   token, a moderator's and an admin's, and fails on any route missing from the
   table.
-- The dashboard hides what a moderator can't do (the overview, ban lists, audit
-  log, staff, ban and unban). The server still decides.
+- The dashboard hides what a moderator can't do (the overview, God's view, ban
+  lists, audit log, staff, ban and unban). The server still decides.
+- **God's view (decision D.8):** admins only, and every opening is audited. Place
+  names, which come from outside data, are only ever set as text, never HTML
+  (tested with a hostile name).
 
 **Controls**
 - **Admin API:** `/v1/admin` accepts staff tokens only. Within it, bans, the ban

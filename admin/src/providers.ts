@@ -54,7 +54,7 @@ export const authProvider: AuthProvider = {
 // Access: hiding what a role can't do. The server decides; this only keeps
 // the screen honest (decision D.4).
 // ---------------------------------------------------------------------------
-export const ADMIN_RESOURCES = new Set(["overview", "audit", "bans", "staff"]);
+export const ADMIN_RESOURCES = new Set(["overview", "map", "audit", "bans", "staff"]);
 export const ADMIN_ACTIONS = new Set(["ban", "unban"]);
 
 export function allowed(role: string | null | undefined, resource?: string, action?: string): boolean {

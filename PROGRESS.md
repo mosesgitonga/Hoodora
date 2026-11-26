@@ -5469,3 +5469,41 @@ Decision D.7.
   moderation console (SECURITY open item 8). The IP allowlist is the suggested
   companion; it is still off, as the product owner chose.
 
+## God's view (2026-11-26)
+
+Asked for by the product owner: an admin-only map of Kenya with the hexagons,
+each with how many people live in it, and the named places ("near Nyeri") with
+their boundaries. Decision D.8.
+
+- **Decided by the product owner:**
+  - Leaflet, with no outside map tiles;
+  - exact counts, with every opening audited.
+- **Server:**
+  - `GET /v1/admin/map/cells` and `GET /v1/admin/map/places`, admins only, both
+    in the role table;
+  - the `people_map_viewed` audit action (migration 0028), at most once an hour
+    per admin.
+  - Tests (`tests/test_admin_map.py`, 5):
+    - counts and outlines;
+    - the box and the resolution;
+    - the hourly audit;
+    - places as GeoJSON in label order, with the box;
+    - moderators refused.
+- **Dashboard:**
+  - God's view under the Overview, for admins;
+  - Leaflet 1.9.4 and its types;
+  - Kenya's outline from Natural Earth (public domain, 4 KB, bundled).
+  - Tests (6):
+    - what it asks for and what it totals;
+    - a hostile place name stays text;
+    - the error and empty states;
+    - the hexagon size per zoom;
+    - moderators kept out.
+- **In a browser:** a local copy of the API on the 50,000-user seed, with
+  staging's 816 Nyeri places loaded, in headless Edge under the real CSP.
+  - The first walk showed no numbers at one zoom (the smallest hexagons were too
+    small to label) and repeated names ("Nyeri" four times).
+  - The fixes: each hexagon size is kept until the next can carry its numbers,
+    and a name shows once in 3 km at its highest level.
+  - The second walk showed numbers at every zoom from 9 inward, with no console
+    or CSP messages.

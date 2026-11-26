@@ -133,6 +133,10 @@ and the deletion flow should say so.
 `moderation.service.record_audit_event` enforces this with the same key rule the
 log redaction filter uses, rather than trusting callers.
 
+God's view (decision D.8) shows admins exact counts of people per hexagon, from
+`cell_activity`. Opening it is audited as `people_map_viewed`, at most once an
+hour per admin, with only the resolution in the context.
+
 A staff member looking someone up by phone number (decision D.2) is audited as
 `user_looked_up`, found or not. The row holds who looked, the account found if
 any, and `{"by": "phone", "found": …}`: never the number itself. The number
@@ -149,6 +153,7 @@ travels in the request body, which neither nginx nor the API logs.
 | `arealabel:<cell>` | A resolved area label | Avoids recomputing k-anonymity per profile render | 1 hour |
 | `radius:feed:<cell>` | A cached feed radius: its ring, what set it (`limited_by`) and its km | Stability and cost | 15 minutes |
 | `rl:<bucket>:<identity>` | Rate-limit counters | Abuse and cost control | Window length |
+| `audit:people-map:<staff id>` | That this admin's opening of God's view was audited this hour (decision D.8) | Fewer audit rows for one viewing | 1 hour |
 | `admin:stats:v1` | The admin overview: counts per day and in total, and the radius spread (decision D.3). Aggregates only: no ID, name or number | Speed: not recounted on every visit | `ADMIN_STATS_CACHE_SECONDS` (5 minutes) |
 
 Two things to note. OTP keys are keyed by a **hash** of the phone number, not the
@@ -899,6 +904,10 @@ nothing:
 - **The overview's numbers are counts only** (decision D.3). Small numbers can
   still point at someone in a small place, but only admins see them, the same
   admins who can open any account.
+- **God's view (decision D.8)** shows those counts per hexagon, about 900 m
+  across, so a 1 in a quiet place can point at a single home. Admins only, and
+  every opening is audited. The map draws from our own data alone: no tile
+  server learns what was looked at.
 - **Nothing third-party:** no analytics, fonts or scripts from elsewhere.
   Refine's telemetry is switched off, and the CSP allows connections to the API
   only.

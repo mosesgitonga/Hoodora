@@ -49,6 +49,8 @@ Read at build time (`.env.example`):
 | `src/providers.ts` | Refine's auth, data and access providers over the admin API. |
 | `src/pages/` | One file per screen. |
 | `src/components.tsx` | Loading, empty and error states, and the one dialog every action goes through. |
+| `src/pages/GodsView.tsx` | God's view (decision D.8): Leaflet with no map tiles, drawing our own data. |
+| `src/kenya.json` | Kenya's outline: Natural Earth 1:50m admin-0 countries, public domain. |
 
 - **No storage:** nothing goes in web storage, cookies or URLs. A reload signs
   the person out.

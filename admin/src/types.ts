@@ -182,6 +182,7 @@ export const AUDIT_ACTIONS = [
   "device_banned",
   "device_unbanned",
   "user_looked_up",
+  "people_map_viewed",
 ] as const;
 
 export interface AuditEvent {

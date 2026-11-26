@@ -1,0 +1,51 @@
+/* God's view (decision D.8). Labels are Leaflet markers with no size, centred on
+   their point by the transform. */
+.gods-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .gods-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gods-count span,
+.gods-place span {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.gods-count span {
+  font: 600 12px/1 system-ui, sans-serif;
+  color: #5c1f0c;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 2px 5px;
+  border-radius: 8px;
+}
+
+.gods-place span {
+  font: 11px/1.2 system-ui, sans-serif;
+  color: #3b322c;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+}
+
+.gods-place-ward span,
+.gods-place-town span {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.gods-place-sublocation span {
+  font-weight: 600;
+}
+
+.gods-place-village span {
+  font-style: italic;
+  color: #5e534b;
+}

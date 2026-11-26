@@ -2,6 +2,7 @@ import {
   AuditOutlined,
   DashboardOutlined,
   FlagOutlined,
+  GlobalOutlined,
   SettingOutlined,
   StopOutlined,
   TeamOutlined,
@@ -22,6 +23,7 @@ import { Account } from "./pages/Account";
 import { Audit } from "./pages/Audit";
 import { Bans } from "./pages/Bans";
 import { Content } from "./pages/Content";
+import { GodsView } from "./pages/GodsView";
 import { Overview } from "./pages/Overview";
 import { People } from "./pages/People";
 import { Person } from "./pages/Person";
@@ -34,6 +36,7 @@ import { THEME } from "./theme";
 
 const resources = [
   { name: "overview", list: "/overview", meta: { label: "Overview", icon: <DashboardOutlined /> } },
+  { name: "map", list: "/map", meta: { label: "God's view", icon: <GlobalOutlined /> } },
   { name: "queue", list: "/queue", show: "/queue/:type/:id", meta: { label: "Reports", icon: <FlagOutlined /> } },
   { name: "people", list: "/people", show: "/people/:id", meta: { label: "People", icon: <UserOutlined /> } },
   { name: "bans", list: "/bans", meta: { label: "Ban lists", icon: <StopOutlined /> } },
@@ -123,6 +126,7 @@ function Shell() {
         >
           <Route index element={<Home />} />
           <Route path="/overview" element={<Guard resource="overview"><Overview /></Guard>} />
+          <Route path="/map" element={<Guard resource="map"><GodsView /></Guard>} />
           <Route path="/queue" element={<Queue />} />
           <Route path="/queue/:type/:id" element={<Content />} />
           <Route path="/people" element={<People />} />

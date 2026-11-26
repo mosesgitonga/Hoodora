@@ -34,6 +34,7 @@ from app.modules.events.router import router as events_router
 from app.modules.feed.router import router as feed_router
 from app.modules.follows.router import router as follows_router
 from app.modules.groups.router import router as groups_router
+from app.modules.location.admin_map import router as admin_map_router
 from app.modules.location.router import router as location_router
 from app.modules.marketplace.router import profile_router as listings_profile_router
 from app.modules.marketplace.router import router as marketplace_router
@@ -185,7 +186,8 @@ TAGS_METADATA = [
     {
         "name": "admin: staff",
         "description": (
-            "Staff sign-in — email, password and an authenticator code — and staff "
+            "Staff sign-in — email, password and, unless turned off, an authenticator "
+            "code — and staff "
             "accounts. Staff tokens only: a user token is refused here, and a staff "
             "token everywhere else."
         ),
@@ -195,6 +197,14 @@ TAGS_METADATA = [
         "description": (
             "The moderation queue, actions on content and accounts, a person's "
             "history, the audit log and the ban lists."
+        ),
+    },
+    {
+        "name": "admin: map",
+        "description": (
+            "God's view, for admins (decision D.8): people per hexagon from the "
+            "density counts, and the named places with their boundaries. Opening it "
+            "is audited."
         ),
     },
 ]
@@ -259,6 +269,7 @@ def build_v1_router(settings: Settings) -> APIRouter:
     router.include_router(moderation_router)
     router.include_router(staff_router)
     router.include_router(admin_moderation_router)
+    router.include_router(admin_map_router)
     return router
 
 

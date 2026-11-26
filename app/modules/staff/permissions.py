@@ -57,4 +57,7 @@ MINIMUM_ROLE: Final[dict[tuple[str, str], StaffRole | None]] = {
     ("PATCH", "/v1/admin/staff/{staff_id}"): ADMIN,
     ("POST", "/v1/admin/staff/{staff_id}/reset-credentials"): ADMIN,
     ("GET", "/v1/admin/stats"): ADMIN,
+    # God's view (decision D.8).
+    ("GET", "/v1/admin/map/cells"): ADMIN,
+    ("GET", "/v1/admin/map/places"): ADMIN,
 }

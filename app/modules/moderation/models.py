@@ -124,6 +124,9 @@ class AuditAction(StrEnum):
     user_looked_up = "user_looked_up"
     """A staff member looked a person up by phone number (decision D.2). Audited
     because a lookup is how a number becomes a name."""
+    people_map_viewed = "people_map_viewed"
+    """An admin opened God's view, with exact counts per hexagon (decision D.8). At
+    most once an hour per admin."""
 
 
 _actor_type = db_enum(AuditActorType, name="audit_actor_type", length=20)
