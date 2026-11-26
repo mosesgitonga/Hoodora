@@ -51,6 +51,8 @@ if [[ -d admin ]]; then
   docker build --quiet -f admin/Dockerfile \
     --build-arg VITE_API_BASE_URL="${admin_api}" \
     --output "type=local,dest=${admin_build}.tmp" admin >/dev/null
+  # Docker's export makes the folder root-only (0700); nginx reads as www-data.
+  chmod -R a+rX "${admin_build}.tmp"
   rm -rf "$admin_build"
   mv "${admin_build}.tmp" "$admin_build"
 fi

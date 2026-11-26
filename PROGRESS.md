@@ -5374,19 +5374,63 @@ Decisions D.1 to D.6.
   - a CI job that also runs the server's Docker build;
   - `docs/DEPLOYMENT.md`, "Admin dashboard".
 
-### Waiting on the product owner
+### On staging (2026-11-26)
 
-1. **The DNS record:** `myradius-admin  A  77.237.238.14`, DNS only.
-2. **Deploys:** the GitHub repository now refuses anonymous reads, and the VPS
-   fetches over plain HTTPS, so `deploy <sha>` can't fetch. Either make the
-   repository public again, or add a read-only deploy key for the VPS. Staging is
-   still on `7c59c19`.
-
-### Then
-
-1. Install the nginx sites and the allowlist, testing before each reload.
-2. Set `ADMIN_CORS_ORIGINS` on staging.
-3. Deploy, then issue the certificate.
-4. On staging, as the brief asks: create a moderator, sign in as each role,
-   work one test report to resolution, and check the site's headers.
+- **Unblocked by the product owner:** they added the DNS record and made the
+  GitHub repository public again. While it was private, the VPS couldn't fetch,
+  so `ce99718` and `f6cfe17` hadn't deployed.
+- **Deployed:** `f6cfe17` went out through the deploy gate (migration 0027, the
+  database backed up first). certbot issued the certificate for
+  `myradius-admin.chatara.co`, with HTTP redirecting to HTTPS.
+- **Found and fixed:** the dashboard answered 403 at first. Docker's file export
+  makes the build folder root-only (0700), and nginx reads as `www-data`.
+  `deploy.sh` now opens it up (`chmod -R a+rX`); the live folder was fixed by
+  hand.
+- **Headers on the dashboard** (every response):
+  - `Content-Security-Policy: default-src 'none'; script-src 'self';
+    style-src 'self' 'nonce-…'; img-src 'self' https://myradius.chatara.co
+    https://media.myradius.chatara.co; connect-src https://myradius.chatara.co;
+    font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none';
+    frame-ancestors 'none'`;
+  - a fresh nonce for every request, the same in the header and the page's
+    meta;
+  - `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+    `X-Robots-Tag: noindex, nofollow`, `X-Content-Type-Options: nosniff`,
+    `Cross-Origin-Opener-Policy: same-origin`, and a `Permissions-Policy`;
+  - caching: `index.html` `no-cache`, `/assets/` a year, and `robots.txt`
+    disallows everything.
+- **CORS:**
+  - the dashboard's origin gets a 200 preflight on `/v1/admin`, with
+    `GET, POST, PATCH, DELETE` and no credentials;
+  - it gets no CORS headers on `/v1/feed`;
+  - another origin gets 400 on `/v1/admin`.
+- **The walk-through,** in headless Edge on the live site, with no console or CSP
+  messages in any step. Staging had no staff, so a test admin was bootstrapped
+  ("Staging check (admin)"), with the product owner's agreement.
+  1. **As the admin:**
+     - signed in with the 6-digit code and landed on the Overview, with the full
+       menu;
+     - the Overview counted staging (6 accounts, 4 active, all 4 at 15 km, set by
+       the ceiling);
+     - created "Staging check (moderator)", and its sign-in details showed once;
+     - signed out.
+  2. **As the moderator:**
+     - the menu is only Reports, People and My account;
+     - the test report (two test accounts, one post, one spam report) was in the
+       queue;
+     - opening it, then Remove with a reason, turned the post "Removed" and the
+       report "Upheld", and the queue no longer lists it;
+     - typing the Staff address shows "That needs an admin";
+     - signed out.
+  3. **As the admin again:**
+     - the audit log shows the moderator's "Content removed" with its reason and
+       one report upheld, both sign-ins, and "Staff account created";
+     - a phone lookup answered "Nobody has that number." and is audited as
+       `user_looked_up` (`found: false`);
+     - the moderator was deactivated (now Disabled).
+  4. **Clean-up:** the two test user accounts were closed (deleted, as a purge
+     leaves them) and the helper script removed.
+- **Still to do:** an admin account for the product owner (their temporary
+  password and authenticator key go in a root-only file on the server, not in
+  chat), then the test admin is deactivated.
 
