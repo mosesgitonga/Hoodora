@@ -3459,3 +3459,49 @@ key they were given, or an admin resets their sign-in for a new one.
 **Checked** in headless Edge under the real CSP, against a local copy of the API
 on the 50,000-user seed with staging's 816 Nyeri places: counts at every level,
 names deduplicated, no console or CSP messages.
+
+### D.9 God's view counts where app users are, now and hour by hour (2026-11-26)
+
+**Context.** God's view counted people where they live. The product owner wants
+it to count where they are, "to know which areas get crowded in different
+times".
+
+**Choice.**
+- **Where someone is:** the hexagon their phone was last in. That is their "around
+  you now" session (decision L.1), which the app sends when it opens away from
+  home and which expires after `EXPLORE_TTL_SECONDS` (2 hours), or their home when
+  there is none.
+  - Only people in good standing who used the app in the window count.
+  - So this counts where app users are when they use it, not crowds as such.
+- **Now:** live, for the last 2 hours, from data already held; nothing kept.
+- **Hour by hour:** a new job, `count_presence`, runs a couple of minutes past
+  each hour and keeps how many people were in each hexagon in the hour just
+  ended.
+  - It stores resolutions 8, 7 and 6 (down to ~0.7 km², the product owner's
+    choice) in `presence_counts` (migration 0029).
+  - Counts only: no account, and nothing that ties one hour to the next for
+    anyone.
+- **Kept for a year** (`PRESENCE_RETENTION_DAYS=365`, the product owner's
+  choice). The job deletes older hours as it runs.
+- **On God's view:** Homes, Now, An hour (a day and an hour, Nairobi time) and
+  Typical day (the average at an hour over the last 30 days, over the hours
+  recorded).
+  - One endpoint serves the last three: `GET /v1/admin/map/presence`, admins
+    only.
+  - Opening any of them is audited as before, now with the view in the context.
+- **Telling people (the product owner's choice: update the notice, no new
+  prompt):**
+  - the location line at sign-up now says areas are counted hour by hour,
+    without names;
+  - the Privacy and consent screen has a "How your location is used" section:
+    the area kept for home, the 2-hour "around you now", and the hourly counts
+    kept for a year.
+  - The repository holds no full privacy policy. If one is published elsewhere,
+    it needs the same addition.
+
+**Trade-off.** Under Kenya's Data Protection Act this is a new purpose for
+location data, and an hourly count at ~0.7 km² can, while there are few users,
+trace one person's day from a run of 1s across small hexagons. The product owner
+chose that detail and a year's history knowing this. Who sees it is limited to
+admins and audited. A coarser history (5 km² and up) and 90 days were the
+alternatives.

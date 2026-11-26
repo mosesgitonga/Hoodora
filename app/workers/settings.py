@@ -28,6 +28,7 @@ from app.core.redis import close_redis
 from app.workers.tasks import (
     as_worker_task,
     catch_up_media,
+    count_presence,
     deliver_message_push,
     deliver_notification_push,
     expire_circle_requests,
@@ -68,6 +69,7 @@ class WorkerSettings:
         as_worker_task(heartbeat),
         as_worker_task(refresh_density),
         as_worker_task(roll_presence),
+        as_worker_task(count_presence),
         as_worker_task(run_retention),
         as_worker_task(process_media),
         as_worker_task(catch_up_media),
@@ -96,6 +98,9 @@ class WorkerSettings:
         # past midnight local time, so "today" has definitely turned over for
         # every Kenyan user, and in the quietest part of the night.
         cron(as_worker_task(roll_presence), hour={0}, minute={20}, second=0),
+        # A couple of minutes past each hour: the hour just ended, where app users
+        # were (decision D.9).
+        cron(as_worker_task(count_presence), minute={2}, second=0),
         cron(as_worker_task(run_retention), hour={0}, minute={40}, second=0),
         # After the presence roll, so the badge reads the new day's window.
         cron(as_worker_task(recompute_badges), hour={0}, minute={30}, second=0),

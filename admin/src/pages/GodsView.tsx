@@ -1,5 +1,6 @@
-// God's view (decision D.8): Kenya, the hexagons people live in with how many,
-// and the named places with their boundaries. Admins only; opening it is audited.
+// God's view (decisions D.8 and D.9): Kenya, the hexagons with how many people,
+// and the named places with their boundaries. People by where they live, where
+// they are now, at a past hour, or on a typical day. Admins only; audited.
 //
 // Drawn with Leaflet from our own data alone: no map tiles, nothing fetched from
 // anyone else's servers. Every label is set as text, never as HTML: place names
@@ -8,7 +9,8 @@
 import "leaflet/dist/leaflet.css";
 import "./GodsView.css";
 
-import { Alert, Button, Card, Space, Statistic, Typography } from "antd";
+import { Alert, Button, Card, DatePicker, Segmented, Slider, Space, Statistic, Typography } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 import L from "leaflet";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -20,8 +22,9 @@ import { THEME } from "../theme";
 export interface MapCell {
   id: string;
   people: number;
-  active: number;
-  recent_posts: number;
+  /** Where they live only. */
+  active?: number;
+  recent_posts?: number;
   boundary: [number, number][];
 }
 
@@ -30,6 +33,57 @@ interface CellsOut {
   cells: MapCell[];
   truncated: boolean;
   people: number;
+  hours_recorded?: number;
+}
+
+export type Mode = "homes" | "now" | "hour" | "typical";
+
+export interface Showing {
+  mode: Mode;
+  /** For "hour": the day, in Nairobi. */
+  day: Dayjs;
+  /** For "hour" and "typical": the hour of the day, Nairobi time. */
+  hour: number;
+}
+
+const TYPICAL_DAYS = 30;
+
+/** What to ask the API for a view, at a hexagon size. */
+export function askFor(showing: Showing, resolution: number): { path: string; query: Record<string, string | number> } {
+  switch (showing.mode) {
+    case "homes":
+      return { path: "/map/cells", query: { resolution } };
+    case "now":
+      return { path: "/map/presence", query: { mode: "now", resolution } };
+    case "hour": {
+      const at = `${showing.day.format("YYYY-MM-DD")}T${String(showing.hour).padStart(2, "0")}:00:00+03:00`;
+      return { path: "/map/presence", query: { mode: "hour", resolution, at } };
+    }
+    case "typical":
+      return { path: "/map/presence", query: { mode: "typical", resolution, hour_of_day: showing.hour, days: TYPICAL_DAYS } };
+  }
+}
+
+function count(people: number): string {
+  return Number.isInteger(people) ? String(people) : people.toFixed(1);
+}
+
+function hourName(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function describe(cell: MapCell, showing: Showing): string {
+  const n = count(cell.people);
+  switch (showing.mode) {
+    case "homes":
+      return `${n} ${cell.people === 1 ? "person lives" : "people live"} here · ${cell.active ?? 0} active · ${cell.recent_posts ?? 0} recent posts`;
+    case "now":
+      return `${n} here in the last 2 hours`;
+    case "hour":
+      return `${n} here between ${hourName(showing.hour)} and ${hourName((showing.hour + 1) % 24)}`;
+    case "typical":
+      return `About ${n} here at ${hourName(showing.hour)} on a typical day`;
+  }
 }
 
 interface PlaceFeature {
@@ -79,7 +133,10 @@ export function GodsView() {
   const counts = useRef<L.LayerGroup | null>(null);
   const placeNames = useRef<Record<string, L.LayerGroup>>({});
   const asked = useRef(0);
-  const [view, setView] = useState<{ resolution: number; cells: MapCell[]; truncated: boolean } | null>(null);
+  const [showing, setShowing] = useState<Showing>({ mode: "homes", day: dayjs().subtract(1, "day"), hour: 18 });
+  const showingRef = useRef(showing);
+  showingRef.current = showing;
+  const [view, setView] = useState<{ resolution: number; cells: MapCell[]; truncated: boolean; hoursRecorded?: number } | null>(null);
   const [places, setPlaces] = useState<number | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [extent, setExtent] = useState<L.LatLngBounds | null>(null);
@@ -105,10 +162,12 @@ export function GodsView() {
     const resolution = resolutionFor(m.getZoom());
     const bounds = m.getBounds().pad(0.2);
     const ticket = ++asked.current;
+    const now = showingRef.current;
+    const { path, query } = askFor(now, resolution);
     try {
-      const out = await request<CellsOut>("GET", "/map/cells", {
+      const out = await request<CellsOut>("GET", path, {
         query: {
-          resolution,
+          ...query,
           west: Math.max(-180, bounds.getWest()),
           south: Math.max(-90, bounds.getSouth()),
           east: Math.min(180, bounds.getEast()),
@@ -117,7 +176,7 @@ export function GodsView() {
       });
       if (ticket !== asked.current) return; // a newer view asked since
       setError(null);
-      setView({ resolution, cells: out.cells, truncated: out.truncated });
+      setView({ resolution, cells: out.cells, truncated: out.truncated, hoursRecorded: out.hours_recorded });
       const most = Math.max(1, ...out.cells.map((cell) => cell.people));
       hexagons.current?.clearLayers();
       counts.current?.clearLayers();
@@ -129,15 +188,10 @@ export function GodsView() {
           fillColor: THEME.token.colorPrimary,
           fillOpacity: 0.08 + 0.4 * strength,
         })
-          .bindTooltip(
-            plain(
-              `${cell.people} ${cell.people === 1 ? "person lives" : "people live"} here · ${cell.active} active · ${cell.recent_posts} recent posts`,
-            ),
-            { sticky: true },
-          )
+          .bindTooltip(plain(describe(cell, now)), { sticky: true })
           .addTo(hexagons.current!);
         L.marker(centre(cell.boundary), {
-          icon: label(String(cell.people), "gods-count"),
+          icon: label(count(cell.people), "gods-count"),
           interactive: false,
           keyboard: false,
         }).addTo(counts.current!);
@@ -169,6 +223,17 @@ export function GodsView() {
       map.current = null;
     };
   }, [loadCells, showLabels]);
+
+  // A different view: the same map, new numbers. Not on the first render: the
+  // first load waits until the map has found where people are.
+  const firstShowing = useRef(true);
+  useEffect(() => {
+    if (firstShowing.current) {
+      firstShowing.current = false;
+      return;
+    }
+    if (map.current) void loadCells();
+  }, [showing, loadCells]);
 
   // Places and where people are, once; then the hexagons for the view.
   useEffect(() => {
@@ -219,8 +284,14 @@ export function GodsView() {
     };
   }, [loadCells, showLabels]);
 
-  const people = view?.cells.reduce((sum, cell) => sum + cell.people, 0) ?? 0;
-  const active = view?.cells.reduce((sum, cell) => sum + cell.active, 0) ?? 0;
+  const people = Math.round((view?.cells.reduce((sum, cell) => sum + cell.people, 0) ?? 0) * 10) / 10;
+  const active = view?.cells.reduce((sum, cell) => sum + (cell.active ?? 0), 0) ?? 0;
+  const heading = {
+    homes: "People living here",
+    now: "Here in the last 2 hours",
+    hour: `Here ${hourName(showing.hour)}–${hourName((showing.hour + 1) % 24)}, ${showing.day.format("D MMM")}`,
+    typical: `Here at ${hourName(showing.hour)}, on average`,
+  }[showing.mode];
   const withPeople = view?.cells.filter((cell) => cell.people > 0).length ?? 0;
 
   return (
@@ -231,7 +302,54 @@ export function GodsView() {
       <div style={{ display: "grid", gap: 16 }}>
         <Card title="God's view" size="small">
           <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-            Hexagons where people live, each with how many, and the named places people see as "near …".
+            Hexagons with how many people, and the named places people see as "near …".
+          </Typography.Paragraph>
+          <Segmented<Mode>
+            block
+            value={showing.mode}
+            onChange={(mode) => setShowing((was) => ({ ...was, mode }))}
+            options={[
+              { value: "homes", label: "Homes" },
+              { value: "now", label: "Now" },
+              { value: "hour", label: "An hour" },
+              { value: "typical", label: "Typical day" },
+            ]}
+            aria-label="Show people by"
+          />
+          {showing.mode === "hour" ? (
+            <div style={{ marginTop: 12 }}>
+              <DatePicker
+                value={showing.day}
+                allowClear={false}
+                disabledDate={(day) => day.isAfter(dayjs(), "day")}
+                onChange={(day) => day && setShowing((was) => ({ ...was, day }))}
+                aria-label="Day"
+              />
+            </div>
+          ) : null}
+          {showing.mode === "hour" || showing.mode === "typical" ? (
+            <div style={{ marginTop: 8 }}>
+              <Typography.Text>{hourName(showing.hour)} Nairobi time</Typography.Text>
+              <Slider
+                min={0}
+                max={23}
+                value={showing.hour}
+                onChange={(hour) => setShowing((was) => ({ ...was, hour }))}
+                tooltip={{ formatter: (hour) => hourName(hour ?? 0) }}
+                aria-label="Hour"
+              />
+            </div>
+          ) : null}
+          <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 8 }}>
+            {
+              {
+                homes: "Where people live.",
+                now: "App users in the last 2 hours, where their phone last was (or at home).",
+                hour: "App users in that hour, where their phone last was. Kept hour by hour for a year.",
+                typical: `The average at that hour over the last ${TYPICAL_DAYS} days.`,
+              }[showing.mode]
+            }{" "}
+            Counts only, never who.
           </Typography.Paragraph>
           <Alert type="info" showIcon message="Admins only. Opening this map is recorded in the audit log." />
         </Card>
@@ -241,16 +359,25 @@ export function GodsView() {
           </Card>
         ) : (
           <Card title="In view" size="small">
-            <Statistic title="People living here" value={people} />
+            <Statistic title={heading} value={people} />
             <Space size="large" style={{ marginTop: 8 }}>
-              <Statistic title="Active" value={active} valueStyle={{ fontSize: 18 }} />
+              {showing.mode === "homes" ? <Statistic title="Active" value={active} valueStyle={{ fontSize: 18 }} /> : null}
               <Statistic title="Hexagons" value={withPeople} valueStyle={{ fontSize: 18 }} />
             </Space>
+            {showing.mode === "typical" && view ? (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+                {view.hoursRecorded ? `Averaged over ${view.hoursRecorded} recorded ${view.hoursRecorded === 1 ? "hour" : "hours"}.` : "Nothing recorded at this hour yet: counting started with this release."}
+              </Typography.Paragraph>
+            ) : null}
             <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
               {view ? `Hexagons of ${SIZE_NAMES[view.resolution]}. Zoom in for smaller ones and their numbers.` : "Loading…"}
             </Typography.Paragraph>
             {view?.truncated ? <Alert type="warning" showIcon message="Too many hexagons to show here: zoom in." style={{ marginTop: 8 }} /> : null}
-            {view && withPeople === 0 ? <EmptyState title="Nobody lives here yet">Pan or zoom out to find people.</EmptyState> : null}
+            {view && withPeople === 0 ? (
+              <EmptyState title={showing.mode === "homes" ? "Nobody lives here yet" : "Nobody here then"}>
+                Pan or zoom out{showing.mode === "homes" ? "" : ", or pick another time"}.
+              </EmptyState>
+            ) : null}
           </Card>
         )}
         <Card size="small" title="Go to">

@@ -60,4 +60,5 @@ MINIMUM_ROLE: Final[dict[tuple[str, str], StaffRole | None]] = {
     # God's view (decision D.8).
     ("GET", "/v1/admin/map/cells"): ADMIN,
     ("GET", "/v1/admin/map/places"): ADMIN,
+    ("GET", "/v1/admin/map/presence"): ADMIN,
 }

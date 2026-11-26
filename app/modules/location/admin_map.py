@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Annotated, Any, Final
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any, Final, Literal
 
 import h3
 from fastapi import APIRouter, Depends, Query
@@ -26,9 +27,11 @@ from redis.asyncio import Redis
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.core.db import SessionDep
 from app.core.errors import BadRequestError
 from app.core.redis import CACHE_ERRORS, get_redis
+from app.modules.location import presence
 from app.modules.location.models import CellActivity
 from app.modules.moderation.audit import record_audit_event
 from app.modules.moderation.models import AuditAction, AuditActorType
@@ -90,7 +93,11 @@ class MapCellsOut(BaseModel):
 
 
 async def _audit_view(
-    session: AsyncSession, redis: Redis, staff: StaffAccount, resolution: int
+    session: AsyncSession,
+    redis: Redis,
+    staff: StaffAccount,
+    resolution: int,
+    mode: str = "homes",
 ) -> None:
     """At most once an hour per admin: a map is opened, panned and zoomed many
     times over. If Redis can't say, it records anyway: better twice than never."""
@@ -107,7 +114,7 @@ async def _audit_view(
             action=AuditAction.people_map_viewed,
             actor_type=AuditActorType.moderator,
             actor_id=staff.id,
-            context={"resolution": resolution},
+            context={"resolution": resolution, "mode": mode},
         )
 
 
@@ -222,3 +229,94 @@ async def map_places(admin: AdminStaff, session: SessionDep, box: BoxDep) -> dic
             for row in rows
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Where app users are: now, at an hour, on a typical day (decision D.9)
+# ---------------------------------------------------------------------------
+class PresenceCellOut(BaseModel):
+    id: str
+    people: float = Field(description="A whole number, except on a typical day: an average.")
+    boundary: list[tuple[float, float]]
+
+
+class PresenceOut(BaseModel):
+    mode: Literal["now", "hour", "typical"]
+    resolution: int
+    cells: list[PresenceCellOut]
+    people: float
+    hours_recorded: int = Field(
+        description="For `typical`: how many hourly counts the average is over. 0 means none yet."
+    )
+    truncated: bool
+
+
+@router.get(
+    "/presence",
+    response_model=PresenceOut,
+    summary="Where app users are (admin)",
+    description=(
+        "God's view (decision D.9): app users counted in the hexagon their phone was "
+        'last in (their "around you now" session, else home).\n\n'
+        "- `now`: everyone active in the last `EXPLORE_TTL_SECONDS` (2 hours), live.\n"
+        "- `hour`: the count kept for the hour starting at `at`.\n"
+        "- `typical`: the average at `hour_of_day` (Nairobi) over the last `days` days.\n\n"
+        "Counts only, never who. Opening the map is audited, at most once an hour."
+    ),
+)
+async def map_presence(
+    admin: AdminStaff,
+    session: SessionDep,
+    redis: RedisDep,
+    box: BoxDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+    mode: Annotated[Literal["now", "hour", "typical"], Query()] = "now",
+    resolution: Annotated[int, Query(ge=6, le=8, description="8, 7 or 6.")] = 8,
+    at: Annotated[datetime | None, Query(description="For `hour`: the hour's start.")] = None,
+    hour_of_day: Annotated[
+        int, Query(ge=0, le=23, description="For `typical`, Nairobi time.")
+    ] = 18,
+    days: Annotated[int, Query(ge=1, le=365, description="For `typical`.")] = 30,
+) -> PresenceOut:
+    hours_recorded = 0
+    if mode == "now":
+        now = datetime.now(UTC)
+        counts = await presence.where_people_are(
+            session, redis, since=now - timedelta(seconds=settings.explore_ttl_seconds), now=now
+        )
+        by_cell: dict[int, float] = {cell: float(n) for cell, n in counts[resolution].items()}
+    elif mode == "hour":
+        if at is None:
+            raise BadRequestError("Give the hour to show as `at`")
+        by_cell = await presence.counts_at_hour(session, resolution=resolution, hour_start=at)
+        hours_recorded = 1 if by_cell else 0
+    else:
+        by_cell, hours_recorded = await presence.typical_counts(
+            session, resolution=resolution, hour_of_day=hour_of_day, days=days
+        )
+
+    cells: list[PresenceCellOut] = []
+    truncated = False
+    for cell, people in sorted(by_cell.items()):
+        name = h3.int_to_str(cell)
+        if box is not None and not box.contains(*h3.cell_to_latlng(name)):
+            continue
+        if len(cells) >= MAX_CELLS:
+            truncated = True
+            break
+        cells.append(
+            PresenceCellOut(
+                id=name,
+                people=people,
+                boundary=[(round(lat, 6), round(lng, 6)) for lat, lng in h3.cell_to_boundary(name)],
+            )
+        )
+    await _audit_view(session, redis, admin, resolution, mode)
+    return PresenceOut(
+        mode=mode,
+        resolution=resolution,
+        cells=cells,
+        people=round(sum(cell.people for cell in cells), 1),
+        hours_recorded=hours_recorded,
+        truncated=truncated,
+    )

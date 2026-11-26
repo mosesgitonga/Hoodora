@@ -273,6 +273,19 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                 onChanged: _setMarketing,
               ),
               const SizedBox(height: 20),
+              // The privacy notice for decision D.9.
+              Text('How your location is used', style: text.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                'Hoodora keeps your home as an area, never the exact spot. When you open the app '
+                'away from home, it notes the area you are in for about two hours, to show what is '
+                'around you, then forgets it.\n\n'
+                'Areas are also counted hour by hour (how many people were in each area, never '
+                'who) so Hoodora can see which places get busy at different times. Those counts '
+                'are kept for a year.',
+                style: text.bodySmall,
+              ),
+              const SizedBox(height: 20),
               Text('Being found', style: text.titleMedium),
               const SizedBox(height: 4),
               SwitchListTile(

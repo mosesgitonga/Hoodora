@@ -135,7 +135,8 @@ limit tests in each module.
   table.
 - The dashboard hides what a moderator can't do (the overview, God's view, ban
   lists, audit log, staff, ban and unban). The server still decides.
-- **God's view (decision D.8):** admins only, and every opening is audited. Place
+- **God's view (decisions D.8 and D.9):** admins only, and every opening is
+  audited, whichever view (homes, now, an hour, a typical day). Place
   names, which come from outside data, are only ever set as text, never HTML
   (tested with a hostile name).
 

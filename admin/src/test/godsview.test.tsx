@@ -3,9 +3,11 @@
 // counts, and that place names stay text.
 
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import dayjs from "dayjs";
 import { describe, expect, it } from "vitest";
 
-import { label, plain, resolutionFor, type MapCell } from "../pages/GodsView";
+import { askFor, label, plain, resolutionFor, type MapCell } from "../pages/GodsView";
 import { findText, openAs } from "./harness";
 
 function hexagon(id: string, people: number, lat = -0.42, lng = 36.95): MapCell {
@@ -94,5 +96,46 @@ describe("God's view", () => {
     expect(await findText("That needs an admin")).toBeInTheDocument();
     expect(screen.queryByText("God's view")).not.toBeInTheDocument();
     expect(api.calls.some((c) => c.path.startsWith("/map"))).toBe(false);
+  });
+
+  it("asks for the right counts in each view (decision D.9)", () => {
+    const day = dayjs("2026-11-24");
+    expect(askFor({ mode: "homes", day, hour: 9 }, 7)).toEqual({ path: "/map/cells", query: { resolution: 7 } });
+    expect(askFor({ mode: "now", day, hour: 9 }, 8)).toEqual({ path: "/map/presence", query: { mode: "now", resolution: 8 } });
+    expect(askFor({ mode: "hour", day, hour: 9 }, 8)).toEqual({
+      path: "/map/presence",
+      query: { mode: "hour", resolution: 8, at: "2026-11-24T09:00:00+03:00" },
+    });
+    expect(askFor({ mode: "typical", day, hour: 18 }, 6)).toEqual({
+      path: "/map/presence",
+      query: { mode: "typical", resolution: 6, hour_of_day: 18, days: 30 },
+    });
+  });
+
+  it("switches to where people are now", async () => {
+    const api = await openAs("admin", "/map", {
+      "GET /map/cells": CELLS,
+      "GET /map/places": PLACES,
+      "GET /map/presence": (_, url) => ({
+        status: 200,
+        body: {
+          mode: url.searchParams.get("mode"),
+          resolution: Number(url.searchParams.get("resolution")),
+          cells: [{ id: "86a", people: 4, boundary: hexagon("86a", 4).boundary }],
+          people: 4,
+          hours_recorded: url.searchParams.get("mode") === "typical" ? 0 : 1,
+          truncated: false,
+        },
+      }),
+    });
+    await findText(/3 named places\./);
+    await userEvent.click(screen.getByText("Now"));
+    expect(await findText("Here in the last 2 hours")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Here in the last 2 hours").parentElement?.textContent).toContain("4"));
+    expect(api.calls.some((c) => c.path === "/map/presence" && c.url.searchParams.get("mode") === "now")).toBe(true);
+
+    await userEvent.click(screen.getByText("Typical day"));
+    expect(await findText(/Nothing recorded at this hour yet/)).toBeInTheDocument();
+    expect(api.calls.some((c) => c.path === "/map/presence" && c.url.searchParams.get("mode") === "typical")).toBe(true);
   });
 });

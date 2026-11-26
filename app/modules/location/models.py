@@ -22,6 +22,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     func,
     text,
@@ -216,4 +217,25 @@ class Place(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """`official polygon`, `generated cell` (nearest known place) or `fallback`."""
     boundary: Mapped[object] = mapped_column(
         Geography(geometry_type="MULTIPOLYGON", srid=4326, spatial_index=True)
+    )
+
+
+class PresenceCount(Base):
+    """How many app users were in a hexagon during an hour (decision D.9).
+
+    Counts only: no account, and nothing that ties one hour to the next for
+    anyone. Written hourly by `count_presence`, kept for `PRESENCE_RETENTION_DAYS`.
+    """
+
+    __tablename__ = "presence_counts"
+
+    hour_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    resolution: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    cell: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    people: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (
+        CheckConstraint("people > 0", name="presence_people_positive"),
+        CheckConstraint("resolution IN (6, 7, 8)", name="presence_resolution_known"),
+        Index("ix_presence_counts_resolution_hour_start", "resolution", "hour_start"),
     )

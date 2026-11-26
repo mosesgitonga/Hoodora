@@ -226,6 +226,8 @@ class Settings(BaseSettings):
     home_change_cooldown_days: int = Field(default=14, ge=0, le=365)
 
     explore_ttl_seconds: int = Field(default=7200, ge=300, le=86_400)
+    presence_retention_days: int = Field(default=365, ge=1, le=3650)
+    """How long the hourly counts of where app users are stay (decision D.9)."""
     """Explore mode lives in Redis only, for about two hours, and never reaches
     PostgreSQL. See decision 1.1."""
 

@@ -109,7 +109,7 @@ async def test_opening_the_map_is_audited_once_an_hour(
         .all()
     )
     assert len(views) == 1
-    assert views[0].context == {"resolution": 6}
+    assert views[0].context == {"resolution": 6, "mode": "homes"}
     # Places carry no counts of people, so they aren't audited.
     await client.get("/v1/admin/map/places", headers=headers)
     assert (

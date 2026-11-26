@@ -38,6 +38,7 @@ from app.modules.events import service as events_service
 from app.modules.feed.tasks import expire_stories
 from app.modules.follows import service as follows_service
 from app.modules.groups import service as groups_service
+from app.modules.location.presence import snapshot_presence
 from app.modules.location.tasks import refresh_cell_activity, roll_home_presence
 from app.modules.media import service as media_service
 from app.modules.messaging import service as messaging_service
@@ -142,6 +143,16 @@ async def refresh_density(ctx: JobContext) -> dict[str, int]:
         "cells_updated": result.cells_updated,
         "stale_cells_removed": result.stale_cells_removed,
     }
+
+
+@with_job_context
+async def count_presence(ctx: JobContext) -> dict[str, int]:
+    """Hourly: how many app users were in each hexagon in the hour just ended,
+    and forget hours past the retention (decision D.9)."""
+    settings = get_settings()
+    async with task_session(ctx) as session:
+        result = await snapshot_presence(session, get_redis(), settings=settings)
+    return {"people": result.people, "cells": result.cells, "removed": result.removed}
 
 
 @with_job_context

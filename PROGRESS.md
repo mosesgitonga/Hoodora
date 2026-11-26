@@ -5507,3 +5507,37 @@ their boundaries. Decision D.8.
     and a name shows once in 3 km at its highest level.
   - The second walk showed numbers at every zoom from 9 inward, with no console
     or CSP messages.
+
+## God's view counts where people are, over time (2026-11-26)
+
+Asked for by the product owner: "the dashboard should count the current
+location of users to know which areas get crowded in different times".
+Decision D.9.
+
+- **Decided by the product owner:**
+  - history down to ~0.7 km² hexagons;
+  - kept for a year;
+  - the privacy notice updated, with no new prompt.
+- **Server:**
+  - `presence_counts` (migration 0029);
+  - `count_presence`, hourly at minute 2;
+  - `GET /v1/admin/map/presence` (`now`, `hour`, `typical`), admins only.
+  - Tests (`tests/test_presence.py`, 4):
+    - who counts and where (exploring, at home, an expired trip, asleep,
+      suspended, no home);
+    - the hourly record, a re-run and retention;
+    - the job;
+    - the three views and their audit row.
+- **Dashboard:**
+  - God's view shows Homes, Now, An hour and Typical day;
+  - 2 new tests (what each view asks for, switching views).
+- **App:**
+  - the location line at sign-up, and a "How your location is used" section
+    on Privacy and consent;
+  - 1 new test. It reaches phones with the next app release or patch.
+- **Why "Root" stayed in Gitero:** God's view counted homes, and opening the
+  app never moves a home. The server also hadn't seen "Root" since 20 Nov, so
+  the app opened in Mathari was probably signed in as another account. The new
+  Now view counts where people are.
+- **Counting starts with this deploy,** so An hour and Typical day fill in from
+  then.

@@ -117,7 +117,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               value: _location,
               onChanged: (v) => setState(() => _location = v),
               label: 'Use my location to show what is nearby',
-              detail: 'Only the area is kept, never your exact location.',
+              // The privacy notice for decision D.9: areas counted, never who.
+              detail: 'Only the area is kept, never your exact location. Areas are also counted '
+                  'hour by hour, without names, to see which places get busy.',
             ),
             _Consent(
               value: _marketing,

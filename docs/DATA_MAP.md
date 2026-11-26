@@ -134,7 +134,7 @@ and the deletion flow should say so.
 log redaction filter uses, rather than trusting callers.
 
 God's view (decision D.8) shows admins exact counts of people per hexagon, from
-`cell_activity`. Opening it is audited as `people_map_viewed`, at most once an
+`cell_activity` and, since decision D.9, `presence_counts`. Opening it is audited as `people_map_viewed`, at most once an
 hour per admin, with only the resolution in the context.
 
 A staff member looking someone up by phone number (decision D.2) is audited as
@@ -149,7 +149,7 @@ travels in the request body, which neither nginx nor the API logs.
 | `otp:<hash>` | Hashed one-time code and its attempt counter | Phone verification | 5 minutes |
 | `otp:cooldown:<hash>` | Resend cooldown marker | Cost control: each send is a real SMS | 60 seconds |
 | `signup:<hash>` | Phone number awaiting signup completion | Single-use ticket between verify and signup | 15 minutes |
-| `explore:<user id>` | **Where the phone is, as cells**, while it's away from home | Lists read from it, and new content is placed in it (decision L.1). The app sends it at launch and on coming back to the app | ~2 hours, renewed while the app is in use |
+| `explore:<user id>` | **Where the phone is, as cells**, while it's away from home | Lists read from it, and new content is placed in it (decision L.1). The app sends it at launch and on coming back to the app. Also read, without keeping it, to count people per hexagon now and each hour (decision D.9) | ~2 hours, renewed while the app is in use |
 | `arealabel:<cell>` | A resolved area label | Avoids recomputing k-anonymity per profile render | 1 hour |
 | `radius:feed:<cell>` | A cached feed radius: its ring, what set it (`limited_by`) and its km | Stability and cost | 15 minutes |
 | `rl:<bucket>:<identity>` | Rate-limit counters | Abuse and cost control | Window length |
@@ -890,6 +890,25 @@ Bunny belongs in the privacy notice's list of processors, beside Shorebird and
 Google, before launch.
 
 ---
+
+## Where app users are, hour by hour (2026-11-26)
+
+### `presence_counts`
+
+| Field | Why | Retention |
+| --- | --- | --- |
+| `hour_start`, `resolution`, `cell`, `people` | How many app users were in each hexagon (resolutions 8, 7 and 6) during each hour, so admins can see which areas get busy when (decision D.9) | `PRESENCE_RETENTION_DAYS` (1 year), deleted by the hourly job |
+
+- **What it holds:** counts only, never an account, and nothing that ties one
+  hour to the next for anyone.
+- **What counts:** a person in good standing who used the app that hour, in
+  the hexagon their phone was last in (the 2-hour "around you now" session),
+  otherwise their home.
+- **Data rights:** the rows hold no account, so they are not part of an export
+  and nothing is purged from them when an account is deleted.
+- **The caveat:** at ~0.7 km² and with few users, a run of 1s can still follow
+  one person's day, so only admins see them, and every viewing is audited.
+- **Users are told:** at sign-up, and on the Privacy and consent screen.
 
 ## The admin dashboard — what stays in the browser (2026-11-25)
 

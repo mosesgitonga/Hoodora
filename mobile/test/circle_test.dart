@@ -229,4 +229,15 @@ void main() {
     final patch = adapter.requests.singleWhere((r) => r.path == '/me' && r.method == 'PATCH');
     expect(patch.data, {'circle_request_policy': 'nobody'});
   });
+
+  testWidgets('Privacy says how location is used, including the hourly counts (decision D.9)', (tester) async {
+    await open(tester, Routes.privacy);
+
+    final heading = find.text('How your location is used');
+    await tester.scrollUntilVisible(heading, 200, scrollable: find.byType(Scrollable).last);
+    expect(heading, findsOneWidget);
+    expect(find.textContaining('counted hour by hour'), findsOneWidget);
+    expect(find.textContaining('never who'), findsOneWidget);
+    expect(find.textContaining('kept for a year'), findsOneWidget);
+  });
 }
