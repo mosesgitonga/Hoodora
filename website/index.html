@@ -86,12 +86,12 @@
       "@id": "https://hoodora.one/#faq",
       "mainEntity": [
         {"@type": "Question", "name": "Is Hoodora free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Hoodora is free to download and free to use: posting, selling, chatting, joining groups and going to events cost nothing."}},
-        {"@type": "Question", "name": "Does Hoodora show my exact location?", "acceptedAnswer": {"@type": "Answer", "text": "No. Neighbours only ever see an area name, such as \"near Nyeri town\", never your exact location or your street. You choose your home area when you sign up."}},
+        {"@type": "Question", "name": "Does Hoodora show my exact location?", "acceptedAnswer": {"@type": "Answer", "text": "No. Neighbours only ever see an area name, never your exact location or your street. You choose your home area when you sign up."}},
         {"@type": "Question", "name": "Who can see what I post?", "acceptedAnswer": {"@type": "Answer", "text": "People within your radius: neighbours in your area. You can also post to your Circle, the neighbours you know, and to groups you belong to."}},
         {"@type": "Question", "name": "How does Hoodora keep job posts safe?", "acceptedAnswer": {"@type": "Answer", "text": "Posting a job needs a verified phone number, posts that ask for fees are held for review, and every job chat carries a reminder never to pay to get a job. Anyone can report or block a person in one tap."}},
         {"@type": "Question", "name": "How do I sign up?", "acceptedAnswer": {"@type": "Answer", "text": "Sign in with your Google account, choose a display name, and set your home area. A phone number is only needed if you post jobs or want the verified-neighbour badge, and it is checked by SMS."}},
         {"@type": "Question", "name": "Is Hoodora on iPhone?", "acceptedAnswer": {"@type": "Answer", "text": "Hoodora is on Android first, where most of Kenya is. An iPhone version is planned."}},
-        {"@type": "Question", "name": "Where is Hoodora available?", "acceptedAnswer": {"@type": "Answer", "text": "Hoodora is starting in Nyeri, then growing to Karatina, Othaya, Nanyuki and Nairobi. It works anywhere in Kenya: your radius widens where there are fewer neighbours, so there is always something to see."}},
+        {"@type": "Question", "name": "Where is Hoodora available?", "acceptedAnswer": {"@type": "Answer", "text": "Hoodora works anywhere in Kenya. Your radius widens where there are fewer neighbours, so there is always something to see."}},
         {"@type": "Question", "name": "How is Hoodora different from WhatsApp groups?", "acceptedAnswer": {"@type": "Answer", "text": "Instead of joining dozens of groups, you get one place for everything nearby: news, questions, alerts, things for sale, jobs, services and events, sorted by how close they are, with reviews and safety tools built in."}}
       ]
     }
@@ -213,12 +213,6 @@ p{margin:0 0 1em}
 .safety .card p{color:#C9C5DE}
 .safety .icon{background:rgba(14,124,112,.25);color:#5ED3C4}
 
-/* Towns */
-.towns{display:flex;flex-wrap:wrap;gap:12px;list-style:none;padding:0;margin:24px 0 0}
-.towns li{padding:12px 20px;border-radius:999px;background:var(--surface);border:1px solid var(--line-strong);font-weight:700}
-.towns li.now{background:var(--primary);border-color:var(--primary);color:#fff}
-.towns li small{font-weight:500;opacity:.8;margin-left:6px}
-
 /* FAQ */
 .faq{max-width:820px}
 .faq details{background:var(--surface);border:1px solid var(--line);border-radius:18px;margin-bottom:12px}
@@ -285,7 +279,7 @@ p{margin:0 0 1em}
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap">
       <div>
-        <p class="eyebrow">Free neighbourhood app · Starting in Nyeri</p>
+        <p class="eyebrow">Free neighbourhood app</p>
         <h1 id="hero-title">The neighbourhood app <span class="accent">for Kenya</span></h1>
         <p class="lead">Hoodora brings local news, alerts, things for sale, jobs, trusted services and events from the people who live near you into one free app. No more scrolling through ten WhatsApp groups to find out what's happening on your street.</p>
         <div class="hero-actions">
@@ -397,7 +391,7 @@ p{margin:0 0 1em}
         <p class="lead">Every Hoodora user has a radius that adjusts to how many neighbours are around. In a busy estate it shrinks, so your feed stays truly local. In a quieter area it widens, so there is always something to see.</p>
         <ol class="steps">
           <li><div><strong>Sign in with Google</strong><p>No passwords and no codes to wait for. Pick a display name and you're in.</p></div></li>
-          <li><div><strong>Set your home area</strong><p>Neighbours only ever see an area name, like "near Nyeri town", never your exact location.</p></div></li>
+          <li><div><strong>Set your home area</strong><p>Neighbours only ever see the name of your area, never your exact location.</p></div></li>
           <li><div><strong>See what's happening around you</strong><p>Posts, listings, jobs and events from within your radius, with filters for how far you want to look.</p></div></li>
         </ol>
       </div>
@@ -432,24 +426,6 @@ p{margin:0 0 1em}
     </div>
   </section>
 
-  <!-- Towns -->
-  <section class="section" id="towns" aria-labelledby="towns-title">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow">Where</p>
-        <h2 id="towns-title">Starting in Nyeri, growing across Kenya</h2>
-        <p>Hoodora is launching in Nyeri with students, local businesses, churches, chamas and community groups. Karatina, Othaya, Nanyuki and Nairobi are next, and the app works anywhere in Kenya from day one.</p>
-      </div>
-      <ul class="towns">
-        <li class="now">Nyeri<small>now</small></li>
-        <li>Karatina<small>next</small></li>
-        <li>Othaya<small>next</small></li>
-        <li>Nanyuki<small>next</small></li>
-        <li>Nairobi<small>later</small></li>
-      </ul>
-    </div>
-  </section>
-
   <!-- FAQ (the same questions are in the FAQPage data in the head) -->
   <section class="section features" id="faq" aria-labelledby="faq-title">
     <div class="wrap faq">
@@ -458,12 +434,12 @@ p{margin:0 0 1em}
         <h2 id="faq-title">Frequently asked questions</h2>
       </div>
       <details open><summary>Is Hoodora free?</summary><p>Yes. Hoodora is free to download and free to use: posting, selling, chatting, joining groups and going to events cost nothing.</p></details>
-      <details><summary>Does Hoodora show my exact location?</summary><p>No. Neighbours only ever see an area name, such as "near Nyeri town", never your exact location or your street. You choose your home area when you sign up.</p></details>
+      <details><summary>Does Hoodora show my exact location?</summary><p>No. Neighbours only ever see an area name, never your exact location or your street. You choose your home area when you sign up.</p></details>
       <details><summary>Who can see what I post?</summary><p>People within your radius: neighbours in your area. You can also post to your Circle, the neighbours you know, and to groups you belong to.</p></details>
       <details><summary>How does Hoodora keep job posts safe?</summary><p>Posting a job needs a verified phone number, posts that ask for fees are held for review, and every job chat carries a reminder never to pay to get a job. Anyone can report or block a person in one tap.</p></details>
       <details><summary>How do I sign up?</summary><p>Sign in with your Google account, choose a display name, and set your home area. A phone number is only needed if you post jobs or want the verified-neighbour badge, and it is checked by SMS.</p></details>
       <details><summary>Is Hoodora on iPhone?</summary><p>Hoodora is on Android first, where most of Kenya is. An iPhone version is planned.</p></details>
-      <details><summary>Where is Hoodora available?</summary><p>Hoodora is starting in Nyeri, then growing to Karatina, Othaya, Nanyuki and Nairobi. It works anywhere in Kenya: your radius widens where there are fewer neighbours, so there is always something to see.</p></details>
+      <details><summary>Where is Hoodora available?</summary><p>Hoodora works anywhere in Kenya. Your radius widens where there are fewer neighbours, so there is always something to see.</p></details>
       <details><summary>How is Hoodora different from WhatsApp groups?</summary><p>Instead of joining dozens of groups, you get one place for everything nearby: news, questions, alerts, things for sale, jobs, services and events, sorted by how close they are, with reviews and safety tools built in.</p></details>
     </div>
   </section>
@@ -475,7 +451,7 @@ p{margin:0 0 1em}
         <svg class="ring" viewBox="0 0 256 256" aria-hidden="true"><use href="#mark"/></svg>
         <div>
           <h2 id="download-title">Get Hoodora for Android</h2>
-          <p>Hoodora is in testing in Nyeri and is coming to Google Play soon. It's free, and it takes a minute to sign up with your Google account.</p>
+          <p>Hoodora is in testing and is coming to Google Play soon. It's free, and it takes a minute to sign up with your Google account.</p>
         </div>
         <div>
           <!-- When the app is live, replace this <span> with:
@@ -500,7 +476,6 @@ p{margin:0 0 1em}
         <li><a href="#features">Features</a></li>
         <li><a href="#how-it-works">How it works</a></li>
         <li><a href="#safety">Safety and privacy</a></li>
-        <li><a href="#towns">Towns</a></li>
         <li><a href="#faq">FAQ</a></li>
         <li><a href="#download">Get the app</a></li>
       </ul>
