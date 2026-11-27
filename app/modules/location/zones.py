@@ -32,6 +32,7 @@ from app.core.config import Settings
 from app.core.db import execute_dml
 from app.core.errors import ForbiddenError
 from app.core.links import contains_link
+from app.modules.auth.dependencies import is_new_account
 from app.modules.location import cells
 from app.modules.location.models import UserZoneDay
 from app.modules.users.models import User
@@ -123,6 +124,26 @@ async def standing(
     return ZoneStanding(days=bin(combined).count("1"), needed=settings.posting_presence_days)
 
 
+def refuse_links_while_new(
+    user: User, settings: Settings, text: str | None, *, what: str = "posts"
+) -> None:
+    """A new account shares no links, anywhere it posts (decision L.5).
+
+    New means younger than `NEW_ACCOUNT_AGE_HOURS` (48), or restricted, the same
+    window the tighter posting limits use. It holds whatever the days in an area
+    say, so that a short `POSTING_PRESENCE_DAYS` (1, for the launch) lets new
+    neighbours post at once without letting a fresh account spread links.
+    """
+    if not contains_link(text) or not is_new_account(user, settings):
+        return
+    hours = settings.new_account_age_hours
+    age = f"{hours // 24} days" if hours % 24 == 0 and hours >= 48 else f"{hours} hours"
+    raise ForbiddenError(
+        f"New accounts can't share links in {what} yet. You can once your account is {age} old.",
+        details={"reason": "links_not_allowed_yet", "new_account": True, "hours": hours},
+    )
+
+
 def starter_posts_left(user: User, settings: Settings) -> int:
     return max(0, settings.starter_posts - user.starter_posts_used)
 
@@ -140,8 +161,10 @@ async def claim_posting_right(
 
     With the days there, yes. Without them, a starter post if `starter` (the kind
     is one starter posts cover), one is left, and `text` has no link; using it
-    counts it. Otherwise 403 `new_to_area`, or `links_not_allowed_yet`.
+    counts it. Otherwise 403 `new_to_area`, or `links_not_allowed_yet`. A new
+    account's links are refused first, days or not (decision L.5).
     """
+    refuse_links_while_new(user, settings, text)
     result = await standing(session, user=user, cell=cell, settings=settings)
     if result.may_post:
         return
@@ -180,10 +203,12 @@ async def claim_posting_right(
 
 
 async def require_may_post(
-    session: AsyncSession, *, user: User, cell: int, settings: Settings
+    session: AsyncSession, *, user: User, cell: int, settings: Settings, text: str | None = None
 ) -> None:
     """For what always needs the days: jobs, public groups and public events."""
-    await claim_posting_right(session, user=user, cell=cell, settings=settings, starter=False)
+    await claim_posting_right(
+        session, user=user, cell=cell, settings=settings, starter=False, text=text
+    )
 
 
 async def claim_posting_right_at(

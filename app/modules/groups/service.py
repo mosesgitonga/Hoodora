@@ -183,7 +183,7 @@ def _check_category(category: str, settings: Settings) -> str:
 
 
 async def _location_for(
-    session: AsyncSession, redis: Redis, user: User, settings: Settings
+    session: AsyncSession, redis: Redis, user: User, settings: Settings, group: Group
 ) -> dict[str, object]:
     """Where a public group is placed: where the person making it public is
     (decision L.1), and only where they've been long enough to post (L.2)."""
@@ -194,7 +194,12 @@ async def _location_for(
             details={"action": "PUT /v1/me/location"},
         )
     await zones.claim_posting_right_at(
-        session, user=user, location=location, settings=settings, starter=False
+        session,
+        user=user,
+        location=location,
+        settings=settings,
+        starter=False,
+        text=f"{group.name} {group.description or ''}",
     )
     return location
 
@@ -260,7 +265,7 @@ async def create_group(
     )
     _place(
         group,
-        await _location_for(session, redis, creator, settings)
+        await _location_for(session, redis, creator, settings, group)
         if visibility == GroupVisibility.public
         else None,
     )
@@ -347,7 +352,7 @@ async def update_group(
         if visibility != group.visibility:
             _place(
                 group,
-                await _location_for(session, redis, actor, settings)
+                await _location_for(session, redis, actor, settings, group)
                 if visibility == GroupVisibility.public
                 else None,
             )

@@ -5650,3 +5650,14 @@ SMS wherever a phone number still needs proving (decision A.2, amending A.1).
   - the app's signing-key SHA-256 and SHA-1 added.
 - **On staging:** `FIREBASE_PROJECT_ID=hoodora-c028f`, set at deploy. The
   phone-only test account "Root" can no longer sign in.
+
+## Launch posting rules (2026-11-27)
+
+Decision L.5. For the launch:
+- **Posting:** a newcomer may post where they are from their first day there,
+  set on staging with `POSTING_PRESENCE_DAYS=1`.
+- **Links:** new accounts (under 48 hours, or restricted) may post no links
+  anywhere, whatever their days. That covers posts, listings, services, public
+  groups and events, comments and stories.
+- **Unchanged:** jobs and the other protections.
+- **Tests:** in `tests/test_zones.py`. The full suite passes.

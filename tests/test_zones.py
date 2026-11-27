@@ -393,13 +393,121 @@ async def test_a_local_may_put_a_link_in_a_comment(
 ) -> None:
     local = await make_user(db_session, at=NYERI_TOWN)
     post = await make_post(db_session, redis_client, author=local, body="Who fixes gates?")
-    neighbour = await make_user(db_session, at=offset_km(NYERI_TOWN, north=0.3))
+    # Past the new-account window too: a brand-new account shares no links (L.5).
+    neighbour = await make_user(db_session, at=offset_km(NYERI_TOWN, north=0.3), created_days_ago=3)
 
     linked = await (await authenticate(neighbour)).post(
         f"/v1/posts/{post.id}/comments", json={"body": "See www.gatefix.co.ke for prices"}
     )
 
     assert linked.status_code == 201, linked.text
+
+
+# ---------------------------------------------------------------------------
+# New accounts share no links, wherever they post (decision L.5)
+# ---------------------------------------------------------------------------
+LINK = "Prices at www.gatefix.co.ke"
+
+
+async def test_a_new_account_shares_no_links_even_with_the_days(
+    db_session: AsyncSession, authenticate: Authenticate, settings: Settings
+) -> None:
+    client = await authenticate(await make_user(db_session, at=NYERI_TOWN, created_days_ago=0))
+
+    linked = await client.post("/v1/posts", json={**POST, "body": LINK})
+    plain = await client.post("/v1/posts", json=POST)
+
+    assert linked.status_code == 403
+    assert linked.json()["error"]["details"] == {
+        "reason": "links_not_allowed_yet",
+        "new_account": True,
+        "hours": settings.new_account_age_hours,
+    }
+    assert "2 days old" in linked.json()["error"]["message"]
+    assert plain.status_code == 201, plain.text
+
+
+async def test_past_the_new_account_window_links_are_fine(
+    db_session: AsyncSession, authenticate: Authenticate
+) -> None:
+    client = await authenticate(await make_user(db_session, at=NYERI_TOWN, created_days_ago=3))
+
+    linked = await client.post("/v1/posts", json={**POST, "body": LINK})
+
+    assert linked.status_code == 201, linked.text
+
+
+async def test_a_new_accounts_links_are_refused_everywhere_it_posts(
+    db_session: AsyncSession, redis_client: Redis, authenticate: Authenticate
+) -> None:
+    local = await make_user(db_session, at=NYERI_TOWN, created_days_ago=30)
+    post = await make_post(db_session, redis_client, author=local, body="Who fixes gates?")
+    client = await authenticate(await make_user(db_session, at=NYERI_TOWN, created_days_ago=0))
+
+    attempts = {
+        "listing": await client.post(
+            "/v1/listings",
+            json={
+                "title": "Gate, as new",
+                "description": LINK,
+                "category": "furniture",
+                "condition": "good",
+                "pricing": "fixed",
+                "price_kes": 5000,
+            },
+        ),
+        "service": await client.post(
+            "/v1/services",
+            json={
+                "kind": "offering",
+                "category": "plumbing",
+                "title": "Plumber",
+                "description": LINK,
+            },
+        ),
+        "public group": await client.post(
+            "/v1/groups",
+            json={
+                "name": "Kamakwa walkers",
+                "description": LINK,
+                "category": "sports",
+                "visibility": "public",
+            },
+        ),
+        "comment": await client.post(f"/v1/posts/{post.id}/comments", json={"body": LINK}),
+        "story": await client.post("/v1/stories", json={"kind": "text", "text": LINK}),
+    }
+
+    for what, attempt in attempts.items():
+        assert attempt.status_code == 403, (what, attempt.text)
+        details = attempt.json()["error"]["details"]
+        assert details["reason"] == "links_not_allowed_yet", what
+        assert details["new_account"] is True, what
+
+
+async def test_with_presence_days_set_to_one_a_first_day_is_enough(
+    db_session: AsyncSession, authenticate: Authenticate, app: Any, settings: Settings
+) -> None:
+    """The launch setting (decision L.5): post where you are from your first day."""
+    from app.core.config import get_settings
+
+    launch = settings.model_copy(update={"posting_presence_days": 1})
+    app.dependency_overrides[get_settings] = lambda: launch
+    user = await newcomer(db_session)
+    await give_zone_days(db_session, user, NYERI_TOWN, days=1)
+    elsewhere = offset_km(NYERI_TOWN, north=40.0)
+
+    here = await (await authenticate(user)).post("/v1/posts", json=POST)
+
+    assert here.status_code == 201, here.text
+    # Still only where they've been: a day in Nyeri says nothing about 40 km away.
+    standing = await zones.standing(
+        db_session,
+        user=user,
+        cell=cells.locate(elsewhere.latitude, elsewhere.longitude).cell_res9,
+        settings=launch,
+    )
+    assert not standing.may_post
 
 
 # ---------------------------------------------------------------------------

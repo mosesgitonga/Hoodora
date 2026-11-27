@@ -3049,6 +3049,43 @@ naming them to others does.
 unconfirmed. The dataset is kept out of the public repository until that is
 decided.
 
+### L.5 Launch: post from the first day, but no links from new accounts (2026-11-27)
+
+**Context.** At launch, a newcomer waiting four days before posting (L.2) would
+leave the app quiet just when it needs people to see activity. The product owner
+asked how to allow posting from day one safely.
+
+**Choice, decided with the product owner.**
+- **One day in an area is enough, for the launch.** `POSTING_PRESENCE_DAYS=1`
+  is set in the server's settings; the code default stays 4. A day counts as
+  soon as the app is opened in an area, so a new person can post where they are
+  within minutes. Posting into an area never visited is still refused.
+- **New accounts share no links, anywhere they post.** Under 48 hours old
+  (`NEW_ACCOUNT_AGE_HOURS`), or restricted, an account's link is refused with
+  403 `links_not_allowed_yet`, with `new_account: true` and the hours. The check
+  runs first, days or not, and covers:
+  - posts, listings, and service and job posts;
+  - public groups and public events, by their name, description and venue;
+  - comments and stories.
+
+  `zones.refuse_links_while_new` is the one check. Before this, links were
+  refused only to someone new to the area, which a one-day rule ends at once.
+- **Unchanged:**
+  - jobs need a 14-day-old account, a verified phone and the days;
+  - the new-account daily limits;
+  - the fee-phrase hold on job posts;
+  - automatic hiding of reported posts;
+  - one message until a reply, and no links in the first three messages of a
+    chat someone starts.
+- **Tightening later** is the same setting: 2 days, then back to 4 once areas
+  are busy or spam appears.
+
+**Reasoning.** Spam and scams travel by links and job posts, not by someone
+saying hello in their own neighbourhood. Relaxing where people may post while
+keeping what they may post locked down gives launch-day activity without opening
+the doors spammers use. Starter posts (L.3) matter less with one day, but stay
+for posting somewhere new.
+
 ## App polish
 
 From the product owner's review of the app on a phone against staging

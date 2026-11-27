@@ -92,6 +92,15 @@ def _check_times(
         )
 
 
+def _words(event: Event) -> str:
+    """What an event says, for the new-account link rule (decision L.5)."""
+    return " ".join(
+        part
+        for part in (event.title, event.description, event.venue_name, event.venue_details)
+        if part
+    )
+
+
 def _place(event: Event, latitude: float, longitude: float) -> None:
     """The venue's cell, from coordinates that are discarded right here."""
     located = cells.locate(latitude, longitude)
@@ -204,7 +213,11 @@ async def create_event(
         # around there long enough to post (decision L.2). Group and private events
         # reach only the people invited.
         await zones.require_may_post(
-            session, user=organiser, cell=event.cell_res9, settings=settings
+            session,
+            user=organiser,
+            cell=event.cell_res9,
+            settings=settings,
+            text=_words(event),
         )
     if fields.get("cover_media_id") is not None:
         (asset,) = await claim_assets_for(
@@ -347,7 +360,7 @@ async def update_event(
         _place(event, changes["venue"]["latitude"], changes["venue"]["longitude"])
         if event.visibility == EventVisibility.public:
             await zones.require_may_post(
-                session, user=user, cell=event.cell_res9, settings=settings
+                session, user=user, cell=event.cell_res9, settings=settings, text=_words(event)
             )
     if changes.get("event_type") is not None:
         event.event_type = EventType(changes["event_type"])

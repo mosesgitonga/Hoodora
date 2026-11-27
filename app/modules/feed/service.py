@@ -609,6 +609,7 @@ async def add_comment(
             f"Comments are limited to {settings.comment_max_length} characters",
             details={"max_length": settings.comment_max_length},
         )
+    zones.refuse_links_while_new(author, settings, cleaned, what="comments")
     if contains_link(cleaned) and await new_to_area(session, redis, user=author, settings=settings):
         # Anyone may comment anywhere, but links wait until someone has been
         # around long enough to post there (decision L.2).
@@ -1008,7 +1009,9 @@ async def create_story(
 ) -> Story:
     location = await _require_location(session, redis, author)
     # Stories need no days anywhere, and are seen only around their own zone
-    # (decision L.3). Links wait, as in comments, for someone new to the area.
+    # (decision L.3). Links wait, as in comments, for someone new to the area,
+    # and for a new account (L.5).
+    zones.refuse_links_while_new(author, settings, text, what="stories")
     if contains_link(text) and await new_to_area(session, redis, user=author, settings=settings):
         raise ForbiddenError(
             "You can share links in stories once you've been around here for a few days.",
