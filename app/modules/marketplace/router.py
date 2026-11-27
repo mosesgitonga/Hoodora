@@ -406,11 +406,14 @@ async def unsave_listing(listing_id: uuid.UUID, user: CurrentUser, session: Sess
     response_model=ConversationOut,
     summary="Chat with the seller",
     description=(
-        "Opens the caller's one conversation with the seller about this listing, "
-        "creating it if needed; then send messages to it as usual. As with any first "
-        "contact, the buyer can send one message until the seller replies. It lands "
-        "in the seller's inbox, not their requests. Not for listings already sold "
-        "or expired, unless the conversation already exists."
+        "Opens the caller's direct chat with the seller, creating it if needed: "
+        "there is one chat per pair of people (decision P.1). The listing becomes "
+        "the caller's `listing_id` on it at once, and the chat's topic with their "
+        "next message; the seller sees nothing until then. As with any first "
+        "contact, the buyer can send one message until the seller replies. A "
+        "request about a listing lands in the seller's inbox, not their requests. "
+        "Not for listings already sold or expired, unless the caller asked about "
+        "it before."
     ),
     dependencies=[Depends(user_rate_limit(bucket="listing_chat", limit=100, window_seconds=3600))],
 )

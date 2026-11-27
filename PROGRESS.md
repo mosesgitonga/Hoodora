@@ -5563,7 +5563,44 @@ and photos move to `media.hoodora.one`.
     health check, and the release and patch scripts' default API now use the
     new names;
   - `docs/DEPLOYMENT.md` has a "Domains" section.
-- **Waiting on:**
-  - the `media` CNAME, before photos switch to `media.hoodora.one`;
-  - an app build against `api.hoodora.one` on every phone, before the old
-    names retire.
+- **Photos moved to `media.hoodora.one`:**
+  - the `media` CNAME is in place, the pull zone serves the name with its own
+    free certificate, and `STORAGE_PUBLIC_BASE_URL` is the new host;
+  - a real photo loads through it with a signed link (200, WebP), and an
+    unsigned one is refused (403);
+  - the old `media.myradius.chatara.co` stays on the pull zone, so links signed
+    before the switch keep loading until they expire.
+- **Installed on the product owner's phone:** build 8, made against
+  `api.hoodora.one`.
+- **Waiting on:** an app build against `api.hoodora.one` on every phone, before
+  the old names retire.
+- **Lesson:** `compose up --build` reads `.env.production` before it builds, so
+  a settings change made while a deploy is running misses that deploy. Recreate
+  the services afterwards (`up -d --no-deps --no-build api worker`).
+
+## One chat per person, "General", and deletion out of the way (2026-11-27)
+
+The product owner reported two chats with the same person, one from a listing
+and one from Chats. They asked for "General" instead of "Update", and for
+"Delete my account" to be harder to tap by accident and away from Sign out.
+
+- **One chat per person (decision P.1):**
+  - asking about a listing or service post opens the pair's direct chat;
+  - the post is the chat's topic, shown to the opener at once and to the owner
+    with the next message;
+  - `conversation_topics` keeps every post asked about, for reviews, the buyers
+    list and the job safety notice;
+  - migration 0030 merges existing listing and service chats into direct chats
+    and retires those kinds; staging had one service chat to merge.
+- **App:**
+  - "Ask if it's available" and "I can help" always ask the server, so the post
+    becomes the topic even when a chat already exists;
+  - a request about a post is treated as an inbox chat.
+- **"General"** is back as the category's label (U.8, amending U.3).
+- **"Delete my account"** is a grey link at the bottom of "Your data", not a red
+  row in Settings (U.8).
+- **Tests:**
+  - 10 new server tests in `tests/test_one_chat_per_person.py`, including the
+    merge on old-style rows and the purge;
+  - the full server suite passes;
+  - the app's 188 tests pass, and `flutter analyze` is clean.

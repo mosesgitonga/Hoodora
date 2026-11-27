@@ -36,7 +36,7 @@ from app.modules.location.service import (
     resolve_anchor,
 )
 from app.modules.messaging import service as messaging_service
-from app.modules.messaging.models import Conversation, ConversationKind
+from app.modules.messaging.models import Conversation
 from app.modules.moderation.audit import record_audit_event
 from app.modules.moderation.holds import hold_if_restricted
 from app.modules.moderation.models import AuditAction, AuditActorType, ContentStatus
@@ -505,38 +505,25 @@ async def browse(
 
 
 async def open_chat(session: AsyncSession, *, contacter: User, post_id: uuid.UUID) -> Conversation:
-    """Contact a post's author. Only while it is open; an existing conversation
-    carries on after it closes."""
+    """The contacter's chat with a post's author, about this post (decision P.1).
+    Only while it is open, except for someone who already asked about it."""
     post = await access.visible_post(session, post_id=post_id, viewer_id=contacter.id)
-    if not post.is_open(datetime.now(UTC)):
-        existing = await session.scalar(
-            select(Conversation).where(
-                Conversation.kind == ConversationKind.service,
-                Conversation.service_post_id == post.id,
-                Conversation.created_by_id == contacter.id,
-            )
-        )
-        if existing is None:
-            raise ConflictError("This post is closed")
-        return existing
-    return await messaging_service.open_service_chat(
-        session, contacter=contacter, author_id=post.author_id, service_post_id=post.id
+    if not post.is_open(datetime.now(UTC)) and not await messaging_service.asked_about(
+        session, viewer_id=contacter.id, service_post_ids=[post.id]
+    ):
+        raise ConflictError("This post is closed")
+    return await messaging_service.open_about_post(
+        session, user=contacter, owner_id=post.author_id, service_post_id=post.id
     )
 
 
 async def my_conversations_about(
     session: AsyncSession, *, viewer: User, post_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, uuid.UUID]:
-    if not post_ids:
-        return {}
-    rows = await session.execute(
-        select(Conversation.service_post_id, Conversation.id).where(
-            Conversation.kind == ConversationKind.service,
-            Conversation.service_post_id.in_(post_ids),
-            Conversation.created_by_id == viewer.id,
-        )
+    """The chat in which the viewer asked about each post, for "Open chat"."""
+    return await messaging_service.asked_about(
+        session, viewer_id=viewer.id, service_post_ids=post_ids
     )
-    return {post_id: conversation_id for post_id, conversation_id in rows if post_id}
 
 
 # ---------------------------------------------------------------------------

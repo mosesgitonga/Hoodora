@@ -175,11 +175,13 @@ class Conversation {
 
   final String id;
 
-  /// `direct`, `group`, `listing` or `service`.
+  /// `direct` or `group`. There is one direct chat per person: chats started
+  /// from a listing or a service post are that chat (decision P.1).
   final String kind;
   final String? title;
 
-  /// Set when the conversation is about a listing or a service post.
+  /// The listing or service post the chat is about now: the last one asked
+  /// about in it, or the one I just opened it from.
   final String? listingId;
   final String? servicePostId;
 
@@ -211,9 +213,11 @@ class Conversation {
   bool get isRequestSent => state == 'request_sent';
 
   /// In the Requests folder: someone wants to talk, and I have not said yes.
-  /// As on the server, only a direct chat is a request: someone asking about my
-  /// listing or service lands in the inbox, and I just reply.
-  bool get awaitsMe => isInvitation || (isRequestReceived && kind == 'direct');
+  /// As on the server, someone asking about my listing or service lands in the
+  /// inbox instead, and I just reply.
+  bool get awaitsMe =>
+      isInvitation ||
+      (isRequestReceived && kind == 'direct' && listingId == null && servicePostId == null);
 
   /// Gone from my lists: I left, was removed, or declined.
   bool get isClosed => myStatus == 'left' || myStatus == 'removed' || state == 'declined';

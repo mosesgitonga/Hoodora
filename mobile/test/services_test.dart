@@ -58,7 +58,7 @@ const meJson = {
 
 Map<String, dynamic> conversation(String id) => {
       'id': id,
-      'kind': 'service',
+      'kind': 'direct',
       'service_post_id': 's1',
       'state': 'active',
       'my_role': 'member',

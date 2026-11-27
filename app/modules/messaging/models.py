@@ -38,12 +38,10 @@ from app.core.models import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKe
 
 class ConversationKind(StrEnum):
     direct = "direct"
+    """Two people, whatever they talk about: there is one per pair. A chat
+    started from a listing or a service post is this chat, with that post as its
+    topic (decision P.1). Migration 0030 merged the old per-post chats in."""
     group = "group"
-    listing = "listing"
-    """Buyer and seller, about one listing."""
-    service = "service"
-    """About one service post: a provider, a need, or a job. Reviews require an
-    accepted one of these, or of a listing conversation."""
 
 
 class ConversationState(StrEnum):
@@ -127,13 +125,13 @@ class Conversation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     listing_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("listings.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    """For a buyer-seller conversation about a listing. `created_by_id` is the buyer:
-    one conversation per listing per buyer, by the partial unique index below."""
+    """The listing this direct chat is about now: the last one someone asked
+    about in it (decision P.1). At most one of this and `service_post_id` is set.
+    Every post ever asked about is a `ConversationTopic`."""
     service_post_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("service_posts.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    """For a conversation about a service post. As for listings, `created_by_id` is
-    the person who made contact, and there is one conversation per post per person."""
+    """The service post this direct chat is about now, as for `listing_id`."""
     group_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("groups.id", ondelete="CASCADE"), nullable=True, index=True
     )
@@ -156,20 +154,6 @@ class Conversation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         CheckConstraint("last_seq >= 0", name="conversation_last_seq_non_negative"),
         # The sync endpoint: conversations changed since a cursor.
         Index("ix_conversations_updated_at", "updated_at"),
-        Index(
-            "uq_conversations_listing_id_created_by_id",
-            "listing_id",
-            "created_by_id",
-            unique=True,
-            postgresql_where=text("kind = 'listing'"),
-        ),
-        Index(
-            "uq_conversations_service_post_id_created_by_id",
-            "service_post_id",
-            "created_by_id",
-            unique=True,
-            postgresql_where=text("kind = 'service'"),
-        ),
     )
 
 
@@ -207,6 +191,17 @@ class ConversationMember(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     muted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
+    pending_listing_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("listings.id", ondelete="SET NULL"), nullable=True
+    )
+    """The listing this member opened the chat from, until their next message
+    makes it the chat's topic (decision P.1). Only they see it before then, so
+    opening a chat from someone's listing tells them nothing."""
+    pending_service_post_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("service_posts.id", ondelete="SET NULL"), nullable=True
+    )
+    """As `pending_listing_id`, for a service post."""
+
     __table_args__ = (
         UniqueConstraint(
             "conversation_id", "user_id", name="uq_conversation_members_conversation_id_user_id"
@@ -214,6 +209,56 @@ class ConversationMember(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         # A user's inbox: their active memberships.
         Index("ix_conversation_members_user_id_status", "user_id", "status"),
         CheckConstraint("last_read_seq >= 0", name="member_last_read_seq_non_negative"),
+    )
+
+
+class ConversationTopic(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """A listing or service post someone asked about in a direct chat (decision P.1).
+
+    What used to be a chat of its own per post. Reviews and "who bought it" still
+    need to know who asked about what and whether they got an answer, so that is
+    kept here, once per post per chat.
+    """
+
+    __tablename__ = "conversation_topics"
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    listing_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    service_post_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("service_posts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    asked_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    """Who asked: never the post's owner, who cannot ask about their own post."""
+    asked_seq: Mapped[int] = mapped_column(BigInteger)
+    """The message that first asked about it."""
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """When the owner first replied after it was asked, or accepted the request.
+    What a review needs, as "accepted" did for the old per-post chats."""
+
+    __table_args__ = (
+        CheckConstraint(
+            "num_nonnulls(listing_id, service_post_id) = 1", name="topic_about_one_post"
+        ),
+        Index(
+            "uq_conversation_topics_conversation_id_listing_id",
+            "conversation_id",
+            "listing_id",
+            unique=True,
+            postgresql_where=text("listing_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_conversation_topics_conversation_id_service_post_id",
+            "conversation_id",
+            "service_post_id",
+            unique=True,
+            postgresql_where=text("service_post_id IS NOT NULL"),
+        ),
     )
 
 

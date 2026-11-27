@@ -18,8 +18,10 @@ from app.modules.feed.views import author_view, load_assets, load_users
 from app.modules.media.views import image_variants
 from app.modules.messaging.models import (
     Conversation,
+    ConversationKind,
     ConversationMember,
     ConversationState,
+    ConversationTopic,
     MemberStatus,
     Message,
     MessageKind,
@@ -31,7 +33,7 @@ from app.modules.messaging.schemas import (
     MessageOut,
     ReplyRefOut,
 )
-from app.modules.messaging.service import TWO_PARTY, decode_system_body
+from app.modules.messaging.service import decode_system_body
 from app.modules.services.models import ServiceKind, ServicePost
 from app.modules.users.models import User
 from app.modules.users.service import blocked_user_ids
@@ -109,21 +111,55 @@ JOB_SAFETY_NOTICE = (
 """Bilingual, because the scams it warns against arrive in both languages."""
 
 
-async def _hiring_posts(
-    session: AsyncSession, conversations: Sequence[Conversation]
+def _topic(
+    conversation: Conversation, member: ConversationMember | None
+) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    """(listing, service post) the viewer sees this chat as about: the post they
+    opened it from, until they send, and otherwise the chat's own (decision P.1)."""
+    if member is not None and (member.pending_listing_id or member.pending_service_post_id):
+        return member.pending_listing_id, member.pending_service_post_id
+    return conversation.listing_id, conversation.service_post_id
+
+
+async def _about_jobs(
+    session: AsyncSession,
+    conversations: Sequence[Conversation],
+    topics: dict[uuid.UUID, tuple[uuid.UUID | None, uuid.UUID | None]],
 ) -> set[uuid.UUID]:
-    ids = {c.service_post_id for c in conversations if c.service_post_id is not None}
-    if not ids:
-        return set()
-    return set(
-        (
-            await session.execute(
-                select(ServicePost.id).where(
-                    ServicePost.id.in_(ids), ServicePost.kind == ServiceKind.hiring
+    """Chats that carry the job safety notice: about a job now, or ever."""
+    shown = {
+        conversation_id: service_post_id
+        for conversation_id, (_listing, service_post_id) in topics.items()
+        if service_post_id is not None
+    }
+    jobs: set[uuid.UUID] = set()
+    if shown:
+        hiring = set(
+            (
+                await session.execute(
+                    select(ServicePost.id).where(
+                        ServicePost.id.in_(set(shown.values())),
+                        ServicePost.kind == ServiceKind.hiring,
+                    )
                 )
-            )
-        ).scalars()
-    )
+            ).scalars()
+        )
+        jobs |= {conversation_id for conversation_id, post in shown.items() if post in hiring}
+    direct = [c.id for c in conversations if c.kind == ConversationKind.direct]
+    if direct:
+        jobs |= set(
+            (
+                await session.execute(
+                    select(ConversationTopic.conversation_id)
+                    .join(ServicePost, ServicePost.id == ConversationTopic.service_post_id)
+                    .where(
+                        ConversationTopic.conversation_id.in_(direct),
+                        ServicePost.kind == ServiceKind.hiring,
+                    )
+                )
+            ).scalars()
+        )
+    return jobs
 
 
 def _view_state(conversation: Conversation, viewer: User) -> ConversationViewState:
@@ -180,7 +216,7 @@ async def conversation_views(
         ).all()
     )
 
-    direct_ids = [c.id for c in conversations if c.kind in TWO_PARTY]
+    direct_ids = [c.id for c in conversations if c.kind == ConversationKind.direct]
     others: dict[uuid.UUID, ConversationMember] = {}
     if direct_ids:
         others = {
@@ -209,7 +245,8 @@ async def conversation_views(
             ).scalars()
         }
 
-    hiring = await _hiring_posts(session, conversations)
+    topics = {c.id: _topic(c, mine.get(c.id)) for c in conversations}
+    jobs = await _about_jobs(session, conversations, topics)
 
     hidden = await blocked_user_ids(session, viewer.id)
     visible_last = [
@@ -240,11 +277,9 @@ async def conversation_views(
                 id=conversation.id,
                 kind=conversation.kind,
                 title=conversation.title,
-                listing_id=conversation.listing_id,
-                service_post_id=conversation.service_post_id,
-                safety_notice=(
-                    JOB_SAFETY_NOTICE if conversation.service_post_id in hiring else None
-                ),
+                listing_id=topics[conversation.id][0],
+                service_post_id=topics[conversation.id][1],
+                safety_notice=JOB_SAFETY_NOTICE if conversation.id in jobs else None,
                 state=_view_state(conversation, viewer),
                 my_role=member.role,
                 my_status=member.status,

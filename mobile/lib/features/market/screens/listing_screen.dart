@@ -104,8 +104,10 @@ class _ListingScreenState extends ConsumerState<ListingScreen> {
   Future<void> _contact() async {
     final listing = _listing!;
     try {
-      final id =
-          listing.myConversationId ?? (await ref.read(listingRepositoryProvider).contact(listing.id)).id;
+      // Always asked, even with a chat already open: it is the one chat with the
+      // seller, and asking makes this listing what the next message is about
+      // (decision P.1).
+      final id = (await ref.read(listingRepositoryProvider).contact(listing.id)).id;
       if (mounted) context.go(Routes.conversation(id));
     } on ApiException catch (error) {
       _toast(error.message);

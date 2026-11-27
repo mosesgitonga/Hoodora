@@ -101,9 +101,15 @@ void main() {
       expect(Conversation.fromJson(conversationJson()).awaitsMe, isFalse);
       expect(Conversation.fromJson(conversationJson(state: 'request_received')).awaitsMe, isTrue);
       expect(Conversation.fromJson(conversationJson(myStatus: 'invited')).awaitsMe, isTrue);
-      // Asking about a listing lands in the seller's inbox, as on the server.
+      // Asking about a listing or a service lands in the owner's inbox, as on
+      // the server: the chat is still the one direct chat (decision P.1).
       expect(
-        Conversation.fromJson({...conversationJson(state: 'request_received'), 'kind': 'listing'}).awaitsMe,
+        Conversation.fromJson({...conversationJson(state: 'request_received'), 'listing_id': 'l1'}).awaitsMe,
+        isFalse,
+      );
+      expect(
+        Conversation.fromJson({...conversationJson(state: 'request_received'), 'service_post_id': 's1'})
+            .awaitsMe,
         isFalse,
       );
       expect(Conversation.fromJson(conversationJson(myStatus: 'left')).isClosed, isTrue);

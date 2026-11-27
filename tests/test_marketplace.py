@@ -91,7 +91,8 @@ async def test_list_find_chat_and_sell(
     # 3. They chat with the seller.
     buyer_client = await authenticate(buyer)
     chat = (await buyer_client.post(f"/v1/listings/{listing['id']}/chat")).json()
-    assert chat["kind"] == "listing" and chat["listing_id"] == listing["id"]
+    # The two people's one chat, about this listing (decision P.1).
+    assert chat["kind"] == "direct" and chat["listing_id"] == listing["id"]
     asked = await buyer_client.post(
         f"/v1/conversations/{chat['id']}/messages", json={"body": "Is the sofa still available?"}
     )

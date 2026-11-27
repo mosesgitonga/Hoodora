@@ -33,6 +33,10 @@ PURGE_REGISTRY: dict[str, tuple[Handling, str]] = {
     # -- Erased at purge ------------------------------------------------------
     "blocks.blocker_id": (Handling.erased, "Both directions"),
     "blocks.blocked_id": (Handling.erased, "Both directions"),
+    "conversation_topics.asked_by_id": (
+        Handling.erased,
+        "What they asked about in chats, and so who they might have bought from (P.1)",
+    ),
     "circle_links.user_low_id": (Handling.erased, "Both directions"),
     "circle_links.user_high_id": (Handling.erased, "Both directions"),
     "circle_requests.requester_id": (Handling.erased, "Both directions"),

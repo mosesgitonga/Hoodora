@@ -85,10 +85,9 @@ String? distanceLabel(String? bucket) => switch (bucket) {
       _ => null,
     };
 
-/// Categories as people read them. General shows as "Update"; the stored value
-/// stays `general` (decision U.3).
+/// Categories as people read them.
 const postCategories = <String, String>{
-  'general': 'Update',
+  'general': 'General',
   'question': 'Question',
   'recommendation': 'Recommendation',
   'lost_and_found': 'Lost & found',

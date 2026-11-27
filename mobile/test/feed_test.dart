@@ -84,7 +84,7 @@ void main() {
       for (final category in ['question', 'recommendation', 'lost_and_found', 'alert']) {
         expect(reactionKindFor(category), 'helpful');
       }
-      expect(postCategories['general'], 'Update');
+      expect(postCategories['general'], 'General');
     });
 
     test('a post reads from the API and knows when it is held', () {

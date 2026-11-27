@@ -288,7 +288,8 @@ apply to all of it:
 | `request_sender_new_to_area` | Whether whoever asked was new to the area they wrote from, shown to the recipient (decision L.2). A yes/no, not where | Life of the conversation |
 | `direct_key` | One direct conversation per pair (two user IDs) | Life of the conversation |
 | `last_seq`, `last_message_at` | Sync and inbox order | Life of the conversation |
-| `listing_id`, `group_id` | Phases 5 and 4 | — |
+| `listing_id`, `service_post_id` | What a direct chat is about now: the last listing or service post asked about in it (decision P.1) | Life of the conversation; cleared if the post is deleted |
+| `group_id` | A group's linked chat (Phase 4) | — |
 
 ### `conversation_members`
 
@@ -298,6 +299,17 @@ apply to all of it:
 | `last_read_seq` | Read state: one number, not a row per message | As above |
 | `visible_from_seq` | Hides messages from before a member joined | As above |
 | `muted` | Push suppression | As above |
+| `pending_listing_id`, `pending_service_post_id` | The post this member opened the chat from, until their next message; only they see it (decision P.1) | Cleared by that message, and on purge |
+
+### `conversation_topics`
+
+Each listing or service post someone asked about in a direct chat (decision P.1).
+
+| Field | Why | Retention |
+| --- | --- | --- |
+| `conversation_id`, `listing_id` or `service_post_id` | Which chat, about which post | Deleted with the chat or the post |
+| `asked_by_id`, `asked_seq` | Who asked, and the message that asked: for "who bought it" and the chat's post card | **Deleted on purge** |
+| `answered_at` | When the owner replied: what a review needs (decision 6.6) | As above |
 
 ### `messages`
 
@@ -459,9 +471,10 @@ who saved a listing. Deleted on purge.
 
 ### Listing conversations
 
-Phase 3 conversations with `kind = listing` and `listing_id` set — the same tables,
-the same rules and the same export. Nothing marketplace-specific is copied into
-them.
+Asking about a listing opens the two people's direct chat (decision P.1); the
+listing is recorded as one of its `conversation_topics`. Until 2026-11-27 these
+were chats of their own, `kind = listing`, merged into direct chats by migration
+0030. Nothing marketplace-specific is copied into them.
 
 ### Data rights in Phase 5
 
@@ -501,8 +514,9 @@ derived from visible reviews, recomputed on every change.
 
 ### Conversations
 
-`conversations.service_post_id` and the `service` kind — conversations about a
-service post, with no new personal data of their own.
+Asking about a service post opens the two people's direct chat, with the post as
+a topic (decision P.1), as for listings. The `service` kind was merged into
+direct chats by migration 0030.
 
 ### Data rights in Phase 6
 

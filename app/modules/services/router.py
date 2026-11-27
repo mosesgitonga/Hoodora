@@ -308,9 +308,11 @@ async def set_open(
     response_model=ConversationOut,
     summary="Contact the author of a service post",
     description=(
-        "Opens the caller's one conversation with the author about this post. As for "
-        "any first contact, one message until they reply; it lands in their inbox. A "
-        "conversation about a job carries a `safety_notice` the client must show."
+        "Opens the caller's direct chat with the author, about this post: one chat "
+        "per pair of people (decision P.1), with the post as its topic from the "
+        "caller's next message. As for any first contact, one message until they "
+        "reply; it lands in their inbox. A chat that is or was about a job carries "
+        "a `safety_notice` the client must show."
     ),
     dependencies=[Depends(user_rate_limit(bucket="service_chat", limit=100, window_seconds=3600))],
 )

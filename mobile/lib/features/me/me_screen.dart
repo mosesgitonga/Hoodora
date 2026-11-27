@@ -104,9 +104,9 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
                 _Row(label: 'Privacy and consent', onTap: () => context.go(Routes.privacy)),
                 _Row(label: 'Blocked people', onTap: () => context.go(Routes.blocked)),
                 _Row(label: "Where I'm signed in", onTap: () => context.go(Routes.sessions)),
-                _Row(label: 'Download my data', onTap: () => context.go(Routes.myData)),
-                if (!me.deletionPending)
-                  _Row(label: 'Delete my account', danger: true, onTap: () => context.go(Routes.deleteAccount)),
+                // Deleting the account lives at the bottom of this screen, out of
+                // the way: not a row here, and nowhere near Sign out.
+                _Row(label: 'Your data', onTap: () => context.go(Routes.myData)),
               ]),
               const SizedBox(height: 20),
               OutlinedButton.icon(
@@ -299,10 +299,9 @@ class _Notice extends StatelessWidget {
 }
 
 class _Row {
-  const _Row({required this.label, required this.onTap, this.detail, this.danger = false});
+  const _Row({required this.label, required this.onTap, this.detail});
   final String label;
   final String? detail;
-  final bool danger;
   final VoidCallback onTap;
 }
 
@@ -326,7 +325,7 @@ class _Group extends StatelessWidget {
               onTap: rows[i].onTap,
               title: Text(
                 rows[i].label,
-                style: text.bodyLarge?.copyWith(color: rows[i].danger ? Palette.danger : Palette.ink),
+                style: text.bodyLarge?.copyWith(color: Palette.ink),
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,

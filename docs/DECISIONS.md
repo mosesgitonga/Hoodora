@@ -1500,6 +1500,10 @@ sofa are not duplicates, and neither is relisting something after it sold.
 
 ### 5.6 A listing conversation is a request that lands in the inbox
 
+*Amended by P.1 (2026-11-27): asking about a listing now opens the two
+people's direct chat. The request rule, the inbox landing and the daily
+allowance are unchanged.*
+
 **Choice.**
 
 - **Kind and uniqueness:** `kind = listing`, with one conversation per listing per
@@ -1626,6 +1630,9 @@ accounting. Bilingual, because the scams it warns against arrive in both
 languages.
 
 ### 6.6 A review needs an accepted conversation about that exact thing
+
+*Amended by P.1 (2026-11-27): "a conversation about that exact thing" is now a
+question about that post in the two people's chat, answered by its owner.*
 
 **Choice.** Either person in an *accepted* conversation of kind `listing` or
 `service`, about a particular listing or service post, may review the other once
@@ -3069,6 +3076,8 @@ and keeps working when the CDN (U.2) starts signing them differently.
 
 ### U.3 A post offers one reaction, by its category (2026-11-24)
 
+*Amended by U.8 (2026-11-27): General reads "General" again, not "Update".*
+
 **Context.** "Helpful" made no sense on a selfie.
 
 **Choice.**
@@ -3529,10 +3538,76 @@ same server, database and data; it is not a second copy.
   CI and the deploy's health check, and the default the release and patch
   scripts build the app against.
 - **The Bunny pull zone** fetches from `https://api.hoodora.one/cdn-origin`, and
-  serves `media.hoodora.one` once its CNAME
-  (`media → hoodora-staging-media.b-cdn.net`) exists.
+  serves `media.hoodora.one` (CNAME `media → hoodora-staging-media.b-cdn.net`,
+  with Bunny's free certificate). Photo links use it from 2026-11-27.
 - **Group invite links** take their domain from the app's API address, so new
   builds share `api.hoodora.one/g/…`, and old links keep working.
 - **Retiring the old names** waits until phones run a build made against the new
   API. Then the old names come off the nginx sites, the certificates and
   `ADMIN_CORS_ORIGINS`, and the dashboard's CSP drops them.
+
+## Chats
+
+### P.1 One chat per person; a listing or service post is its topic (2026-11-27)
+
+**Context.** The product owner found that messaging someone from their listing
+and from Chats made two chats with the same person. That was by design (5.6,
+6.6): a chat per post per person, so reviews could rest on "a conversation about
+that exact thing". People expect one chat per person.
+
+**Choice.**
+- **One direct chat per pair of people.** "Ask if it's available", "I can help"
+  and Chats all open it. The `listing` and `service` kinds are retired.
+- **The post becomes the chat's topic.** `conversations.listing_id` /
+  `service_post_id` now mean the post the chat is about now: the last one asked
+  about. The app's card at the top of the chat shows it, as before, so builds
+  made before the change show it too.
+- **Opening tells the owner nothing.** The post is first the opener's pending
+  topic (`conversation_members.pending_*`), shown only to them. It becomes the
+  chat's with their next message.
+- **Every post asked about is kept** in `conversation_topics`: who asked, the
+  message that asked, and when the owner answered (their next message, or
+  accepting the request).
+- **Reviews keep their rule.** You can review someone for a post only if one of
+  you asked about it in your chat and the owner answered (6.6). An accepted chat
+  alone still isn't enough.
+- **"Who bought it" lists** whoever asked about the listing (5.7).
+- **The request rule is unchanged** (3.7):
+  - a first message about a post lands in the owner's inbox under the inquiry
+    allowance (5.6);
+  - a plain first message is a request;
+  - someone awaiting a reply sends nothing more, whatever they want to ask
+    about. Letting them ask about a new post would tell them whether they had
+    been declined, since pending and declined must look the same to them.
+- **The job safety notice stays** on a chat that was ever about a job, not only
+  while the job is its topic.
+- **Existing chats are merged** (migration 0030):
+  - each pair's listing and service chats join their direct chat;
+  - messages are numbered again in time order;
+  - read markers, notifications and reviews follow the move;
+  - an accepted post chat becomes an answered topic;
+  - a pair with only a post chat keeps it, as their direct chat.
+- **Purge** erases what the account asked about.
+
+**Consequence.** A seller who replies to a buyer now has an accepted direct
+chat with them. That counts as knowing each other for group invitations and the
+circle (`has_accepted_conversation`), as it does for anyone who has talked.
+
+**Reasoning.** People think in people, not posts. Keeping topics separately
+keeps what the per-post chats were for: reviews tied to a real transaction, and
+the list of buyers. Showing the opener's topic only to them means looking at
+someone's listing never reaches that person.
+
+### U.8 "General", and deleting the account out of the way (2026-11-27, amends U.3)
+
+**Choice.**
+- **The General category reads "General" again**, not "Update". The stored
+  value was always `general`.
+- **"Delete my account" left Settings.** It is a quiet grey link at the bottom of
+  "Your data" (formerly "Download my data"), after the download, and nowhere near
+  Sign out. The deletion screen itself is unchanged: what happens, a checkbox to
+  confirm, then the button.
+
+**Reasoning.** The product owner asked for both. Deletion has to stay findable
+in the app (the Play Store requires it), so it moved down a level rather than
+going away.

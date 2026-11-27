@@ -111,15 +111,20 @@ class ConversationOut(BaseModel):
     kind: ConversationKind
     title: str | None = None
     listing_id: uuid.UUID | None = Field(
-        default=None, description="For a conversation about a listing."
+        default=None,
+        description=(
+            "The listing this chat is about now: the last one asked about in it, or, for "
+            "the person who just opened it from a listing, that one (decision P.1)."
+        ),
     )
     service_post_id: uuid.UUID | None = Field(
-        default=None, description="For a conversation about a service, need or job."
+        default=None,
+        description="The service, need or job this chat is about now, as for listing_id.",
     )
     safety_notice: str | None = Field(
         default=None,
         description=(
-            "Shown at the top of the conversation, always. Set for conversations about a job."
+            "Shown at the top of the conversation, always. Set once a chat is or was about a job."
         ),
     )
     state: ConversationViewState = Field(

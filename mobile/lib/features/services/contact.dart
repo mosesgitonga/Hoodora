@@ -7,11 +7,13 @@ import '../../core/providers.dart';
 import '../../core/router.dart';
 import 'service_models.dart';
 
-/// Opens the conversation with [post]'s author about it, made if need be. As
-/// with any first contact, it is a request until they reply.
+/// Opens the chat with [post]'s author, made if need be, about this post. There
+/// is one chat per person, so it is asked for every time: that makes this post
+/// what the next message is about (decision P.1). As with any first contact, it
+/// is a request until they reply.
 Future<void> contactAuthor(BuildContext context, WidgetRef ref, ServicePost post) async {
   try {
-    final id = post.myConversationId ?? (await ref.read(serviceRepositoryProvider).contact(post.id)).id;
+    final id = (await ref.read(serviceRepositoryProvider).contact(post.id)).id;
     if (context.mounted) context.go(Routes.conversation(id));
   } on ApiException catch (error) {
     if (context.mounted) {

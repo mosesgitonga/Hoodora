@@ -28,7 +28,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from redis.asyncio import Redis
-from sqlalchemy import exists, func, or_, select, update
+from sqlalchemy import delete, exists, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,6 +59,7 @@ from app.modules.messaging.models import (
     ConversationKind,
     ConversationMember,
     ConversationState,
+    ConversationTopic,
     MemberRole,
     MemberStatus,
     Message,
@@ -89,18 +91,6 @@ MAX_MESSAGE_PAGE = 100
 MAX_SYNC_CONVERSATIONS = 200
 
 AWAITING_REPLY = "You can send one message until they reply"
-
-TWO_PARTY: frozenset[ConversationKind] = frozenset(
-    {ConversationKind.direct, ConversationKind.listing, ConversationKind.service}
-)
-ABOUT_SOMETHING: frozenset[ConversationKind] = frozenset(
-    {ConversationKind.listing, ConversationKind.service}
-)
-"""Conversations about a listing or a service post. A first message in one of
-these answers something the other person published, so it lands in their inbox
-rather than their requests, under its own daily allowance."""
-"""Conversations between exactly two people. The message-request rule and the
-blocking rule — a block hides the whole conversation — apply to both."""
 
 
 class SystemEvent:
@@ -171,7 +161,7 @@ async def _load(
     if member is None or member.status not in statuses:
         raise _conversation_not_found()
 
-    if conversation.kind in TWO_PARTY:
+    if conversation.kind == ConversationKind.direct:
         other_id = await _other_direct_member(session, conversation, user_id)
         if other_id is not None and await users_service.is_blocked_between(
             session, user_id, other_id
@@ -359,113 +349,71 @@ async def open_direct(session: AsyncSession, *, user: User, other_id: uuid.UUID)
     return conversation
 
 
-async def open_listing_chat(
+async def open_about_post(
     session: AsyncSession,
     *,
-    buyer: User,
-    seller_id: uuid.UUID,
-    listing_id: uuid.UUID,
+    user: User,
+    owner_id: uuid.UUID,
+    listing_id: uuid.UUID | None = None,
+    service_post_id: uuid.UUID | None = None,
 ) -> Conversation:
-    """The buyer's one conversation with a seller about one listing.
+    """The direct chat with a post's owner, opened from that post (decision P.1).
 
-    The caller (the marketplace) has already checked the listing may be seen.
-    Like a direct conversation it starts as a request: the buyer can send one
-    message until the seller replies, and the reply is what makes it accepted.
+    There is one chat per pair of people, so this is the same chat as messaging
+    them from anywhere else. The post becomes the caller's pending topic: shown to
+    them at once, and to the owner only with the caller's next message. The
+    caller (the marketplace or services module) has checked the post may be seen.
     """
-    if seller_id == buyer.id:
-        raise BadRequestError("You cannot ask about your own listing")
-    await _contactable(session, viewer=buyer, other_id=seller_id)
-    existing = await _find_listing_chat(session, listing_id=listing_id, buyer_id=buyer.id)
-    if existing is not None:
-        return existing
-
-    conversation = Conversation(
-        kind=ConversationKind.listing,
-        state=ConversationState.request_pending,
-        listing_id=listing_id,
-        created_by_id=buyer.id,
-        request_sender_id=buyer.id,
-    )
-    try:
-        async with session.begin_nested():
-            session.add(conversation)
-            await session.flush()
-            session.add_all(
-                [
-                    ConversationMember(conversation_id=conversation.id, user_id=member_id)
-                    for member_id in (buyer.id, seller_id)
-                ]
-            )
-            await session.flush()
-    except IntegrityError:
-        found = await _find_listing_chat(session, listing_id=listing_id, buyer_id=buyer.id)
-        if found is None:  # pragma: no cover — the unique index guarantees a row
-            raise
-        return found
-    return conversation
-
-
-async def open_service_chat(
-    session: AsyncSession,
-    *,
-    contacter: User,
-    author_id: uuid.UUID,
-    service_post_id: uuid.UUID,
-) -> Conversation:
-    """The contacter's one conversation with a post's author about that post.
-
-    The services module has already checked the post may be seen and is open. The
-    request rule applies, as for listings; the author's reply accepts it, which is
-    what a review later requires.
-    """
-    if author_id == contacter.id:
-        raise BadRequestError("You cannot contact yourself about your own post")
-    await _contactable(session, viewer=contacter, other_id=author_id)
-    existing = await _find_service_chat(
-        session, service_post_id=service_post_id, contacter_id=contacter.id
-    )
-    if existing is not None:
-        return existing
-    conversation = Conversation(
-        kind=ConversationKind.service,
-        state=ConversationState.request_pending,
-        service_post_id=service_post_id,
-        created_by_id=contacter.id,
-        request_sender_id=contacter.id,
-    )
-    try:
-        async with session.begin_nested():
-            session.add(conversation)
-            await session.flush()
-            session.add_all(
-                [
-                    ConversationMember(conversation_id=conversation.id, user_id=member_id)
-                    for member_id in (contacter.id, author_id)
-                ]
-            )
-            await session.flush()
-    except IntegrityError:
-        found = await _find_service_chat(
-            session, service_post_id=service_post_id, contacter_id=contacter.id
+    if owner_id == user.id:
+        raise BadRequestError(
+            "You cannot ask about your own listing"
+            if listing_id is not None
+            else "You cannot contact yourself about your own post"
         )
-        if found is None:  # pragma: no cover — the unique index guarantees a row
-            raise
-        return found
+    conversation = await open_direct(session, user=user, other_id=owner_id)
+    member = await session.scalar(
+        select(ConversationMember).where(
+            ConversationMember.conversation_id == conversation.id,
+            ConversationMember.user_id == user.id,
+        )
+    )
+    if member is not None:  # pragma: no branch — open_direct made both members
+        member.pending_listing_id = listing_id
+        member.pending_service_post_id = service_post_id
+        await session.flush()
     return conversation
 
 
-async def _find_service_chat(
-    session: AsyncSession, *, service_post_id: uuid.UUID, contacter_id: uuid.UUID
-) -> Conversation | None:
+def _topic_about(*, listing_id: uuid.UUID | None, service_post_id: uuid.UUID | None) -> Any:
     return (
-        await session.execute(
-            select(Conversation).where(
-                Conversation.kind == ConversationKind.service,
-                Conversation.service_post_id == service_post_id,
-                Conversation.created_by_id == contacter_id,
-            )
+        ConversationTopic.listing_id == listing_id
+        if listing_id is not None
+        else ConversationTopic.service_post_id == service_post_id
+    )
+
+
+async def asked_about(
+    session: AsyncSession,
+    *,
+    viewer_id: uuid.UUID,
+    listing_ids: Sequence[uuid.UUID] = (),
+    service_post_ids: Sequence[uuid.UUID] = (),
+) -> dict[uuid.UUID, uuid.UUID]:
+    """Post → the chat in which the viewer asked about it, for "Open chat"."""
+    if not listing_ids and not service_post_ids:
+        return {}
+    post = func.coalesce(ConversationTopic.listing_id, ConversationTopic.service_post_id)
+    rows = await session.execute(
+        select(post, ConversationTopic.conversation_id).where(
+            ConversationTopic.asked_by_id == viewer_id,
+            or_(
+                ConversationTopic.listing_id.in_(listing_ids),
+                ConversationTopic.service_post_id.in_(service_post_ids),
+            ),
         )
-    ).scalar_one_or_none()
+    )
+    # `.all()` first: a Result has `.keys()`, so `dict()` would read it as a mapping.
+    return dict(rows.all())
 
 
 async def accepted_conversation_about(
@@ -476,41 +424,22 @@ async def accepted_conversation_about(
     listing_id: uuid.UUID | None = None,
     service_post_id: uuid.UUID | None = None,
 ) -> Conversation | None:
-    """An accepted conversation between two people about one listing or service
-    post — the condition for either to review the other in that context."""
-    statement = select(Conversation).where(
-        Conversation.state == ConversationState.active,
-        Conversation.id.in_(
-            select(ConversationMember.conversation_id).where(ConversationMember.user_id == first)
-        ),
-        Conversation.id.in_(
-            select(ConversationMember.conversation_id).where(ConversationMember.user_id == second)
-        ),
-    )
-    if listing_id is not None:
-        statement = statement.where(
-            Conversation.kind == ConversationKind.listing, Conversation.listing_id == listing_id
-        )
-    elif service_post_id is not None:
-        statement = statement.where(
-            Conversation.kind == ConversationKind.service,
-            Conversation.service_post_id == service_post_id,
-        )
-    else:  # pragma: no cover — callers pass one
+    """The two people's chat, if one of them asked the other about this listing or
+    service post and got an answer: the condition for either to review the other
+    in that context (decision 6.6, as amended by P.1)."""
+    if listing_id is None and service_post_id is None:  # pragma: no cover — callers pass one
         return None
-    return (await session.execute(statement.limit(1))).scalar_one_or_none()
-
-
-async def _find_listing_chat(
-    session: AsyncSession, *, listing_id: uuid.UUID, buyer_id: uuid.UUID
-) -> Conversation | None:
     return (
         await session.execute(
-            select(Conversation).where(
-                Conversation.kind == ConversationKind.listing,
-                Conversation.listing_id == listing_id,
-                Conversation.created_by_id == buyer_id,
+            select(Conversation)
+            .join(ConversationTopic, ConversationTopic.conversation_id == Conversation.id)
+            .where(
+                Conversation.direct_key == direct_key_for(first, second),
+                Conversation.state == ConversationState.active,
+                ConversationTopic.answered_at.is_not(None),
+                _topic_about(listing_id=listing_id, service_post_id=service_post_id),
             )
+            .limit(1)
         )
     ).scalar_one_or_none()
 
@@ -518,20 +447,74 @@ async def _find_listing_chat(
 async def listing_buyers(
     session: AsyncSession, *, listing_id: uuid.UUID, seller_id: uuid.UUID
 ) -> list[tuple[uuid.UUID, uuid.UUID, ConversationState]]:
-    """(buyer, conversation, state) for everyone who asked about a listing and sent
-    something. For the seller, to choose who it was sold to."""
+    """(buyer, conversation, state) for everyone who asked about a listing. For the
+    seller, to choose who it was sold to."""
+    seller_side = select(ConversationMember.conversation_id).where(
+        ConversationMember.user_id == seller_id
+    )
     rows = await session.execute(
-        select(Conversation.created_by_id, Conversation.id, Conversation.state)
-        .join(ConversationMember, ConversationMember.conversation_id == Conversation.id)
+        select(ConversationTopic.asked_by_id, Conversation.id, Conversation.state)
+        .join(Conversation, Conversation.id == ConversationTopic.conversation_id)
         .where(
-            Conversation.kind == ConversationKind.listing,
-            Conversation.listing_id == listing_id,
-            Conversation.last_seq > 0,
-            ConversationMember.user_id == seller_id,
+            ConversationTopic.listing_id == listing_id,
+            ConversationTopic.asked_by_id != seller_id,
+            Conversation.id.in_(seller_side),
         )
         .order_by(Conversation.last_message_at.desc())
     )
-    return [(buyer, conversation_id, state) for buyer, conversation_id, state in rows if buyer]
+    return [(buyer, conversation_id, state) for buyer, conversation_id, state in rows]
+
+
+async def _take_up_topic(
+    session: AsyncSession,
+    *,
+    conversation: Conversation,
+    member: ConversationMember,
+    message: Message,
+) -> None:
+    """The sender's pending topic becomes the chat's, and is recorded once."""
+    listing_id, service_post_id = member.pending_listing_id, member.pending_service_post_id
+    if listing_id is None and service_post_id is None:
+        return
+    statement = (
+        pg_insert(ConversationTopic)
+        .values(
+            conversation_id=conversation.id,
+            listing_id=listing_id,
+            service_post_id=service_post_id,
+            asked_by_id=member.user_id,
+            asked_seq=message.seq,
+        )
+        .on_conflict_do_nothing(
+            index_elements=["conversation_id", "listing_id" if listing_id else "service_post_id"],
+            index_where=(
+                ConversationTopic.listing_id.is_not(None)
+                if listing_id
+                else ConversationTopic.service_post_id.is_not(None)
+            ),
+        )
+    )
+    await session.execute(statement)
+    conversation.listing_id = listing_id
+    conversation.service_post_id = service_post_id
+    member.pending_listing_id = None
+    member.pending_service_post_id = None
+
+
+async def _mark_answered(
+    session: AsyncSession, *, conversation_id: uuid.UUID, answerer_id: uuid.UUID
+) -> None:
+    """The other person asked about something here; this answers it."""
+    await session.execute(
+        update(ConversationTopic)
+        .where(
+            ConversationTopic.conversation_id == conversation_id,
+            ConversationTopic.asked_by_id != answerer_id,
+            ConversationTopic.answered_at.is_(None),
+        )
+        .values(answered_at=func.now())
+        .execution_options(synchronize_session=False)
+    )
 
 
 async def _find_direct(session: AsyncSession, key: str) -> Conversation | None:
@@ -541,13 +524,17 @@ async def _find_direct(session: AsyncSession, key: str) -> Conversation | None:
 
 
 async def _check_request_allowance(
-    user: User, settings: Settings, *, kind: ConversationKind
+    user: User,
+    settings: Settings,
+    *,
+    listing_id: uuid.UUID | None,
+    service_post_id: uuid.UUID | None,
 ) -> None:
     """The daily cap on new message requests, tighter for new accounts.
 
     Checked here rather than as a route dependency because only the service knows
-    whether a given send is a request. Asking about a listing has its own, larger
-    allowance: reaching sellers is what the marketplace is for.
+    whether a given send is a request. Asking about a listing or a service post
+    has its own, larger allowance: reaching sellers is what the marketplace is for.
 
     A restricted account starts no new conversations at all. It can still reply in
     the ones it has.
@@ -564,14 +551,14 @@ async def _check_request_allowance(
             details={"reason": "restricted"},
         )
     new = is_new_account(user, settings)
-    if kind == ConversationKind.service:
+    if service_post_id is not None:
         bucket = "service_inquiry"
         limit = (
             settings.new_account_service_inquiries_per_day
             if new
             else settings.service_inquiries_per_day
         )
-    elif kind == ConversationKind.listing:
+    elif listing_id is not None:
         bucket = "listing_inquiry"
         limit = (
             settings.new_account_listing_inquiries_per_day
@@ -606,7 +593,7 @@ async def respond_to_request(
         session, conversation_id=conversation_id, user_id=user.id, lock=True
     )
     if (
-        conversation.kind not in TWO_PARTY
+        conversation.kind != ConversationKind.direct
         or conversation.state == ConversationState.active
         or conversation.request_sender_id == user.id
         or conversation.last_seq == 0
@@ -615,6 +602,7 @@ async def respond_to_request(
 
     if accept:
         conversation.state = ConversationState.active
+        await _mark_answered(session, conversation_id=conversation.id, answerer_id=user.id)
         others = [
             member
             for member in await _active_member_ids(session, conversation.id)
@@ -650,7 +638,7 @@ async def block_and_report(
     )
     sender_id = conversation.request_sender_id
     if (
-        conversation.kind not in TWO_PARTY
+        conversation.kind != ConversationKind.direct
         or conversation.state == ConversationState.active
         or sender_id is None
         or sender_id == user.id
@@ -712,7 +700,9 @@ async def send_message(
 
     is_request = False
     recipient_id: uuid.UUID | None = None
-    if conversation.kind in TWO_PARTY:
+    # The post the sender opened this chat from, if any (decision P.1).
+    about_listing, about_service = member.pending_listing_id, member.pending_service_post_id
+    if conversation.kind == ConversationKind.direct:
         recipient_id = await _other_direct_member(session, conversation, sender.id)
         if recipient_id is None:  # pragma: no cover — two-party conversations have two members
             raise _conversation_not_found()
@@ -745,7 +735,7 @@ async def send_message(
                 _announce_conversation(session, [sender.id, recipient_id], conversation)
 
     if (
-        conversation.kind in TWO_PARTY
+        conversation.kind == ConversationKind.direct
         and conversation.request_sender_id == sender.id
         and contains_link(text)
     ):
@@ -769,7 +759,9 @@ async def send_message(
             )
 
     if is_request:
-        await _check_request_allowance(sender, settings, kind=conversation.kind)
+        await _check_request_allowance(
+            sender, settings, listing_id=about_listing, service_post_id=about_service
+        )
 
     asset: MediaAsset | None = None
     if media_id is not None:
@@ -797,23 +789,26 @@ async def send_message(
     session.add(message)
     # Your own message is, by definition, read.
     member.last_read_seq = message.seq
+    if conversation.kind == ConversationKind.direct:
+        await _take_up_topic(session, conversation=conversation, member=member, message=message)
+        await _mark_answered(session, conversation_id=conversation.id, answerer_id=sender.id)
     await session.flush()
 
     await _announce_message(session, conversation, message, actor_id=sender.id)
 
     if is_request and recipient_id is not None:
         data = {"conversation_id": str(conversation.id)}
-        if conversation.listing_id is not None:
-            data["listing_id"] = str(conversation.listing_id)
-        if conversation.service_post_id is not None:
-            data["service_post_id"] = str(conversation.service_post_id)
+        kind = NotificationType.message_request
+        if about_listing is not None:
+            data["listing_id"] = str(about_listing)
+            kind = NotificationType.listing_inquiry
+        elif about_service is not None:
+            data["service_post_id"] = str(about_service)
+            kind = NotificationType.service_inquiry
         await notifications_service.notify(
             session,
             recipient_id=recipient_id,
-            kind={
-                ConversationKind.listing: NotificationType.listing_inquiry,
-                ConversationKind.service: NotificationType.service_inquiry,
-            }.get(conversation.kind, NotificationType.message_request),
+            kind=kind,
             actor_id=sender.id,
             target_type="conversation",
             target_id=conversation.id,
@@ -1087,21 +1082,28 @@ async def list_conversations(
         statement = statement.where(
             Conversation.id.in_(mine.where(ConversationMember.status == MemberStatus.active))
         )
+        # A request that asked about a listing or service post goes straight to
+        # the owner's inbox: it answers something they published, so it is not
+        # unsolicited. Such a request is the only kind with a topic while pending:
+        # the sender can send nothing more, and a reply would accept it.
+        about_post = Conversation.listing_id.is_not(None) | Conversation.service_post_id.is_not(
+            None
+        )
         if folder == "requests":
             statement = statement.where(
                 Conversation.kind == ConversationKind.direct,
                 Conversation.state == ConversationState.request_pending,
                 Conversation.request_sender_id != viewer.id,
                 Conversation.last_seq > 0,
+                ~about_post,
             )
         elif folder == "chats":
-            # Listing inquiries go straight to the seller's inbox: they answer the
-            # seller's own public listing, so they are not unsolicited.
             statement = statement.where(
                 or_(
                     Conversation.state == ConversationState.active,
                     Conversation.request_sender_id == viewer.id,
-                    Conversation.kind.in_(ABOUT_SOMETHING)
+                    (Conversation.kind == ConversationKind.direct)
+                    & about_post
                     & (Conversation.last_seq > 0)
                     & (Conversation.state == ConversationState.request_pending),
                 )
@@ -1116,7 +1118,7 @@ async def list_conversations(
         )
         statement = statement.where(
             or_(
-                Conversation.kind.not_in(TWO_PARTY),
+                Conversation.kind != ConversationKind.direct,
                 Conversation.id.not_in(blocked_member),
             )
         )
@@ -1196,7 +1198,7 @@ async def sync(
         page = [
             conversation
             for conversation in page
-            if conversation.kind not in TWO_PARTY or conversation.id not in blocked_direct
+            if conversation.kind != ConversationKind.direct or conversation.id not in blocked_direct
         ]
     return SyncResult(conversations=page, next_since=next_since, has_more=has_more)
 
@@ -1900,8 +1902,16 @@ async def purge_user_messages(
             ConversationMember.user_id == user_id,
             ConversationMember.status.in_((MemberStatus.active, MemberStatus.invited)),
         )
-        .values(status=MemberStatus.left, role=MemberRole.member, updated_at=now),
+        .values(
+            status=MemberStatus.left,
+            role=MemberRole.member,
+            pending_listing_id=None,
+            pending_service_post_id=None,
+            updated_at=now,
+        ),
     )
+    # What they asked about, and so who they might have bought from, goes too.
+    await session.execute(delete(ConversationTopic).where(ConversationTopic.asked_by_id == user_id))
     for conversation_id in owned:
         await _promote_successor(session, conversation_id)
     await session.flush()

@@ -284,10 +284,17 @@ void main() {
       await reachInSettings(tester, find.textContaining('Signed in as +254712345678'));
     });
 
-    testWidgets('deleting asks for understanding, then signs out here', (tester) async {
+    testWidgets('deleting is out of the way, asks for understanding, then signs out here', (tester) async {
       await openSettings(tester);
-      await reachInSettings(tester, find.text('Delete my account'));
-      await tester.tap(find.text('Delete my account'));
+      // Not in Settings itself, so never next to Sign out.
+      expect(find.text('Delete my account'), findsNothing);
+      await reachInSettings(tester, find.text('Your data'));
+      await tester.tap(find.text('Your data'));
+      await tester.pumpAndSettle();
+      final link = find.widgetWithText(TextButton, 'Delete my account');
+      await tester.scrollUntilVisible(link, 200, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+      await tester.tap(link);
       await tester.pumpAndSettle();
 
       final delete = find.widgetWithText(FilledButton, 'Delete my account');

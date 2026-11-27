@@ -310,8 +310,9 @@ async def test_a_job_conversation_carries_the_safety_notice(
     )
     inbox = (await (await authenticate(employer)).get("/v1/conversations")).json()["items"]
     assert inbox[0]["safety_notice"] == opened["safety_notice"]
-    # A conversation about an offering has none.
-    offering = await post(await authenticate(employer), category="catering", title="Catering")
+    # A chat that was never about a job has none.
+    caterer = await person(db_session)
+    offering = await post(await authenticate(caterer), category="catering", title="Catering")
     plain = (await (await authenticate(seeker)).post(f"/v1/services/{offering['id']}/chat")).json()
     assert plain["safety_notice"] is None
 

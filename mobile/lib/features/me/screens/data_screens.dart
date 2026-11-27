@@ -2,22 +2,27 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/location.dart';
 import '../../../core/providers.dart';
+import '../../../core/router.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
 import '../me_screen.dart';
 
 // ---------------------------------------------------------------------------
-// Download my data
+// Your data: download it, or, at the bottom, delete the account
 // ---------------------------------------------------------------------------
 
 /// The right of access: everything held about the account, as a file the
 /// person keeps. The file goes straight to the share sheet; the app keeps no copy.
+///
+/// Deleting the account starts here too, as a quiet link at the very bottom:
+/// findable, but not a button anyone taps by mistake, and not beside Sign out.
 class MyDataScreen extends ConsumerStatefulWidget {
   const MyDataScreen({super.key});
 
@@ -53,8 +58,10 @@ class _MyDataScreenState extends ConsumerState<MyDataScreen> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final auth = ref.watch(authControllerProvider);
+    final deletionPending = auth is AuthSignedIn && auth.me.deletionPending;
     return Scaffold(
-      appBar: AppBar(title: const Text('Download my data')),
+      appBar: AppBar(title: const Text('Your data')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
@@ -80,6 +87,18 @@ class _MyDataScreenState extends ConsumerState<MyDataScreen> {
           BusyButton(label: 'Get my data', busy: _busy, onPressed: _export),
           const SizedBox(height: 8),
           Text('You can do this up to 5 times a day.', textAlign: TextAlign.center, style: text.bodySmall),
+          if (!deletionPending) ...[
+            const SizedBox(height: 48),
+            Divider(color: Palette.line),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: () => context.go(Routes.deleteAccount),
+                style: TextButton.styleFrom(foregroundColor: Palette.muted),
+                child: const Text('Delete my account'),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -169,7 +188,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
           const SizedBox(height: 8),
           const NotePanel(
             icon: Icons.download_outlined,
-            text: 'Want a copy first? Use Download my data before you delete.',
+            text: 'Want a copy first? Go back and tap Get my data before you delete.',
           ),
           const SizedBox(height: 12),
           CheckboxListTile(

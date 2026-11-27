@@ -72,12 +72,12 @@ void main() {
       expect(find.text('1 comment'), findsOneWidget);
     });
 
-    testWidgets('an Update offers a heart and has no chip', (tester) async {
+    testWidgets('a General post offers a heart and has no chip', (tester) async {
       await card(tester, postJson('p1', category: 'general'));
       expect(find.text('Like'), findsOneWidget);
       expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
       expect(find.byIcon(Icons.thumb_up_alt_outlined), findsNothing);
-      expect(find.text('Update'), findsNothing);
+      expect(find.text('General'), findsNothing);
     });
 
     testWidgets('the other categories offer helpful, and keep their chip', (tester) async {

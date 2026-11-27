@@ -47,7 +47,7 @@ from app.modules.marketplace.models import (
 from app.modules.media.models import MediaPurpose
 from app.modules.media.service import claim_assets_for
 from app.modules.messaging import service as messaging_service
-from app.modules.messaging.models import Conversation, ConversationKind
+from app.modules.messaging.models import Conversation
 from app.modules.moderation.holds import hold_if_restricted
 from app.modules.moderation.models import ContentStatus
 from app.modules.notifications import service as notifications_service
@@ -601,22 +601,18 @@ async def saved_listings(
 
 
 async def open_chat(session: AsyncSession, *, buyer: User, listing_id: uuid.UUID) -> Conversation:
-    """Chat with the seller. Only about something still for sale: a sold or
-    expired listing can be read, but not asked about."""
+    """The buyer's chat with the seller, about this listing (decision P.1). Only
+    about something still for sale: a sold or expired listing can be read, but not
+    asked about, except by someone who already did."""
     listing = await access.visible_listing(session, listing_id=listing_id, viewer_id=buyer.id)
-    if listing.availability == ListingAvailability.sold or listing.is_expired(datetime.now(UTC)):
-        existing = await session.scalar(
-            select(Conversation).where(
-                Conversation.kind == ConversationKind.listing,
-                Conversation.listing_id == listing.id,
-                Conversation.created_by_id == buyer.id,
-            )
-        )
-        if existing is None:
-            raise ConflictError("This listing is no longer for sale")
-        return existing
-    return await messaging_service.open_listing_chat(
-        session, buyer=buyer, seller_id=listing.seller_id, listing_id=listing.id
+    if (
+        listing.availability == ListingAvailability.sold or listing.is_expired(datetime.now(UTC))
+    ) and not await messaging_service.asked_about(
+        session, viewer_id=buyer.id, listing_ids=[listing.id]
+    ):
+        raise ConflictError("This listing is no longer for sale")
+    return await messaging_service.open_about_post(
+        session, user=buyer, owner_id=listing.seller_id, listing_id=listing.id
     )
 
 
@@ -637,17 +633,10 @@ async def listing_buyers(
 async def my_conversations_about(
     session: AsyncSession, *, viewer: User, listing_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, uuid.UUID]:
-    """The viewer's own conversation about each listing, for "continue chat"."""
-    if not listing_ids:
-        return {}
-    rows = await session.execute(
-        select(Conversation.listing_id, Conversation.id).where(
-            Conversation.kind == ConversationKind.listing,
-            Conversation.listing_id.in_(listing_ids),
-            Conversation.created_by_id == viewer.id,
-        )
+    """The chat in which the viewer asked about each listing, for "Open chat"."""
+    return await messaging_service.asked_about(
+        session, viewer_id=viewer.id, listing_ids=listing_ids
     )
-    return {listing_id: conversation_id for listing_id, conversation_id in rows if listing_id}
 
 
 async def saved_ids(
