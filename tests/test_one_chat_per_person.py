@@ -418,7 +418,9 @@ async def test_the_migration_merges_post_chats_into_the_pairs_chat(
     db_session.expire_all()
 
     assert merged == 3
-    kinds = dict((await db_session.execute(text("SELECT id, kind FROM conversations"))).all())
+    kinds: dict[uuid.UUID, str] = dict(
+        (await db_session.execute(text("SELECT id, kind FROM conversations"))).all()
+    )
     assert kinds == {direct: "direct", only_listing: "direct"}
     # One chat with the seller, in the order things were said, numbered again.
     said = (
@@ -445,7 +447,7 @@ async def test_the_migration_merges_post_chats_into_the_pairs_chat(
     ).one()
     assert (chat.state, chat.last_seq, chat.listing_id) == ("active", 5, None)
     assert str(chat.service_post_id) == plumbing["id"]
-    reads = dict(
+    reads: dict[uuid.UUID, int] = dict(
         (
             await db_session.execute(
                 text(
