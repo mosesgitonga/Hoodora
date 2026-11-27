@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myradius/core/api/api_client.dart';
 import 'package:myradius/core/api/token_store.dart';
 import 'package:myradius/core/offline_store.dart';
+import 'package:myradius/core/phone_verification.dart';
 import 'package:myradius/core/providers.dart';
 import 'package:myradius/core/realtime.dart';
 import 'package:myradius/features/me/account_models.dart';
@@ -14,6 +15,7 @@ import 'package:myradius/main.dart';
 
 import 'support/fake_adapter.dart';
 import 'support/fake_location.dart';
+import 'support/fake_phone.dart';
 import 'support/fake_socket.dart';
 
 Map<String, dynamic> meJson({String? deletionRequestedAt, bool verified = false}) => {
@@ -114,6 +116,7 @@ void main() {
   group('screens', () {
     late FakeAdapter adapter;
     late MemoryTokenStore store;
+    late FakePhoneVerifier phone;
     late Map<String, dynamic> me;
     late FakeReply Function(RequestOptions) extra;
 
@@ -180,6 +183,7 @@ void main() {
         overrides: [
           tokenStoreProvider.overrideWithValue(store),
           apiClientProvider.overrideWithValue(api),
+          phoneVerifierProvider.overrideWithValue(phone),
           locationReaderProvider.overrideWithValue(const FakeReader.none()),
           offlineStoreProvider.overrideWithValue(MemoryOfflineStore()),
           realtimeProvider.overrideWith((ref) {
@@ -204,6 +208,7 @@ void main() {
     setUp(() {
       me = meJson();
       extra = (_) => const FakeReply(0);
+      phone = FakePhoneVerifier();
     });
 
     testWidgets('the Me tab is my profile, with my posts, and I can edit it', (tester) async {
@@ -243,45 +248,82 @@ void main() {
       expect(find.textContaining('1 neighbour has vouched for you'), findsOneWidget);
     });
 
-    testWidgets('an account from Google adds a phone number (decision A.1)', (tester) async {
+    /// A Google account with no number, and a server that adds the one proved.
+    void googleAccountAddsAPhone() {
       me = {...meJson(), 'phone_number': null, 'has_google_account': true};
       extra = (request) {
-        if (request.path == '/auth/otp/request') {
-          return const FakeReply(200, {
-            'expires_in_seconds': 300,
-            'resend_after_seconds': 60,
-            'phone_number_masked': '+254 7•• ••• 678',
-          });
-        }
         if (request.path == '/me/phone') {
           me = {...me, 'phone_number': '+254712345678'};
           return FakeReply(200, me);
         }
         return const FakeReply(0);
       };
+    }
+
+    Future<void> openAddPhone(WidgetTester tester) async {
       await openSettings(tester);
       await reachInSettings(tester, find.textContaining('Signed in with Google'));
-
       await reachInSettings(tester, find.text('Add a phone number'));
       await tester.tap(find.text('Add a phone number'));
       await tester.pumpAndSettle();
+    }
+
+    testWidgets('an account from Google adds a phone number Firebase proves (decision A.2)', (tester) async {
+      googleAccountAddsAPhone();
+      await openAddPhone(tester);
+
       await tester.enterText(find.byKey(const Key('add-phone-number')), '0712 345 678');
       await tester.tap(find.text('Send code'));
       await tester.pumpAndSettle();
-      expect(find.text('Enter the code sent to +254 7•• ••• 678'), findsOneWidget);
+      expect(phone.sentTo, ['+254712345678']);
+      expect(find.text('Enter the code sent to 0712 345 678'), findsOneWidget);
+
+      // A wrong code is Firebase's to refuse, and nothing reaches the server.
+      await tester.enterText(find.byKey(const Key('add-phone-code')), '000000');
+      await tester.tap(find.text('Add number'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining("That code isn't right"), findsOneWidget);
+      expect(adapter.requests.any((r) => r.path == '/me/phone'), isFalse);
 
       await tester.enterText(find.byKey(const Key('add-phone-code')), '482093');
       await tester.tap(find.text('Add number'));
       await tester.pumpAndSettle();
 
+      // The server gets Firebase's proof, never the number or the code.
       final sent = adapter.requests.lastWhere((r) => r.path == '/me/phone').data as Map;
-      expect(sent, {'phone_number': '+254712345678', 'code': '482093'});
+      expect(sent, {'firebase_id_token': 'firebase-proof-for-verification-1'});
       // Back in Settings, with the number and no longer the row to add one. The
       // screen's own title says the same words, so this also proves it closed.
       expect(find.text('Phone number added'), findsOneWidget);
       expect(find.byType(AddPhoneScreen), findsNothing);
       expect(find.text('Add a phone number'), findsNothing);
       await reachInSettings(tester, find.textContaining('Signed in as +254712345678'));
+    });
+
+    testWidgets('when Android reads the SMS itself, no code needs typing', (tester) async {
+      googleAccountAddsAPhone();
+      phone.autoProof = 'firebase-proof-automatic';
+      await openAddPhone(tester);
+
+      await tester.enterText(find.byKey(const Key('add-phone-number')), '0712 345 678');
+      await tester.tap(find.text('Send code'));
+      await tester.pumpAndSettle();
+
+      final sent = adapter.requests.lastWhere((r) => r.path == '/me/phone').data as Map;
+      expect(sent, {'firebase_id_token': 'firebase-proof-automatic'});
+      expect(find.text('Phone number added'), findsOneWidget);
+    });
+
+    testWidgets('a number that is not Kenyan never reaches Firebase', (tester) async {
+      googleAccountAddsAPhone();
+      await openAddPhone(tester);
+
+      await tester.enterText(find.byKey(const Key('add-phone-number')), '12345');
+      await tester.tap(find.text('Send code'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Enter a Kenyan mobile number'), findsOneWidget);
+      expect(phone.sentTo, isEmpty);
     });
 
     testWidgets('deleting is out of the way, asks for understanding, then signs out here', (tester) async {

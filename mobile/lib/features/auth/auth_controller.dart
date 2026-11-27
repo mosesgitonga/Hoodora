@@ -79,7 +79,7 @@ class AuthController extends Notifier<AuthState> {
     await _restore();
   }
 
-  /// After a code or a sign-up has started a session.
+  /// After a Google sign-in or a sign-up has started a session.
   Future<void> sessionStarted() => _loadMe();
 
   /// After the home area is set.
@@ -124,14 +124,11 @@ final signInMethodsProvider = FutureProvider.autoDispose<SignInMethods>(
   (ref) => ref.read(authRepositoryProvider).methods(),
 );
 
-/// The sign-in flow's in-between values: the number, the code's challenge, the
-/// sign-up token for a new number or Google account, and the name Google
-/// suggested. Cleared when the flow ends.
+/// The sign-in flow's in-between values: the sign-up token for a new Google
+/// account, and the name Google suggested. Cleared when the flow ends.
 class SignInFlow {
-  const SignInFlow({this.phoneNumber, this.challenge, this.signupToken, this.suggestedName});
+  const SignInFlow({this.signupToken, this.suggestedName});
 
-  final String? phoneNumber;
-  final OtpChallenge? challenge;
   final String? signupToken;
 
   /// The Google account's name, to start the sign-up form with. Kept only on
@@ -145,15 +142,6 @@ final signInFlowProvider =
 class SignInFlowController extends Notifier<SignInFlow> {
   @override
   SignInFlow build() => const SignInFlow();
-
-  void codeSent(String phoneNumber, OtpChallenge challenge) =>
-      state = SignInFlow(phoneNumber: phoneNumber, challenge: challenge);
-
-  void signupRequired(String token) => state = SignInFlow(
-        phoneNumber: state.phoneNumber,
-        challenge: state.challenge,
-        signupToken: token,
-      );
 
   void googleSignupRequired(String token, {String? suggestedName}) =>
       state = SignInFlow(signupToken: token, suggestedName: suggestedName);

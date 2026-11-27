@@ -4,15 +4,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/phone_verification.dart';
 import '../../../core/providers.dart';
 import '../../../core/router.dart';
 import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/phone.dart';
 
-/// Adding a phone number to an account that signed up with Google: the number,
-/// then the code sent to it by SMS. Posting jobs and the verified-neighbour badge
-/// need one (decision A.1).
+/// Adding a phone number to the account: the number, then the code Firebase
+/// texts to it (decision A.2). Posting jobs and the verified-neighbour badge need
+/// one (decision A.1).
+///
+/// Firebase checks the code on the phone and gives a proof, which the server
+/// checks before adding the number. On Android Firebase may read the SMS itself,
+/// and then no code needs typing.
 class AddPhoneScreen extends ConsumerStatefulWidget {
   const AddPhoneScreen({super.key});
 
@@ -24,9 +29,12 @@ class _AddPhoneScreenState extends ConsumerState<AddPhoneScreen> {
   final _number = TextEditingController();
   final _code = TextEditingController();
 
-  /// Set once a code has been sent to it.
+  /// The number a code was sent to, and the challenge it answers.
   String? _phone;
-  String? _masked;
+  PhoneCodeSent? _sent;
+
+  /// Firebase's proof, kept so a failed save can be retried without a new code.
+  String? _proof;
   bool _busy = false;
   String? _error;
 
@@ -37,29 +45,43 @@ class _AddPhoneScreenState extends ConsumerState<AddPhoneScreen> {
     super.dispose();
   }
 
-  Future<void> _sendCode() async {
-    final phone = normaliseKenyanMobile(_number.text);
+  Future<void> _sendCode({bool again = false}) async {
+    final phone = again ? _phone : normaliseKenyanMobile(_number.text);
     if (phone == null) {
       setState(() => _error = 'Enter a Kenyan mobile number, like 0712 345 678.');
       return;
     }
     await _run(() async {
-      final challenge = await ref.read(authRepositoryProvider).requestCode(phone);
+      final sent = await ref.read(phoneVerifierProvider).sendCode(
+            phone,
+            resendToken: again ? _sent?.resendToken : null,
+            onAutoProof: _save,
+          );
+      if (!mounted) return;
       setState(() {
         _phone = phone;
-        _masked = challenge.maskedNumber;
+        _sent = sent ?? _sent;
       });
     });
   }
 
-  Future<void> _addNumber() async {
+  Future<void> _confirm() async {
     final code = _code.text.trim();
-    if (_phone == null || code.length != 6) {
+    final sent = _sent;
+    if (sent == null || code.length != 6) {
       setState(() => _error = 'Enter the 6-digit code from the SMS.');
       return;
     }
+    String? proof;
+    await _run(() async => proof = await ref.read(phoneVerifierProvider).confirm(sent, code));
+    if (proof != null) await _save(proof!);
+  }
+
+  /// Sends Firebase's proof to the server, which adds the number.
+  Future<void> _save(String proof) async {
+    _proof = proof;
     await _run(() async {
-      final me = await ref.read(authRepositoryProvider).addPhone(_phone!, code);
+      final me = await ref.read(authRepositoryProvider).addPhone(proof);
       final auth = ref.read(authControllerProvider.notifier);
       if (!mounted) {
         auth.replaceMe(me);
@@ -84,6 +106,8 @@ class _AddPhoneScreenState extends ConsumerState<AddPhoneScreen> {
     });
     try {
       await action();
+    } on PhoneVerificationFailure catch (error) {
+      if (mounted) setState(() => _error = error.message);
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } finally {
@@ -91,10 +115,19 @@ class _AddPhoneScreenState extends ConsumerState<AddPhoneScreen> {
     }
   }
 
+  void _startOver() => setState(() {
+        _phone = null;
+        _sent = null;
+        _proof = null;
+        _code.clear();
+        _error = null;
+      });
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final codeSent = _phone != null;
+    final codeSent = _sent != null || _proof != null;
+    final proof = _proof;
     return Scaffold(
       appBar: AppBar(title: const Text('Add a phone number')),
       body: SafeArea(
@@ -123,11 +156,12 @@ class _AddPhoneScreenState extends ConsumerState<AddPhoneScreen> {
               const SizedBox(height: 10),
               Text("We'll send a 6-digit code by SMS.", style: text.bodySmall),
             ] else ...[
-              Text('Enter the code sent to $_masked', style: text.titleSmall),
+              Text('Enter the code sent to ${_readable(_phone)}', style: text.titleSmall),
               const SizedBox(height: 10),
               TextField(
                 key: const Key('add-phone-code'),
                 controller: _code,
+                enabled: proof == null,
                 keyboardType: TextInputType.number,
                 autofillHints: const [AutofillHints.oneTimeCode],
                 inputFormatters: [
@@ -135,21 +169,22 @@ class _AddPhoneScreenState extends ConsumerState<AddPhoneScreen> {
                   LengthLimitingTextInputFormatter(6),
                 ],
                 textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _addNumber(),
+                onSubmitted: (_) => _confirm(),
                 decoration: const InputDecoration(hintText: '6-digit code'),
               ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() {
-                            _phone = null;
-                            _code.clear();
-                            _error = null;
-                          }),
-                  child: const Text('Use a different number'),
-                ),
+              Wrap(
+                spacing: 4,
+                children: [
+                  if (proof == null)
+                    TextButton(
+                      onPressed: _busy ? null : () => _sendCode(again: true),
+                      child: const Text('Send a new code'),
+                    ),
+                  TextButton(
+                    onPressed: _busy ? null : _startOver,
+                    child: const Text('Use a different number'),
+                  ),
+                ],
               ),
             ],
             FormError(_error),
@@ -157,11 +192,22 @@ class _AddPhoneScreenState extends ConsumerState<AddPhoneScreen> {
             BusyButton(
               label: codeSent ? 'Add number' : 'Send code',
               busy: _busy,
-              onPressed: codeSent ? _addNumber : _sendCode,
+              onPressed: !codeSent
+                  ? _sendCode
+                  : proof != null
+                      ? () => _save(proof)
+                      : _confirm,
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// `+254712345678` as people read it: `0712 345 678`.
+  static String _readable(String? e164) {
+    if (e164 == null || !e164.startsWith('+254') || e164.length != 13) return e164 ?? 'your phone';
+    final local = '0${e164.substring(4)}';
+    return '${local.substring(0, 4)} ${local.substring(4, 7)} ${local.substring(7)}';
   }
 }

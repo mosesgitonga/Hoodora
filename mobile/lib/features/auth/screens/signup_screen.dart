@@ -9,7 +9,7 @@ import '../../../core/theme.dart';
 import '../../../core/widgets.dart';
 import '../auth_controller.dart';
 
-/// Completing sign-up for a verified new number or Google account: a display
+/// Completing sign-up for a new Google account (decision A.2): a display
 /// name, and each consent asked for separately, as the Data Protection Act
 /// requires. Marketing is optional and starts unticked.
 class SignupScreen extends ConsumerStatefulWidget {

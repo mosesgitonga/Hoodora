@@ -2,11 +2,11 @@
 
 Counting is done in a Lua script so the increment and the expiry are one atomic
 round trip. A read-then-write from Python would let concurrent requests race past
-the limit, which is exactly what matters for the endpoints this protects: OTP
-requests, posting, and messaging.
+the limit, which is exactly what matters for the endpoints this protects:
+signing in, posting, and messaging.
 
 The window is a fixed window anchored at its first request, not a calendar
-window. "5 OTP requests per hour" therefore means five from the first attempt
+window. "5 sign-ins per hour" therefore means five from the first attempt
 onwards, with no cliff at the top of the hour for a caller to queue against.
 That also makes cooldowns ("one resend per 60 seconds") and daily caps the same
 mechanism with different numbers.
@@ -93,7 +93,7 @@ class RateLimiter:
         """Record a request and report whether it is within the limit.
 
         `fail_open` overrides the configured default for callers where abuse costs
-        more than downtime — OTP issuing and payments should fail closed.
+        more than downtime — sign-in and payments should fail closed.
         """
         if not self._settings.rate_limit_enabled:
             return RateLimitResult(True, limit, limit, 0)

@@ -1,24 +1,5 @@
-/// What the server says after sending a code.
-class OtpChallenge {
-  const OtpChallenge({
-    required this.expiresInSeconds,
-    required this.resendAfterSeconds,
-    required this.maskedNumber,
-  });
-
-  factory OtpChallenge.fromJson(Map<String, dynamic> json) => OtpChallenge(
-        expiresInSeconds: json['expires_in_seconds'] as int,
-        resendAfterSeconds: json['resend_after_seconds'] as int,
-        maskedNumber: json['phone_number_masked'] as String,
-      );
-
-  final int expiresInSeconds;
-  final int resendAfterSeconds;
-  final String maskedNumber;
-}
-
-/// A correct code either signs an existing account in, or clears a new number
-/// to sign up.
+/// Google sign-in either signs an existing account in, or clears a new one to
+/// sign up.
 sealed class VerifyOutcome {
   const VerifyOutcome();
 }
@@ -32,17 +13,14 @@ class SignupRequired extends VerifyOutcome {
   final String signupToken;
 }
 
-/// How someone can sign in right now, as `GET /v1/auth/methods` says. Phone is
-/// always on; Google only once the server has a client ID (decision A.1).
+/// How someone can sign in right now, as `GET /v1/auth/methods` says: Google,
+/// once the server has a client ID (decisions A.1, A.2).
 class SignInMethods {
   const SignInMethods({this.googleClientId});
 
   factory SignInMethods.fromJson(Map<String, dynamic> json) => SignInMethods(
         googleClientId: json['google'] == true ? json['google_client_id'] as String? : null,
       );
-
-  /// Phone only: what to assume when the server can't be asked.
-  static const phoneOnly = SignInMethods();
 
   /// Handed to Google so the token it issues is for Hoodora's server. Null when
   /// Google sign-in is off.

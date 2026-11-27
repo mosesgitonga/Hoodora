@@ -5604,3 +5604,49 @@ and one from Chats. They asked for "General" instead of "Update", and for
     merge on old-style rows and the purge;
   - the full server suite passes;
   - the app's 188 tests pass, and `flutter analyze` is clean.
+
+## Push notifications on, on staging (2026-11-27)
+
+- **The Firebase service-account key** (project `hoodora-c028f`) is at
+  `/srv/myradius/secrets/fcm.json`, mode 600 and owned by the API's user, with
+  `PUSH_PROVIDER=fcm`.
+- **`secrets/` is now 711.** At 700 the API's user could not reach the file.
+  `bootstrap.sh` now makes it 711 too, so a re-run doesn't switch push off.
+  `s3.json` stays root-only.
+- **Checks:**
+  - a dry run with FCM found the product owner's phone valid, and one older
+    token unregistered (deleted on the first real send);
+  - one real test push was sent to the product owner's phone: 1 sent, 0 failed.
+
+## Google only to sign in; Firebase proves phone numbers (2026-11-27)
+
+The product owner asked for Google as the only way to sign in, and for Firebase
+SMS wherever a phone number still needs proving (decision A.2, amending A.1).
+
+- **Server:**
+  - the phone code endpoints (`/v1/auth/otp/*`), the Africa's Talking provider,
+    the code settings and their Redis keys are gone;
+  - `/v1/auth/methods` says `phone: false`, and production refuses to start
+    without `GOOGLE_CLIENT_ID`;
+  - `POST /v1/me/phone` takes `firebase_id_token`. The server checks it against
+    Firebase's keys and `FIREBASE_PROJECT_ID`, and that it is a phone sign-in
+    within `PHONE_PROOF_MAX_AGE_SECONDS`. Then the old rules apply: mobile only,
+    not banned, not someone else's.
+- **App:**
+  - the sign-in screen has "Continue with Google" only, and the code screen is
+    gone;
+  - "Add a phone number" uses `firebase_auth`: Firebase texts the code, or
+    Android reads it itself. The app deletes the Firebase user once it has the
+    proof.
+- **Tests:**
+  - Google and Firebase fakes in `tests/auth_fakes.py`;
+  - the code tests are replaced with Google sign-up, Firebase proofs and the real
+    verifier's claim checks;
+  - the full server suite passes;
+  - the app's 191 tests pass, and `flutter analyze` is clean.
+- **Waiting on, in the Firebase console** (project `hoodora-c028f`):
+  - Phone sign-in on;
+  - the SMS region limited to Kenya;
+  - the app's signing-key SHA-256 and SHA-1 added.
+- **On staging:** `FIREBASE_PROJECT_ID=hoodora-c028f`, set at deploy. The
+  phone-only test account "Root" can no longer sign in.

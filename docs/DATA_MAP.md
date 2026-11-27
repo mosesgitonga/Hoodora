@@ -55,9 +55,9 @@ Nothing in Redis is a source of truth, and everything in it expires.
 
 | Field | Why | Retention | Notes |
 | --- | --- | --- | --- |
-| `phone_number` | An account identifier. Sign-in has to find an account from the number alone; there is no second factor to look it up by. | Until purge, then **null** | E.164, uniquely indexed, stored in the clear because it must be searchable. Redacted from logs by pattern. Null for a purged account, and for one that signed up with Google and hasn't added a number (decision A.1). |
-| `phone_verified_at` | Proof the number was controlled, at signup or when added later; posting jobs and the verified-neighbour badge need it | Until purge | Set whenever a number is held. |
-| `google_sub` | For an account that signs in with Google: Google's ID for that Google account, from the checked ID token (decision A.1) | Until purge, then **null** | Uniquely indexed. **Nothing else from Google is kept:** no email, name or photo, though Google's token carries them. A live account must have this, a phone number, or both. In the export. |
+| `phone_number` | A proved number, for posting jobs and the verified-neighbour badge, and so a ban can reach it. Not used to sign in since decision A.2 | Until purge, then **null** | E.164, uniquely indexed, stored in the clear because it must be searchable. Redacted from logs by pattern. Null for a purged account, and for one that hasn't added a number. Proved by Firebase (see below). |
+| `phone_verified_at` | Proof the number was controlled, when it was added; posting jobs and the verified-neighbour badge need it | Until purge | Set whenever a number is held. |
+| `google_sub` | How the account signs in: Google's ID for that Google account, from the checked ID token (decisions A.1, A.2) | Until purge, then **null** | Uniquely indexed. **Nothing else from Google is kept:** no email, name or photo, though Google's token carries them. A live account must have this, a phone number, or both; new accounts always have this. In the export. |
 | `display_name` | Shown to neighbours | Until purge, then "Deleted user" | Free text; the user chooses how identifiable to be. |
 | `status` | Account state: active, suspended, banned, deletion_pending | Until purge | |
 | `adult_confirmed_at` | Evidence of the 18+ declaration, and when it was made | Until purge | A timestamp rather than a boolean: the Act asks *when* a declaration was made. |
@@ -146,9 +146,7 @@ travels in the request body, which neither nginx nor the API logs.
 
 | Key pattern | Contents | Why | Retention |
 | --- | --- | --- | --- |
-| `otp:<hash>` | Hashed one-time code and its attempt counter | Phone verification | 5 minutes |
-| `otp:cooldown:<hash>` | Resend cooldown marker | Cost control: each send is a real SMS | 60 seconds |
-| `signup:<hash>` | Phone number awaiting signup completion | Single-use ticket between verify and signup | 15 minutes |
+| `signup:<hash>` | The Google account (`google:<sub>`) awaiting signup completion | Single-use ticket between Google sign-in and signup | 15 minutes |
 | `explore:<user id>` | **Where the phone is, as cells**, while it's away from home | Lists read from it, and new content is placed in it (decision L.1). The app sends it at launch and on coming back to the app. Also read, without keeping it, to count people per hexagon now and each hour (decision D.9) | ~2 hours, renewed while the app is in use |
 | `arealabel:<cell>` | A resolved area label | Avoids recomputing k-anonymity per profile render | 1 hour |
 | `radius:feed:<cell>` | A cached feed radius: its ring, what set it (`limited_by`) and its km | Stability and cost | 15 minutes |
@@ -156,9 +154,8 @@ travels in the request body, which neither nginx nor the API logs.
 | `audit:people-map:<staff id>` | That this admin's opening of God's view was audited this hour (decision D.8) | Fewer audit rows for one viewing | 1 hour |
 | `admin:stats:v1` | The admin overview: counts per day and in total, and the radius spread (decision D.3). Aggregates only: no ID, name or number | Speed: not recounted on every visit | `ADMIN_STATS_CACHE_SECONDS` (5 minutes) |
 
-Two things to note. OTP keys are keyed by a **hash** of the phone number, not the
-number, because Redis keys appear in slow logs and `MONITOR` output. And the
-current location is the most sensitive item in the system — where somebody is
+Two things to note. Signup tickets are keyed by a **hash** of the token, because
+Redis keys appear in slow logs and `MONITOR` output. And the current location is the most sensitive item in the system — where somebody is
 right now — which is exactly why it lives only here, expires by itself, and is
 never written to PostgreSQL. It is not in the data export, because there is
 nothing at rest to export. Since decision L.1 the app sends it by itself rather
@@ -871,6 +868,14 @@ explore hold lapses, and does not write it to the phone.
 The app keeps no copy of the feed, messages or the account's details on disk
 (DECISIONS M.2). A message still sending is held in memory only, so closing the app
 drops an unsent message.
+
+### Proving a phone number: Firebase (decision A.2, 2026-11-27)
+
+| What | Who sees it | Why | Kept |
+| --- | --- | --- | --- |
+| The phone number, and the code Firebase texts to it | **Google Firebase Authentication**, as a processor | Sending the SMS and checking the code, when someone adds a number | Firebase creates a user for the number; the app deletes it as soon as it has the proof. Firebase's own logs are kept under its terms. Hoodora never sees the code |
+| The Firebase ID token (the proof) | Hoodora's API, once | Checked, then only the number is kept, on the account | Not stored; never logged |
+| Device checks (Play Integrity, or a reCAPTCHA in the browser) | Google | Firebase's protection against automated SMS abuse | Under Google's terms |
 
 ### Updates over the air (2026-11-13)
 

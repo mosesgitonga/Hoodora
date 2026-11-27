@@ -1,7 +1,7 @@
 """Redis client.
 
-One connection pool per process, shared by the cache, rate limiter, OTP store,
-and (from Phase 3) pub/sub. Built lazily so imports stay side-effect free.
+One connection pool per process, shared by the cache, rate limiter, signup
+tokens, and (from Phase 3) pub/sub. Built lazily so imports stay side-effect free.
 
 The arq worker opens its own connection through `arq.create_pool`; it needs an
 `ArqRedis` and its own serialisation, so the two are kept apart deliberately.
@@ -10,8 +10,6 @@ The arq worker opens its own connection through `arq.create_pool`; it needs an
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable
-from typing import Any, cast
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -85,14 +83,3 @@ async def check_redis() -> bool:
 # Awaiting them is correct on the async client but does not type-check. These
 # wrappers put the cast in one reviewed place rather than scattering per-call
 # ignores through the service layer.
-async def hash_get_all(client: Redis, key: str) -> dict[str, str]:
-    return cast("dict[str, str]", await cast("Awaitable[Any]", client.hgetall(key)))
-
-
-async def hash_increment(client: Redis, key: str, field: str, amount: int = 1) -> int:
-    return cast("int", await cast("Awaitable[Any]", client.hincrby(key, field, amount)))
-
-
-async def key_ttl(client: Redis, key: str) -> int:
-    """Remaining lifetime in seconds. Negative when absent or without a TTL."""
-    return cast("int", await cast("Awaitable[Any]", client.ttl(key)))

@@ -56,9 +56,7 @@ def test_production_with_proper_configuration_boots() -> None:
         app_env="production",
         secret_key="a-real-secret-of-at-least-32-bytes-length",
         debug=False,
-        sms_provider="africastalking",
-        africastalking_username="myradius",
-        africastalking_api_key="real-key",
+        google_client_id="client.apps.googleusercontent.com",
         storage_provider="s3",
         storage_access_key_id="key",
         storage_secret_access_key="secret",
@@ -76,9 +74,7 @@ def test_production_refuses_the_fake_push_provider() -> None:
         _settings(
             app_env="production",
             secret_key="a-real-secret-of-at-least-32-bytes-length",
-            sms_provider="africastalking",
-            africastalking_username="u",
-            africastalking_api_key="k",
+            google_client_id="client.apps.googleusercontent.com",
             storage_provider="s3",
             storage_access_key_id="key",
             storage_secret_access_key="secret",
@@ -102,9 +98,7 @@ def test_production_refuses_in_memory_storage() -> None:
         _settings(
             app_env="production",
             secret_key="a-real-secret-of-at-least-32-bytes-length",
-            sms_provider="africastalking",
-            africastalking_username="u",
-            africastalking_api_key="k",
+            google_client_id="client.apps.googleusercontent.com",
             storage_provider="memory",
             push_provider="fcm",
             fcm_credentials_file="/run/secrets/fcm.json",
@@ -130,9 +124,7 @@ def test_production_refuses_a_short_secret_key() -> None:
         _settings(
             app_env="production",
             secret_key="short",
-            sms_provider="africastalking",
-            africastalking_username="u",
-            africastalking_api_key="k",
+            google_client_id="client.apps.googleusercontent.com",
         )
 
 
@@ -141,21 +133,15 @@ def test_local_tolerates_a_short_secret_key() -> None:
     assert _settings(secret_key="short").app_env == "local"
 
 
-def test_production_refuses_the_console_sms_provider() -> None:
-    """The console provider logs codes instead of sending them, so in production
-    it would mean nobody can sign up and every code sits in the log."""
-    with pytest.raises(ValidationError, match="SMS_PROVIDER"):
+def test_production_refuses_to_start_without_google_sign_in() -> None:
+    """Google is the only way to sign in (decision A.2): without its client ID
+    nobody could."""
+    with pytest.raises(ValidationError, match="GOOGLE_CLIENT_ID"):
         _settings(
             app_env="production",
             secret_key="a-real-secret-of-at-least-32-bytes-length",
-            sms_provider="console",
+            google_client_id="",
         )
-
-
-def test_africastalking_requires_credentials() -> None:
-    """Fails at boot rather than at the first signup attempt."""
-    with pytest.raises(ValidationError, match="AFRICASTALKING"):
-        _settings(sms_provider="africastalking")
 
 
 def test_a_minimum_radius_above_its_maximum_is_refused() -> None:

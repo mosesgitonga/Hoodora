@@ -1,32 +1,30 @@
-"""Signing up with Google, and adding a phone number later (decision A.1).
+"""Signing in with Google, and adding a phone number proved by Firebase
+(decisions A.1, A.2).
 
-Google itself is never called: a fake verifier maps test tokens to Google
-account IDs, as the console SMS provider stands in for Africa's Talking. The
-real verifier's own handling of google-auth's answers is tested at the end, with
-google-auth stubbed.
+Neither Google nor Firebase is called: the fakes in `tests/auth_fakes.py` map
+test tokens to a Google account or a proved number. The real verifiers'
+handling of google-auth's answers is tested at the end, with google-auth stubbed.
 """
 
 from __future__ import annotations
 
+import time
 import uuid
-from collections.abc import Awaitable, Callable, Iterator
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
 import pytest
-from fastapi import FastAPI
 from google.auth import exceptions as google_exceptions
 from google.oauth2 import id_token as google_id_token
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings
 from app.core.errors import ServiceUnavailableError
 from app.core.providers import google as google_provider
-from app.core.providers.google import GoogleIdentity, set_google_verifier
-from app.core.providers.sms import ConsoleSmsProvider
+from app.core.providers.google import GoogleIdentity, ProvedPhone
 from app.modules.moderation import banlist, console
 from app.modules.moderation.models import (
     AuditAction,
@@ -38,67 +36,18 @@ from app.modules.moderation.models import (
 from app.modules.staff.models import StaffRole
 from app.modules.users import service as users_service
 from app.modules.users.models import User
+from tests.auth_fakes import (
+    CLIENT_ID,
+    FIREBASE_PROJECT,
+    FakeGoogleVerifier,
+    FakePhoneVerifier,
+    google_user,
+    sign_in,
+    sign_up,
+)
 from tests.factories import NYERI_TOWN, give_zone_days, make_staff, make_user, unique_phone
-from tests.test_auth_api import SIGNUP_CONSENTS, last_code
 
 Authenticate = Callable[[User], Awaitable[httpx.AsyncClient]]
-
-CLIENT_ID = "1234567890-web.apps.googleusercontent.com"
-
-
-@dataclass
-class FakeGoogleVerifier:
-    """Tokens it knows map to a Google account ID; anything else is invalid."""
-
-    accounts: dict[str, str] = field(default_factory=dict)
-    audiences: list[str] = field(default_factory=list)
-
-    def token_for(self, sub: str) -> str:
-        token = f"google-id-token-for-{sub}"
-        self.accounts[token] = sub
-        return token
-
-    async def verify(self, id_token: str, *, audience: str) -> GoogleIdentity | None:
-        self.audiences.append(audience)
-        sub = self.accounts.get(id_token)
-        return GoogleIdentity(sub=sub) if sub else None
-
-
-@pytest.fixture
-def google() -> Iterator[FakeGoogleVerifier]:
-    verifier = FakeGoogleVerifier()
-    set_google_verifier(verifier)
-    yield verifier
-    set_google_verifier(None)
-
-
-@pytest.fixture
-def google_on(app: FastAPI, settings: Settings) -> Settings:
-    """Google sign-in switched on, as `GOOGLE_CLIENT_ID` does."""
-    configured = settings.model_copy(update={"google_client_id": CLIENT_ID})
-    app.dependency_overrides[get_settings] = lambda: configured
-    return configured
-
-
-async def google_user(db_session: AsyncSession, sub: str, **kwargs: Any) -> User:
-    """Someone who signed up with Google and has no phone number."""
-    user = await make_user(db_session, at=NYERI_TOWN, created_days_ago=60, **kwargs)
-    user.phone_number = None
-    user.phone_verified_at = None
-    user.google_sub = sub
-    await db_session.flush()
-    return user
-
-
-async def sign_in(client: httpx.AsyncClient, token: str, **device: str) -> httpx.Response:
-    return await client.post("/v1/auth/google", json={"id_token": token, **device})
-
-
-async def sign_up(client: httpx.AsyncClient, signup_token: str) -> httpx.Response:
-    return await client.post(
-        "/v1/auth/signup",
-        json={"signup_token": signup_token, "display_name": "Njeri W.", **SIGNUP_CONSENTS},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +57,8 @@ async def test_google_is_off_until_a_client_id_is_set(client: httpx.AsyncClient)
     response = await client.get("/v1/auth/methods")
 
     assert response.status_code == 200
-    assert response.json() == {"phone": True, "google": False, "google_client_id": None}
+    # With Google off nobody can sign in, which production refuses to start with.
+    assert response.json() == {"phone": False, "google": False, "google_client_id": None}
 
 
 async def test_when_on_the_app_is_given_the_client_id(
@@ -271,28 +221,26 @@ async def test_a_live_account_needs_a_phone_or_a_google_account(
 # ---------------------------------------------------------------------------
 # Adding a phone number later
 # ---------------------------------------------------------------------------
-async def request_code(client: httpx.AsyncClient, phone: str) -> None:
-    response = await client.post("/v1/auth/otp/request", json={"phone_number": phone})
-    assert response.status_code == 200, response.text
+async def add_phone(client: httpx.AsyncClient, token: str) -> httpx.Response:
+    return await client.post("/v1/me/phone", json={"firebase_id_token": token})
 
 
-async def test_a_google_account_adds_and_proves_a_phone(
+async def test_a_google_account_adds_a_phone_firebase_proved(
     db_session: AsyncSession,
     authenticate: Authenticate,
-    sms: ConsoleSmsProvider,
+    phone_proofs: FakePhoneVerifier,
+    google_on: Settings,
 ) -> None:
     user = await google_user(db_session, "g-adds")
     user_id = user.id
     phone = unique_phone()
     client = await authenticate(user)
-    await request_code(client, phone)
 
-    response = await client.post(
-        "/v1/me/phone", json={"phone_number": phone, "code": last_code(sms)}
-    )
+    response = await add_phone(client, phone_proofs.token_for(phone))
 
     assert response.status_code == 200, response.text
     assert response.json()["phone_number"] == phone
+    assert phone_proofs.asked == [(FIREBASE_PROJECT, google_on.phone_proof_max_age_seconds)]
     await db_session.refresh(user)
     assert user.phone_verified_at is not None
     added = await db_session.scalar(
@@ -303,78 +251,97 @@ async def test_a_google_account_adds_and_proves_a_phone(
     assert added is not None
 
 
-async def test_a_wrong_code_adds_nothing(
-    db_session: AsyncSession, authenticate: Authenticate, sms: ConsoleSmsProvider
+async def test_a_proof_firebase_did_not_give_adds_nothing(
+    db_session: AsyncSession,
+    authenticate: Authenticate,
+    phone_proofs: FakePhoneVerifier,
+    google_on: Settings,
 ) -> None:
-    user = await google_user(db_session, "g-wrong")
-    phone = unique_phone()
+    user = await google_user(db_session, "g-forged")
     client = await authenticate(user)
-    await request_code(client, phone)
-    wrong = "000000" if last_code(sms) != "000000" else "111111"
 
-    response = await client.post("/v1/me/phone", json={"phone_number": phone, "code": wrong})
+    response = await add_phone(client, "a-token-firebase-never-issued")
 
     assert response.status_code == 401
-    assert response.json()["error"]["details"]["attempts_remaining"] == 4
     await db_session.refresh(user)
     assert user.phone_number is None
 
 
+async def test_adding_a_phone_is_off_without_a_firebase_project(
+    db_session: AsyncSession, authenticate: Authenticate, phone_proofs: FakePhoneVerifier
+) -> None:
+    client = await authenticate(await google_user(db_session, "g-no-firebase"))
+
+    response = await add_phone(client, phone_proofs.token_for(unique_phone()))
+
+    assert response.status_code == 503
+    assert phone_proofs.asked == []
+
+
 async def test_an_account_with_a_number_cannot_add_another(
-    db_session: AsyncSession, authenticate: Authenticate, sms: ConsoleSmsProvider
+    db_session: AsyncSession,
+    authenticate: Authenticate,
+    phone_proofs: FakePhoneVerifier,
+    google_on: Settings,
 ) -> None:
     client = await authenticate(await make_user(db_session))
-    phone = unique_phone()
-    await request_code(client, phone)
 
-    response = await client.post(
-        "/v1/me/phone", json={"phone_number": phone, "code": last_code(sms)}
-    )
+    response = await add_phone(client, phone_proofs.token_for(unique_phone()))
 
     assert response.status_code == 409
     assert response.json()["error"]["details"]["reason"] == "phone_already_set"
 
 
 async def test_a_number_held_by_another_account_is_refused(
-    db_session: AsyncSession, authenticate: Authenticate, sms: ConsoleSmsProvider
+    db_session: AsyncSession,
+    authenticate: Authenticate,
+    phone_proofs: FakePhoneVerifier,
+    google_on: Settings,
 ) -> None:
     taken = (await make_user(db_session)).phone_number
     assert taken is not None
     client = await authenticate(await google_user(db_session, "g-taken"))
-    await request_code(client, taken)
 
-    response = await client.post(
-        "/v1/me/phone", json={"phone_number": taken, "code": last_code(sms)}
-    )
+    response = await add_phone(client, phone_proofs.token_for(taken))
 
     assert response.status_code == 409
     assert response.json()["error"]["details"]["reason"] == "phone_in_use"
 
 
-async def test_a_banned_number_reads_as_an_expired_code(
+async def test_a_banned_number_reads_as_a_failed_proof(
     db_session: AsyncSession,
     authenticate: Authenticate,
-    sms: ConsoleSmsProvider,
-    settings: Settings,
+    phone_proofs: FakePhoneVerifier,
+    google_on: Settings,
 ) -> None:
     client = await authenticate(await google_user(db_session, "g-banned-number"))
     phone = unique_phone()
-    await request_code(client, phone)
-    db_session.add(BannedPhone(phone_hash=banlist.phone_hash(phone, settings)))
+    db_session.add(BannedPhone(phone_hash=banlist.phone_hash(phone, google_on)))
     await db_session.flush()
 
-    response = await client.post(
-        "/v1/me/phone", json={"phone_number": phone, "code": last_code(sms)}
-    )
+    response = await add_phone(client, phone_proofs.token_for(phone))
 
     assert response.status_code == 401
-    assert response.json()["error"]["message"] == "That code is not valid or has expired"
+    assert (
+        response.json()["error"]["message"] == "That number couldn't be verified. Please try again."
+    )
+
+
+async def test_a_landline_firebase_proved_is_still_refused(
+    db_session: AsyncSession,
+    authenticate: Authenticate,
+    phone_proofs: FakePhoneVerifier,
+    google_on: Settings,
+) -> None:
+    client = await authenticate(await google_user(db_session, "g-landline"))
+
+    response = await add_phone(client, phone_proofs.token_for("+254202222222"))
+
+    assert response.status_code == 400
 
 
 async def test_adding_a_phone_needs_a_signed_in_account(client: httpx.AsyncClient) -> None:
-    response = await client.post(
-        "/v1/me/phone", json={"phone_number": "0712345678", "code": "123456"}
-    )
+    response = await client.post("/v1/me/phone", json={"firebase_id_token": "x" * 40})
 
     assert response.status_code == 401
 
@@ -386,7 +353,10 @@ JOB = {"kind": "hiring", "category": "other", "title": "Shop assistant, weekends
 
 
 async def test_posting_a_job_without_a_phone_asks_for_one(
-    db_session: AsyncSession, authenticate: Authenticate, sms: ConsoleSmsProvider
+    db_session: AsyncSession,
+    authenticate: Authenticate,
+    phone_proofs: FakePhoneVerifier,
+    google_on: Settings,
 ) -> None:
     user = await google_user(db_session, "g-hires")
     # Around long enough to post here (decision L.2): only the phone is missing.
@@ -402,9 +372,7 @@ async def test_posting_a_job_without_a_phone_asks_for_one(
     assert refused.json()["error"]["details"]["reason"] == "phone_required"
     assert offering.status_code == 201, "offering a service needs no phone"
 
-    phone = unique_phone()
-    await request_code(client, phone)
-    await client.post("/v1/me/phone", json={"phone_number": phone, "code": last_code(sms)})
+    assert (await add_phone(client, phone_proofs.token_for(unique_phone()))).status_code == 200
     assert (await client.post("/v1/services", json=JOB)).status_code == 201
 
 
@@ -509,3 +477,90 @@ async def test_unreachable_google_keys_are_a_503_not_a_refusal(
 
     with pytest.raises(ServiceUnavailableError):
         await real_verifier.verify("a-google-id-token", audience=CLIENT_ID)
+
+
+# ---------------------------------------------------------------------------
+# The real Firebase verifier: what a fresh phone sign-in to our project says
+# ---------------------------------------------------------------------------
+def _phone_claims(**overrides: Any) -> dict[str, Any]:
+    now = time.time()
+    return {
+        "iss": f"https://securetoken.google.com/{FIREBASE_PROJECT}",
+        "aud": FIREBASE_PROJECT,
+        "auth_time": int(now) - 30,
+        "phone_number": "+254712345678",
+        "firebase": {"sign_in_provider": "phone", "identities": {}},
+        **overrides,
+    }
+
+
+def _proved(claims: dict[str, Any]) -> ProvedPhone | None:
+    return google_provider.proved_phone_from(
+        claims, project_id=FIREBASE_PROJECT, max_age_seconds=600, now=time.time()
+    )
+
+
+def test_a_fresh_phone_sign_in_proves_its_number() -> None:
+    assert _proved(_phone_claims()) == ProvedPhone(phone_number="+254712345678")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"iss": "https://securetoken.google.com/someone-elses-project"},
+        {"firebase": {"sign_in_provider": "google.com"}},
+        {"firebase": {"sign_in_provider": "anonymous"}},
+        {"phone_number": None},
+        {"auth_time": int(time.time()) - 3600},
+        {"auth_time": None},
+    ],
+    ids=["other project", "google sign-in", "anonymous", "no number", "stale", "no time"],
+)
+def test_anything_but_a_fresh_phone_sign_in_proves_nothing(overrides: dict[str, Any]) -> None:
+    assert _proved(_phone_claims(**overrides)) is None
+
+
+async def test_the_real_phone_verifier_checks_the_token_for_our_project(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, Any] = {}
+
+    def accept(token: str, request: Any, audience: str, **kwargs: Any) -> dict[str, Any]:
+        seen.update(token=token, audience=audience, **kwargs)
+        return _phone_claims()
+
+    monkeypatch.setattr(google_id_token, "verify_firebase_token", accept)
+    verifier = google_provider.FirebasePhoneVerifier(settings)
+
+    proved = await verifier.verify(
+        "a-firebase-token", project_id=FIREBASE_PROJECT, max_age_seconds=600
+    )
+
+    assert proved == ProvedPhone(phone_number="+254712345678")
+    assert seen["audience"] == FIREBASE_PROJECT
+    assert seen["clock_skew_in_seconds"] == google_provider.CLOCK_SKEW_SECONDS
+
+
+async def test_a_token_firebase_keys_refuse_proves_nothing(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ValueError("Token used too late")
+
+    monkeypatch.setattr(google_id_token, "verify_firebase_token", refuse)
+    verifier = google_provider.FirebasePhoneVerifier(settings)
+
+    assert await verifier.verify("old", project_id=FIREBASE_PROJECT, max_age_seconds=600) is None
+
+
+async def test_unreachable_firebase_keys_are_a_503_not_a_refusal(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unreachable(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise google_exceptions.TransportError("Could not fetch certificates")  # type: ignore[no-untyped-call]
+
+    monkeypatch.setattr(google_id_token, "verify_firebase_token", unreachable)
+    verifier = google_provider.FirebasePhoneVerifier(settings)
+
+    with pytest.raises(ServiceUnavailableError):
+        await verifier.verify("a-token", project_id=FIREBASE_PROJECT, max_age_seconds=600)

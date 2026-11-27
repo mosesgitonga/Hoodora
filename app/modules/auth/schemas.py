@@ -9,52 +9,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class PhoneNumberIn(BaseModel):
-    """A phone number in any form the brief accepts."""
-
-    phone_number: str = Field(
-        min_length=7,
-        max_length=20,
-        description=(
-            "Kenyan mobile number. `07…`, `01…`, `254…` and `+254…` are all "
-            "accepted and normalised to E.164."
-        ),
-        examples=["0712345678", "+254712345678"],
-    )
-
-
-class OtpRequestIn(PhoneNumberIn):
-    pass
-
-
-class OtpRequestOut(BaseModel):
-    """Deliberately identical whether or not the number has an account.
-
-    Returning anything that differed would turn this endpoint into a way to find
-    out who is registered — which, for a neighbourhood product, is a way to find
-    out who lives somewhere.
-    """
-
-    expires_in_seconds: int = Field(description="How long the code remains valid.")
-    resend_after_seconds: int = Field(
-        description="Earliest another code may be requested for this number."
-    )
-    phone_number_masked: str = Field(
-        description="The number with its middle digits hidden, for confirmation.",
-        examples=["+2547••••678"],
-    )
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "expires_in_seconds": 300,
-                "resend_after_seconds": 60,
-                "phone_number_masked": "+2547••••678",
-            }
-        }
-    )
-
-
 class DeviceIn(BaseModel):
     """Optional device description, shown back on the sessions screen.
 
@@ -77,20 +31,26 @@ class DeviceIn(BaseModel):
     )
 
 
-class OtpVerifyIn(PhoneNumberIn, DeviceIn):
-    code: str = Field(min_length=4, max_length=8, examples=["123456"])
+class AddPhoneIn(BaseModel):
+    """Proof of a number from Firebase (decision A.2)."""
 
-
-class AddPhoneIn(PhoneNumberIn):
-    """A number and the code `POST /v1/auth/otp/request` sent to it."""
-
-    code: str = Field(min_length=4, max_length=8, examples=["123456"])
+    firebase_id_token: str = Field(
+        min_length=20,
+        max_length=4096,
+        description=(
+            "The ID token Firebase gave the app when it signed in with the number "
+            "and the code Firebase texted to it. Only the number is taken from it."
+        ),
+    )
 
 
 class AuthMethodsOut(BaseModel):
     """How someone can sign in or sign up right now."""
 
-    phone: bool = Field(default=True, description="Always available.")
+    phone: bool = Field(
+        default=False,
+        description="Always false: Google is the only way to sign in (decision A.2).",
+    )
     google: bool = Field(description="Whether Google sign-in is switched on.")
     google_client_id: str | None = Field(
         default=None,
@@ -121,8 +81,8 @@ class TokenPairOut(BaseModel):
     expires_in_seconds: int = Field(description="Lifetime of the access token.")
 
 
-class OtpVerifyOut(BaseModel):
-    """Either signed in, or cleared to sign up. Also the answer to
+class SignInOut(BaseModel):
+    """Either signed in, or cleared to sign up: the answer to
     `POST /v1/auth/google`."""
 
     status: Literal["signed_in", "signup_required"]
@@ -146,9 +106,7 @@ class SignupIn(DeviceIn):
     is optional and defaults to false; bundling it in would make it not a choice.
     """
 
-    signup_token: str = Field(
-        description="From `POST /v1/auth/otp/verify` or `POST /v1/auth/google`."
-    )
+    signup_token: str = Field(description="From `POST /v1/auth/google`.")
     display_name: str = Field(min_length=2, max_length=50, examples=["Wanjiku M."])
 
     is_adult: Literal[True] = Field(

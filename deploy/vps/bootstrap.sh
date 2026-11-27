@@ -6,7 +6,8 @@
 #   bash deploy/vps/bootstrap.sh          # from a checkout in /srv/myradius
 #
 # Makes, if missing:
-#   - /srv/myradius (a clone of the public repository), secrets/ and backups/ (700);
+#   - /srv/myradius (a clone of the public repository), backups/ (700) and
+#     secrets/ (711: the API's user reaches its own files there, but cannot list it);
 #   - .env.production (600), from .env.example, for staging, with fresh random
 #     secrets: SECRET_KEY, BAN_LIST_KEY, the database password, the storage keys;
 #   - secrets/s3.json (600), the object-storage credentials matching it;
@@ -26,7 +27,11 @@ if [[ ! -d "$REPO/.git" ]]; then
   git clone --quiet "$ORIGIN" "$REPO"
 fi
 cd "$REPO"
-install -d -m 700 secrets backups
+install -d -m 700 backups
+# 711, not 700: the API and worker run as UID 1001 and read secrets/fcm.json
+# (theirs, 600) through this folder; with 700 they cannot reach it and push
+# stays off. s3.json stays root-only by its own mode.
+install -d -m 711 secrets
 
 random() { python3 -c "import secrets; print(secrets.token_urlsafe($1))"; }
 
@@ -52,8 +57,9 @@ overrides = {
     "LOG_FORMAT": "json",
     "CORS_ORIGINS": "",
     "TRUST_FORWARDED_FOR": "true",
-    # Staging: sign-in codes are written to the API log instead of sent by SMS.
-    "SMS_PROVIDER": "console",
+    # Sign-in is Google only, and Firebase proves phone numbers (decision A.2):
+    # set GOOGLE_CLIENT_ID and FIREBASE_PROJECT_ID by hand, from the Firebase
+    # project. Neither is a secret.
     "STORAGE_PROVIDER": "s3",
     "STORAGE_ENDPOINT_URL": "http://storage:8333",
     "STORAGE_PRESIGN_ENDPOINT_URL": f"https://{os.environ['DOMAIN']}",

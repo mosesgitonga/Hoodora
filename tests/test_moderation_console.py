@@ -15,7 +15,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.providers.sms import ConsoleSmsProvider
 from app.modules.auth.models import DeviceSession
 from app.modules.feed.models import Post
 from app.modules.moderation import banlist, console
@@ -31,6 +30,7 @@ from app.modules.moderation.models import (
 from app.modules.notifications.models import Notification, NotificationType
 from app.modules.staff.models import StaffRole
 from app.modules.users.models import User, UserStatus
+from tests.auth_fakes import FakeGoogleVerifier, FakePhoneVerifier, google_user, sign_in
 from tests.factories import NYERI_TOWN, make_post, make_staff, make_user, phone_of, staff_token
 
 Authenticate = Callable[[User], Awaitable[httpx.AsyncClient]]
@@ -575,9 +575,11 @@ async def test_a_ban_reaches_the_number_and_the_devices(
     db_session: AsyncSession,
     authenticate: Authenticate,
     admin: dict[str, str],
-    settings: Settings,
-    sms: ConsoleSmsProvider,
+    google: FakeGoogleVerifier,
+    phone_proofs: FakePhoneVerifier,
+    google_on: Settings,
 ) -> None:
+    settings = google_on
     user = await make_user(db_session, at=NYERI_TOWN)
     user_id, phone = user.id, phone_of(user)
     me = await authenticate(user)
@@ -604,30 +606,18 @@ async def test_a_ban_reaches_the_number_and_the_devices(
         banlist.device_hash("install-1234", settings)
     )
 
-    # The banned number is answered as usual and sent nothing.
-    client.headers.pop("Authorization", None)
-    sms.clear()
-    asked = await client.post("/v1/auth/otp/request", json={"phone_number": phone})
-    assert asked.status_code == 200
-    assert not sms.sent
+    # The banned number can't be added to another account, even proved: it fails
+    # like a proof that didn't check out.
+    other = await authenticate(await google_user(db_session, "g-wants-the-number"))
+    added = await other.post(
+        "/v1/me/phone", json={"firebase_id_token": phone_proofs.token_for(phone)}
+    )
+    assert added.status_code == 401
 
-    # A fresh number on the banned device: the code checks out, the sign-in fails
-    # like an expired code.
-    fresh = "+254711000999"
-    assert (
-        await client.post("/v1/auth/otp/request", json={"phone_number": fresh})
-    ).status_code == 200
-    code = next(
-        part.strip(".,")
-        for part in (sms.last_message() or "").split()
-        if part.strip(".,").isdigit() and len(part.strip(".,")) == 6
-    )
-    verify = await client.post(
-        "/v1/auth/otp/verify",
-        json={"phone_number": fresh, "code": code, "device_id": "install-1234"},
-    )
-    assert verify.status_code == 401
-    assert verify.json()["error"]["message"] == "That code is not valid or has expired"
+    # A fresh Google account on the banned device: refused like an invalid token.
+    other.headers.pop("Authorization", None)
+    fresh = await sign_in(client, google.token_for("g-fresh"), device_id="install-1234")
+    assert fresh.status_code == 401
 
     # Lifting the ban lifts both.
     lifted = await client.post(f"/v1/admin/users/{user_id}/unban", headers=admin)
@@ -639,22 +629,13 @@ async def test_a_ban_reaches_the_number_and_the_devices(
 async def test_the_device_id_is_stored_only_as_a_hash(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
-    sms: ConsoleSmsProvider,
-    settings: Settings,
+    google: FakeGoogleVerifier,
+    google_on: Settings,
 ) -> None:
-    user = await make_user(db_session, at=NYERI_TOWN)
-    phone = phone_of(user)
+    settings = google_on
+    user = await google_user(db_session, "g-device")
     client.headers.pop("Authorization", None)
-    await client.post("/v1/auth/otp/request", json={"phone_number": phone})
-    code = next(
-        part.strip(".,")
-        for part in (sms.last_message() or "").split()
-        if part.strip(".,").isdigit() and len(part.strip(".,")) == 6
-    )
-    verify = await client.post(
-        "/v1/auth/otp/verify",
-        json={"phone_number": phone, "code": code, "device_id": "my-installation-id"},
-    )
+    verify = await sign_in(client, google.token_for("g-device"), device_id="my-installation-id")
     assert verify.status_code == 200, verify.text
     stored = (
         await db_session.execute(

@@ -142,7 +142,7 @@ _provider: CdnProvider | None = None
 
 
 def get_cdn_provider() -> CdnProvider:
-    """The process-wide provider, like the SMS and push providers."""
+    """The process-wide provider, like the push provider."""
     global _provider
     if _provider is None:
         from app.core.config import get_settings

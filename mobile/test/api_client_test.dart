@@ -56,16 +56,16 @@ void main() {
   test("the server's error envelope becomes an ApiException with its message", () async {
     final adapter = FakeAdapter((_) => FakeReply(
           429,
-          errorBody('rate_limited', 'A code was sent recently. Please wait before asking for another.'),
+          errorBody('rate_limited', 'Too many attempts. Please wait before trying again.'),
           {'retry-after': ['42']},
         ));
     final api = ApiClient(store: store, dio: fakeDio(adapter));
 
     final error = await api
-        .post('/auth/otp/request', body: {'phone_number': '+254712345678'}, auth: false)
+        .post('/auth/google', body: {'id_token': 'google-id-token'}, auth: false)
         .then<ApiException?>((_) => null, onError: (Object e) => e as ApiException);
     expect(error!.code, 'rate_limited');
-    expect(error.message, startsWith('A code was sent recently'));
+    expect(error.message, startsWith('Too many attempts'));
     expect(error.retryAfterSeconds, 42);
     expect(error.statusCode, 429);
   });

@@ -82,7 +82,7 @@ class Settings(BaseSettings):
 
     # -- Application ---------------------------------------------------------
     app_name: str = "Hoodora"
-    """The product's name, as people see it: SMS, notifications, the API title."""
+    """The product's name, as people see it: notifications, the API title."""
     token_issuer: str = "MyRadius"  # noqa: S105 — a public issuer name, not a secret
     """The `iss` of every sign-in token. Not the brand: tokens are checked against
     it, so changing it signs every user and staff member out. It kept the app's
@@ -148,7 +148,7 @@ class Settings(BaseSettings):
     rate_limit_fail_open: bool = True
     """When Redis is unreachable: allow requests through (true) or reject them
     (false). Default true so a Redis blip does not take the API down; endpoints
-    where abuse costs more than downtime (OTP, payments) opt out individually."""
+    where abuse costs more than downtime (sign-in, payments) opt out individually."""
 
     # -- Pagination ----------------------------------------------------------
     pagination_default_limit: int = Field(default=20, ge=1, le=200)
@@ -179,36 +179,24 @@ class Settings(BaseSettings):
     """Consent records store the version agreed to, so a policy somebody actually
     saw can be told apart from one published after they signed up."""
 
-    # -- One-time passwords --------------------------------------------------
-    otp_length: int = Field(default=6, ge=4, le=8)
-    otp_ttl_seconds: int = Field(default=300, ge=60, le=900)
-    otp_max_attempts: int = Field(default=5, ge=1, le=10)
-    otp_resend_cooldown_seconds: int = Field(default=60, ge=10, le=600)
-    otp_daily_cap_per_phone: int = Field(default=5, ge=1, le=50)
-
-    otp_daily_cap_per_ip: int = Field(default=20, ge=1, le=500)
-    """Per-IP caps stay generous on purpose: carrier NAT means a whole estate can
-    share one address, and a tight cap would lock all of them out together."""
-
-    # -- SMS -----------------------------------------------------------------
-    sms_provider: Literal["console", "africastalking"] = "console"
-    """`console` logs the code instead of sending it. It is the default so that a
-    missing credential cannot cause real SMS spend by accident."""
-
-    africastalking_username: str = ""
-    africastalking_api_key: SecretStr = SecretStr("")
-    africastalking_sender_id: str = ""
-    africastalking_base_url: str = "https://api.africastalking.com"
-    sms_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
-
-    # -- Google sign-in ------------------------------------------------------
+    # -- Google sign-in: the only way in (decision A.2) -----------------------
     google_client_id: str = ""
     """The OAuth client Google issues ID tokens for: the *web* client of the
     Firebase project, which the app hands Google as its server client ID. Empty
-    turns Google sign-in off. Not a secret: every copy of the app holds it."""
+    turns Google sign-in off, so nobody can sign in; production refuses to start
+    without it. Not a secret: every copy of the app holds it."""
 
     google_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
-    """For fetching Google's signing keys, which are cached between sign-ins."""
+    """For fetching Google's and Firebase's signing keys, cached between uses."""
+
+    # -- Phone numbers, proved by Firebase (decision A.2) --------------------
+    firebase_project_id: str = ""
+    """The Firebase project whose phone sign-ins prove a number, such as
+    `hoodora-c028f`. Empty turns adding a phone number off. Not a secret."""
+
+    phone_proof_max_age_seconds: int = Field(default=600, ge=60, le=3600)
+    """How recently the number must have been proved. A Firebase token lives an
+    hour; this keeps one kept from an old sign-in from proving a number today."""
 
     # -- Location and H3 -----------------------------------------------------
     h3_storage_resolution: int = Field(default=9, ge=7, le=12)
@@ -779,23 +767,11 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _require_sms_credentials(self) -> Settings:
-        """Fail at boot rather than at the first signup attempt."""
-        if self.sms_provider == "africastalking" and not (
-            self.africastalking_username and self.africastalking_api_key.get_secret_value()
-        ):
-            raise ValueError(
-                "AFRICASTALKING_USERNAME and AFRICASTALKING_API_KEY are required "
-                "when SMS_PROVIDER=africastalking"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def _forbid_console_sms_in_production(self) -> Settings:
-        """The console provider logs codes instead of sending them, so in production
-        it would mean nobody can sign up and every code sits in the log."""
-        if self.app_env == "production" and self.sms_provider == "console":
-            raise ValueError("SMS_PROVIDER must not be 'console' in production")
+    def _require_google_in_production(self) -> Settings:
+        """Google is the only way to sign in (decision A.2): without its client ID
+        nobody could, so production fails at boot instead."""
+        if self.app_env == "production" and not self.google_client_id:
+            raise ValueError("GOOGLE_CLIENT_ID is required in production")
         return self
 
     @model_validator(mode="after")

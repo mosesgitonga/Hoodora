@@ -3,9 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_controller.dart';
-import '../features/auth/screens/code_screen.dart';
 import '../features/auth/screens/home_area_screen.dart';
-import '../features/auth/screens/phone_screen.dart';
+import '../features/auth/screens/sign_in_screen.dart';
 import '../features/auth/screens/signup_screen.dart';
 import '../features/auth/screens/status_screens.dart';
 import '../features/chats/screens/chats_screen.dart';
@@ -48,7 +47,6 @@ class Routes {
   static const offline = '/offline';
   static const guest = '/welcome';
   static const signIn = '/sign-in';
-  static const code = '/sign-in/code';
   static const signUp = '/sign-up';
   static const homeArea = '/home-area';
   static const feed = '/feed';
@@ -91,8 +89,8 @@ class Routes {
   static String newService(ServiceKind kind) => '/services/new?kind=${kind.key}';
   static String editService(String id) => '/services/$id/edit';
 
-  static const _signedOut = {guest, signIn, code, signUp};
-  static const _gates = {restoring, offline, guest, signIn, code, signUp, homeArea};
+  static const _signedOut = {guest, signIn, signUp};
+  static const _gates = {restoring, offline, guest, signIn, signUp, homeArea};
 }
 
 /// Decides where someone may be, from their [AuthState] alone. Pure, so it is
@@ -122,8 +120,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.restoring, builder: (_, _) => const RestoringScreen()),
       GoRoute(path: Routes.offline, builder: (_, _) => const OfflineScreen()),
       GoRoute(path: Routes.guest, builder: (_, _) => const GuestScreen()),
-      GoRoute(path: Routes.signIn, builder: (_, _) => const PhoneScreen()),
-      GoRoute(path: Routes.code, builder: (_, _) => const CodeScreen()),
+      GoRoute(path: Routes.signIn, builder: (_, _) => const SignInScreen()),
       GoRoute(path: Routes.signUp, builder: (_, _) => const SignupScreen()),
       GoRoute(path: Routes.homeArea, builder: (_, _) => const HomeAreaScreen()),
       // `extra` may name the category to start on, as the end of the feed does.

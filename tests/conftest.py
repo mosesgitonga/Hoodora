@@ -56,13 +56,19 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession  #
 from app.core import db as db_module  # noqa: E402
 from app.core import redis as redis_module  # noqa: E402
 from app.core.config import Settings, get_settings  # noqa: E402
+from app.core.providers.google import set_google_verifier, set_phone_verifier  # noqa: E402
 from app.core.providers.push import RecordingPushProvider, set_push_provider  # noqa: E402
-from app.core.providers.sms import ConsoleSmsProvider, set_sms_provider  # noqa: E402
 from app.core.providers.storage import MemoryStorageProvider, set_storage_provider  # noqa: E402
 from app.core.queue import RecordingJobQueue, set_queue  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.modules.auth import service as auth_service  # noqa: E402
 from app.modules.users.models import User  # noqa: E402
+from tests.auth_fakes import (  # noqa: E402
+    CLIENT_ID,
+    FIREBASE_PROJECT,
+    FakeGoogleVerifier,
+    FakePhoneVerifier,
+)
 from tests.factories import NYERI_TOWN, make_user, offset_km  # noqa: E402
 
 pytest_plugins: list[str] = []
@@ -318,16 +324,32 @@ async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 # Phase 1: providers, users, and authenticated clients
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def sms(settings: Settings) -> Iterator[ConsoleSmsProvider]:
-    """The console SMS provider, installed for the duration of a test.
+def google() -> Iterator[FakeGoogleVerifier]:
+    """Google, faked: tokens from `google.token_for(sub)` prove that account."""
+    verifier = FakeGoogleVerifier()
+    set_google_verifier(verifier)
+    yield verifier
+    set_google_verifier(None)
 
-    A recording fake rather than a mock: tests assert on what was actually sent,
-    and nothing in the suite can reach Africa's Talking even by accident.
-    """
-    provider = ConsoleSmsProvider()
-    set_sms_provider(provider)
-    yield provider
-    set_sms_provider(None)
+
+@pytest.fixture
+def phone_proofs() -> Iterator[FakePhoneVerifier]:
+    """Firebase, faked: tokens from `phone_proofs.token_for(number)` prove it."""
+    verifier = FakePhoneVerifier()
+    set_phone_verifier(verifier)
+    yield verifier
+    set_phone_verifier(None)
+
+
+@pytest.fixture
+def google_on(app: FastAPI, settings: Settings) -> Settings:
+    """Google sign-in and Firebase phone proofs switched on, as
+    `GOOGLE_CLIENT_ID` and `FIREBASE_PROJECT_ID` do."""
+    configured = settings.model_copy(
+        update={"google_client_id": CLIENT_ID, "firebase_project_id": FIREBASE_PROJECT}
+    )
+    app.dependency_overrides[get_settings] = lambda: configured
+    return configured
 
 
 @pytest_asyncio.fixture(loop_scope="session")

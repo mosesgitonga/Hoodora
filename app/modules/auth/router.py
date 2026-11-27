@@ -1,8 +1,7 @@
-"""Authentication endpoints.
+"""Authentication endpoints. Google is the only way to sign in (decision A.2).
 
-Rate limits here are the strictest in the product and fail closed, because this
-is the only place the backend spends money on an unauthenticated caller's behalf:
-every OTP request is an SMS somebody pays for.
+Rate limits here are the strictest in the product and fail closed: these are the
+endpoints an unauthenticated caller can reach.
 """
 
 from __future__ import annotations
@@ -17,24 +16,19 @@ from app.core.config import Settings, get_settings
 from app.core.db import SessionDep
 from app.core.errors import ConflictError, UnauthenticatedError
 from app.core.providers.google import GoogleTokenVerifier, get_google_verifier
-from app.core.providers.sms import SmsProvider, get_sms_provider
-from app.core.ratelimit import RateLimiter, get_rate_limiter, rate_limit
+from app.core.ratelimit import rate_limit
 from app.core.redis import get_redis
 from app.modules.auth import service as auth_service
 from app.modules.auth.dependencies import CurrentUser, current_session_id
-from app.modules.auth.phone import mask_for_display, normalise_phone_number
 from app.modules.auth.schemas import (
     AuthMethodsOut,
     GoogleSignInIn,
     LogoutAllIn,
     LogoutAllOut,
     LogoutIn,
-    OtpRequestIn,
-    OtpRequestOut,
-    OtpVerifyIn,
-    OtpVerifyOut,
     RefreshIn,
     SessionOut,
+    SignInOut,
     SignupIn,
     SignupOut,
     TokenPairOut,
@@ -49,8 +43,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 RedisDep = Annotated[Redis, Depends(get_redis)]
-SmsDep = Annotated[SmsProvider, Depends(get_sms_provider)]
-LimiterDep = Annotated[RateLimiter, Depends(get_rate_limiter)]
 GoogleDep = Annotated[GoogleTokenVerifier, Depends(get_google_verifier)]
 
 
@@ -62,119 +54,30 @@ def _to_token_pair(pair: auth_service.TokenPair) -> TokenPairOut:
     )
 
 
-@router.post(
-    "/otp/request",
-    response_model=OtpRequestOut,
-    summary="Request a verification code",
-    description=(
-        "Sends a one-time code by SMS. The response is identical whether or not "
-        "the number already has an account, so this endpoint cannot be used to "
-        "discover who is registered."
-    ),
-    dependencies=[
-        Depends(
-            rate_limit(
-                bucket="otp_request_ip",
-                limit=lambda settings: settings.otp_daily_cap_per_ip,
-                window_seconds=86_400,
-                scope="ip",
-                # Fails closed: without a working limiter this endpoint sends real
-                # SMS at the project's expense to anyone who asks.
-                fail_open=False,
-            )
-        )
-    ],
-)
-async def request_otp(
-    payload: OtpRequestIn,
-    session: SessionDep,
-    redis: RedisDep,
-    sms: SmsDep,
-    limiter: LimiterDep,
-    settings: SettingsDep,
-) -> OtpRequestOut:
-    phone_number = normalise_phone_number(payload.phone_number)
-    challenge = await auth_service.request_otp(
-        redis,
-        sms,
-        limiter,
-        phone_number=phone_number,
-        settings=settings,
-        banned=await banlist.is_phone_banned(session, phone_number, settings),
-    )
-    return OtpRequestOut(
-        expires_in_seconds=challenge.expires_in_seconds,
-        resend_after_seconds=challenge.resend_after_seconds,
-        phone_number_masked=mask_for_display(phone_number),
-    )
-
-
-@router.post(
-    "/otp/verify",
-    response_model=OtpVerifyOut,
-    summary="Verify a code",
-    description=(
-        "Checks the code. An existing account receives tokens; a new number "
-        "receives a single-use `signup_token` for `POST /v1/auth/signup`."
-    ),
-    dependencies=[
-        Depends(
-            rate_limit(
-                bucket="otp_verify_ip",
-                limit=30,
-                window_seconds=3600,
-                scope="ip",
-                fail_open=False,
-            )
-        )
-    ],
-)
-async def verify_otp(
-    payload: OtpVerifyIn,
-    session: SessionDep,
-    redis: RedisDep,
-    settings: SettingsDep,
-) -> OtpVerifyOut:
-    phone_number = normalise_phone_number(payload.phone_number)
-    verified = await auth_service.verify_otp(
-        session,
-        redis,
-        phone_number=phone_number,
-        code=payload.code,
-        settings=settings,
-        device_name=payload.device_name,
-        device_platform=payload.device_platform,
-        device_id=payload.device_id,
-    )
-
-    if verified.tokens is not None:
-        return OtpVerifyOut(status="signed_in", tokens=_to_token_pair(verified.tokens))
-    return OtpVerifyOut(status="signup_required", signup_token=verified.signup_token)
-
-
 @router.get(
     "/methods",
     response_model=AuthMethodsOut,
     summary="How to sign in",
     description=(
         "Whether Google sign-in is on, and the client ID the app needs for it. "
-        "Phone sign-in is always on."
+        "Google is the only way to sign in (decision A.2); `phone` is always false, "
+        "for app builds that still offer a number."
     ),
 )
 async def sign_in_methods(settings: SettingsDep) -> AuthMethodsOut:
     client_id = settings.google_client_id or None
-    return AuthMethodsOut(google=client_id is not None, google_client_id=client_id)
+    return AuthMethodsOut(phone=False, google=client_id is not None, google_client_id=client_id)
 
 
 @router.post(
     "/google",
-    response_model=OtpVerifyOut,
+    response_model=SignInOut,
     summary="Sign in with Google",
     description=(
         "Takes the ID token Google gave the app. A Google account with a Hoodora "
         "account receives tokens; a new one receives a single-use `signup_token` "
-        "for `POST /v1/auth/signup`, as a new phone number does. Only the "
-        "account's Google ID is kept. 503 when Google sign-in is off."
+        "for `POST /v1/auth/signup`. Only the account's Google ID is kept. 503 "
+        "when Google sign-in is off."
     ),
     dependencies=[
         Depends(
@@ -194,7 +97,7 @@ async def sign_in_with_google(
     redis: RedisDep,
     verifier: GoogleDep,
     settings: SettingsDep,
-) -> OtpVerifyOut:
+) -> SignInOut:
     outcome = await auth_service.sign_in_with_google(
         session,
         redis,
@@ -206,8 +109,8 @@ async def sign_in_with_google(
         device_id=payload.device_id,
     )
     if outcome.tokens is not None:
-        return OtpVerifyOut(status="signed_in", tokens=_to_token_pair(outcome.tokens))
-    return OtpVerifyOut(status="signup_required", signup_token=outcome.signup_token)
+        return SignInOut(status="signed_in", tokens=_to_token_pair(outcome.tokens))
+    return SignInOut(status="signup_required", signup_token=outcome.signup_token)
 
 
 @router.post(
@@ -216,8 +119,8 @@ async def sign_in_with_google(
     status_code=status.HTTP_201_CREATED,
     summary="Create an account",
     description=(
-        "Completes signup for a number verified by OTP, or a Google account "
-        "verified by `POST /v1/auth/google`. Requires an 18+ confirmation and "
+        "Completes signup for a Google account verified by `POST /v1/auth/google`. "
+        "Requires an 18+ confirmation and "
         "explicit consent to the terms, privacy policy, and location use; "
         "marketing consent is optional."
     ),
@@ -239,7 +142,7 @@ async def signup(
     redis: RedisDep,
     settings: SettingsDep,
 ) -> SignupOut:
-    identity = await auth_service.consume_signup_token(
+    google_sub = await auth_service.consume_signup_token(
         redis, token=payload.signup_token, settings=settings
     )
     device_id_hash = banlist.device_hash(payload.device_id, settings) if payload.device_id else None
@@ -248,15 +151,9 @@ async def signup(
 
     # The token is single-use and already consumed, so a race between two
     # simultaneous signups cannot create two accounts. This covers the other
-    # order: a number or Google account that gained an account between
-    # verifying and signing up.
-    if identity.phone_number is not None and (
-        await users_service.get_user_by_phone(session, identity.phone_number) is not None
-    ):
-        raise ConflictError("An account already exists for that number")
-    if identity.google_sub is not None and (
-        await users_service.get_user_by_google_sub(session, identity.google_sub) is not None
-    ):
+    # order: a Google account that gained an account between verifying and
+    # signing up.
+    if await users_service.get_user_by_google_sub(session, google_sub) is not None:
         raise ConflictError("An account already exists for that Google account")
 
     granted = {
@@ -269,8 +166,7 @@ async def signup(
 
     user = await users_service.create_user(
         session,
-        phone_number=identity.phone_number,
-        google_sub=identity.google_sub,
+        google_sub=google_sub,
         display_name=payload.display_name,
         settings=settings,
         granted_consents=granted,

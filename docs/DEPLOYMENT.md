@@ -2,7 +2,8 @@
 
 How to run Hoodora on a single VPS: Caddy for TLS, the API and worker containers,
 PostgreSQL with PostGIS, and Redis, all from `docker-compose.prod.yml`. Media lives in
-Cloudflare R2, SMS goes through Africa's Talking, and push goes through FCM.
+Cloudflare R2, sign-in is Google, phone numbers are proved by Firebase (which sends
+the SMS), and push goes through FCM.
 
 This is sized for launch in one town. Its limits, and what to change first when they
 are reached, are at the end.
@@ -69,8 +70,8 @@ copied into an image (`.dockerignore`). Settings that must change from the templ
 | `REDIS_URL` | `redis://redis:6379/0` |
 | `LOG_FORMAT` | `json` |
 | `CORS_ORIGINS` | Empty for the mobile app. Set it only for a browser client. |
-| `SMS_PROVIDER`, `AFRICASTALKING_*` | `africastalking`, with the account's credentials |
-| `GOOGLE_CLIENT_ID` | The Firebase project's **web** OAuth client ID, to turn Google sign-in on. Empty leaves it off (decision A.1) |
+| `FIREBASE_PROJECT_ID` | The Firebase project that proves phone numbers, `hoodora-c028f` (decision A.2). Empty turns adding a number off |
+| `GOOGLE_CLIENT_ID` | The Firebase project's **web** OAuth client ID. Google is the only way to sign in, so production refuses to start without it (decisions A.1, A.2) |
 | `STORAGE_PROVIDER`, `STORAGE_*` | `s3`, with R2's endpoint, bucket and keys |
 | `PUSH_PROVIDER`, `FCM_CREDENTIALS_FILE` | `fcm`, `/run/secrets/myradius/fcm.json` |
 | `SENTRY_DSN` | The project's DSN, or empty to leave error tracking off |
@@ -80,11 +81,16 @@ copied into an image (`.dockerignore`). Settings that must change from the templ
 | `BACKUP_BUCKET`, `BACKUP_ENDPOINT_URL`, `BACKUP_ACCESS_KEY_ID`, `BACKUP_SECRET_ACCESS_KEY` | A **separate, private** R2 bucket and keys, for off-site dumps |
 
 The Firebase service-account file goes in `secrets/`, readable only by the container
-user (UID 1001):
+user (UID 1001). The folder itself must be `711`, so that user can reach the file
+without listing the folder; at `700` the file is unreadable and pushes fail:
 
 ```sh
+chmod 711 secrets
 install -m 600 -o 1001 -g 1001 /path/to/firebase.json secrets/fcm.json
 ```
+
+On staging (since 2026-11-27): `PUSH_PROVIDER=fcm`, with the key of the Firebase
+project `hoodora-c028f`.
 
 ## 4. First start
 
@@ -206,9 +212,9 @@ differs from the sections above. Nothing here touches the other projects.
 - **Photos stay on the server,** in SeaweedFS (`storage`). Its keys are in
   `secrets/s3.json`. Clients reach it by presigned URL at
   `https://myradius.chatara.co/myradius-media/…`.
-- **Staging mode.** `APP_ENV=staging` with `SMS_PROVIDER=console`, so sign-in
-  codes are written to the API log (`docker compose … logs api | grep
-  sms_not_sent`). Switch to production once Africa's Talking is set up.
+- **Staging mode.** `APP_ENV=staging`. Sign-in is with Google
+  (`GOOGLE_CLIENT_ID`). Phone numbers are proved by Firebase (`FIREBASE_PROJECT_ID`),
+  once the Phone provider is on in the Firebase console (decision A.2).
 - **Setup.** `deploy/vps/bootstrap.sh`, run once as root, creates:
   - the checkout in `/srv/myradius`;
   - `.env.production` with fresh secrets, and `secrets/s3.json`;

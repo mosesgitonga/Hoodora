@@ -1,21 +1,19 @@
 """Security primitives: secrets, hashing, and access tokens.
 
-There are no passwords in this product. Identity is a phone number proved by a
-one-time code, after which the client holds a short-lived access token and a
-long-lived refresh token. This module makes and checks those three things, and
+There are no passwords in this product. Identity is a Google account (decision
+A.2), after which the client holds a short-lived access token and a long-lived
+refresh token. This module makes and checks those three things, and
 nothing here knows what a user is — the auth module composes it.
 
 **Why HMAC-SHA256 and not bcrypt or Argon2.** The usual advice is a deliberately
 slow KDF, which exists to make guessing a *human-chosen* password expensive. The
-secrets here are not human-chosen: refresh tokens are 32 random bytes and OTPs are
-rate-limited to five attempts inside five minutes, so there is nothing to guess.
+secrets here are not human-chosen: refresh and signup tokens are 32 random bytes,
+so there is nothing to guess.
 What is needed instead is a hash that can be *looked up* — a refresh token arrives
 with no user attached, so the server has to find the session by its hash, and a
 salted KDF produces a different output every time and cannot be indexed. HMAC
 keyed with the application secret gives a deterministic, indexable digest that is
 still useless to anyone who steals the database without also stealing the key.
-
-OTPs get the same treatment, so a Redis snapshot does not hand over live codes.
 """
 
 from __future__ import annotations
@@ -53,16 +51,6 @@ class AccessTokenClaims(BaseModel):
 # ---------------------------------------------------------------------------
 # Random secrets
 # ---------------------------------------------------------------------------
-def generate_numeric_code(length: int) -> str:
-    """A uniformly random numeric code, zero-padded to `length`.
-
-    `secrets.randbelow` over the whole range rather than digit-by-digit choice:
-    both are fine here, but one call makes the uniformity obvious to a reader.
-    """
-    upper = 10**length
-    return str(secrets.randbelow(upper)).zfill(length)
-
-
 def generate_opaque_token(num_bytes: int = OPAQUE_TOKEN_BYTES) -> str:
     """A URL-safe random token, for refresh tokens and signup tokens."""
     return secrets.token_urlsafe(num_bytes)
@@ -76,19 +64,14 @@ def hash_secret(value: str, settings: Settings) -> str:
 
     Keyed with the application secret, so a stolen database or Redis snapshot
     yields nothing without the key. Rotating `SECRET_KEY` therefore invalidates
-    every stored refresh token and pending OTP, which is a feature: it is how you
-    log everybody out after a breach.
+    every stored refresh token, which is a feature: it is how you log everybody
+    out after a breach.
     """
     return hmac.new(
         settings.secret_key.get_secret_value().encode(),
         value.encode(),
         hashlib.sha256,
     ).hexdigest()
-
-
-def verify_secret(value: str, expected_hash: str, settings: Settings) -> bool:
-    """Compare in constant time, so the comparison leaks nothing by timing."""
-    return hmac.compare_digest(hash_secret(value, settings), expected_hash)
 
 
 # ---------------------------------------------------------------------------

@@ -3,43 +3,19 @@ import '../../core/offline_store.dart';
 import '../../core/location.dart';
 import 'auth_models.dart';
 
-/// The account endpoints: codes, sign-up, the home area, sign-out.
+/// The account endpoints: Google sign-in, sign-up, the phone number, the home
+/// area, sign-out.
 class AuthRepository {
   AuthRepository(this._api, [OfflineStore? offline]) : _offline = offline ?? MemoryOfflineStore();
 
   final ApiClient _api;
   final OfflineStore _offline;
 
-  Future<OtpChallenge> requestCode(String phoneNumber) async {
-    final data = await _api.post('/auth/otp/request',
-        body: {'phone_number': phoneNumber}, auth: false);
-    return OtpChallenge.fromJson(Map<String, dynamic>.from(data as Map));
-  }
-
-  /// Checks a code. An existing account is signed in here; a new number gets a
-  /// single-use token for [signUp].
-  Future<VerifyOutcome> verifyCode(String phoneNumber, String code) async {
-    final data = Map<String, dynamic>.from(await _api.post(
-      '/auth/otp/verify',
-      body: {'phone_number': phoneNumber, 'code': code, ...await _api.deviceFields()},
-      auth: false,
-    ) as Map);
-    if (data['status'] == 'signed_in') {
-      await _api.startSession(TokenPair.fromJson(Map<String, dynamic>.from(data['tokens'] as Map)));
-      return const SignedIn();
-    }
-    return SignupRequired(data['signup_token'] as String);
-  }
-
-  /// Whether Google sign-in is on. Phone only when the server can't be asked:
-  /// the sign-in screen must still work.
+  /// Whether Google sign-in is on, and the client ID it needs. Google is the only
+  /// way in (decision A.2), so a failure here is shown with a way to try again.
   Future<SignInMethods> methods() async {
-    try {
-      final data = await _api.get('/auth/methods');
-      return SignInMethods.fromJson(Map<String, dynamic>.from(data as Map));
-    } on Exception {
-      return SignInMethods.phoneOnly;
-    }
+    final data = await _api.get('/auth/methods');
+    return SignInMethods.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
   /// Signs in with the ID token Google gave the app. A Google account with a
@@ -57,10 +33,10 @@ class AuthRepository {
     return SignupRequired(data['signup_token'] as String);
   }
 
-  /// Adds a phone number to an account that signed up with Google, with the
-  /// code [requestCode] sent to it. Answers with the updated account.
-  Future<Me> addPhone(String phoneNumber, String code) async {
-    final data = await _api.post('/me/phone', body: {'phone_number': phoneNumber, 'code': code});
+  /// Adds the number Firebase proved: [proof] is the ID token its phone sign-in
+  /// gave (decision A.2). Answers with the updated account.
+  Future<Me> addPhone(String proof) async {
+    final data = await _api.post('/me/phone', body: {'firebase_id_token': proof});
     await _offline.write('me', data);
     return Me.fromJson(Map<String, dynamic>.from(data as Map));
   }

@@ -19,8 +19,8 @@ void usePhoneScreen(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
-/// The whole sign-in flow against a scripted API: phone, code, sign-up with
-/// consents, home area, and into the app.
+/// The whole sign-in flow against a scripted API: Google (the only way in,
+/// decision A.2), sign-up with consents, home area, and into the app.
 void main() {
   late FakeAdapter adapter;
   late MemoryTokenStore store;
@@ -45,14 +45,6 @@ void main() {
     google = FakeGoogleAuth();
     adapter = FakeAdapter((request) {
       switch (request.path) {
-        case '/auth/otp/request':
-          return const FakeReply(200, {
-            'expires_in_seconds': 300,
-            'resend_after_seconds': 60,
-            'phone_number_masked': '+254 7•• ••• 678',
-          });
-        case '/auth/otp/verify':
-          return const FakeReply(200, {'status': 'signup_required', 'signup_token': 'st-1'});
         case '/auth/signup':
           return FakeReply(201, {'tokens': tokens('a1', 'r1'), 'user_id': 'u1'});
         case '/me':
@@ -72,68 +64,23 @@ void main() {
     });
   });
 
-  testWidgets('a new number signs up and is asked for its home area', (tester) async {
+  testWidgets("without the server, sign-in says so and offers to try again", (tester) async {
     usePhoneScreen(tester);
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
     // No stored session: the guest Home first (decision M.9). There is no GPS in a
     // test, so it offers to sign up instead.
-    expect(find.text('Sign up instead'), findsOneWidget);
     await tester.tap(find.text('Sign up instead'));
     await tester.pumpAndSettle();
     expect(find.text("What's happening around you"), findsOneWidget);
 
-    // Google sign-in is off on this server (it answers 404): phone only.
+    // This server can't say how to sign in (it answers 404), and Google is the
+    // only way: no button to a dead end, and no phone number to type.
     expect(find.text('Continue with Google'), findsNothing);
-
-    // A bad number is caught before any code is asked for.
-    await tester.enterText(find.byType(TextField), '12345');
-    await tester.tap(find.text('Send code'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Enter a Kenyan mobile number'), findsOneWidget);
-    expect(adapter.requests.map((r) => r.path), isNot(contains('/auth/otp/request')));
-
-    await tester.enterText(find.byType(TextField), '0712 345 678');
-    await tester.tap(find.text('Send code'));
-    await tester.pumpAndSettle();
-    expect(adapter.requests.last.data, {'phone_number': '+254712345678'});
-    expect(find.text('Enter the code'), findsOneWidget);
-    expect(find.textContaining('+254 7•• ••• 678'), findsOneWidget);
-
-    // Six digits submit on their own.
-    await tester.enterText(find.byType(TextField), '482093');
-    await tester.pumpAndSettle();
-    expect(find.text('Create your account'), findsOneWidget);
-
-    // Every required consent must be ticked.
-    await tester.enterText(find.byType(TextField), 'Amina K.');
-    await tester.pump();
-    final create = find.widgetWithText(FilledButton, 'Create account');
-    expect(tester.widget<FilledButton>(create).onPressed, isNull);
-    for (final label in [
-      'I am 18 or older',
-      'I agree to the terms of use',
-      'I agree to the privacy policy',
-      'Use my location to show what is nearby',
-    ]) {
-      await tester.ensureVisible(find.text(label));
-      await tester.tap(find.text(label));
-      await tester.pump();
-    }
-    expect(tester.widget<FilledButton>(create).onPressed, isNotNull);
-    await tester.ensureVisible(create);
-    await tester.tap(create);
-    await tester.pumpAndSettle();
-
-    final signup = adapter.requests.firstWhere((r) => r.path == '/auth/signup');
-    final body = signup.data as Map;
-    expect(body['accept_marketing'], isFalse);
-    expect(body['device_id'], store.id);
-    expect(store.refreshToken, 'r1');
-
-    // Signed in without a home: the home-area screen.
-    expect(find.text('Is this your home area?'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.textContaining("Signing in isn't available right now"), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets('a stored session that is no longer valid lands on the guest Home', (tester) async {
@@ -155,14 +102,14 @@ void main() {
     expect(find.text('Try again'), findsOneWidget);
   });
 
-  group('Google sign-in (decision A.1)', () {
+  group('Google sign-in (decisions A.1, A.2)', () {
     /// A server with Google sign-in on. [googleStatus] is what `/auth/google`
     /// answers.
     FakeAdapter googleServer({String googleStatus = 'signup_required'}) => FakeAdapter((request) {
           switch (request.path) {
             case '/auth/methods':
               return const FakeReply(200, {
-                'phone': true,
+                'phone': false,
                 'google': true,
                 'google_client_id': 'web-client.apps.googleusercontent.com',
               });
@@ -211,7 +158,7 @@ void main() {
       expect(sent['id_token'], 'google-id-token');
       expect(sent['device_id'], store.id);
 
-      // The same sign-up screen as for a number, starting from the Google name.
+      // The sign-up screen, starting from the Google name.
       expect(find.text('Create your account'), findsOneWidget);
       expect(find.text('Amina Kamau'), findsOneWidget);
       for (final label in [
@@ -233,6 +180,15 @@ void main() {
       expect(signup['signup_token'], 'st-g');
       expect(signup['display_name'], 'Amina Kamau');
       expect(find.text('Is this your home area?'), findsOneWidget);
+    });
+
+    testWidgets('Google is the only way in', (tester) async {
+      adapter = googleServer();
+      await openSignIn(tester);
+
+      expect(find.text('Continue with Google'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('Send code'), findsNothing);
     });
 
     testWidgets('backing out of the Google picker changes nothing', (tester) async {

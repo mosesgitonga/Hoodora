@@ -15,11 +15,11 @@ from app.core.config import Settings, get_settings
 from app.core.db import SessionDep
 from app.core.errors import ForbiddenError, NotFoundError
 from app.core.pagination import PageParams, page_params
+from app.core.providers.google import PhoneTokenVerifier, get_phone_verifier
 from app.core.providers.storage import StorageProvider, get_storage_provider
 from app.core.redis import get_redis
 from app.modules.auth import service as auth_service
 from app.modules.auth.dependencies import ActiveUser, CurrentUser, user_rate_limit
-from app.modules.auth.phone import normalise_phone_number
 from app.modules.auth.schemas import AddPhoneIn
 from app.modules.circle import links as circle_links
 from app.modules.circle import service as circle_service
@@ -66,6 +66,7 @@ router = APIRouter(tags=["users"])
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 RedisDep = Annotated[Redis, Depends(get_redis)]
 StorageDep = Annotated[StorageProvider, Depends(get_storage_provider)]
+PhoneVerifierDep = Annotated[PhoneTokenVerifier, Depends(get_phone_verifier)]
 
 
 async def _avatar(
@@ -214,13 +215,15 @@ async def update_me(
     response_model=MeOut,
     summary="Add a phone number",
     description=(
-        "For an account that signed up with Google: proves a number with the code "
-        "`POST /v1/auth/otp/request` sent to it, and adds it to the account. Posting "
-        "jobs and the verified-neighbour badge need one (decision A.1). Returns the "
-        "full profile.\n\n"
+        "Adds the number a Firebase phone sign-in on the phone just proved: Firebase "
+        "texts the code and checks it, and the app sends the ID token that resulted "
+        "(decision A.2). Posting jobs and the verified-neighbour badge need a number "
+        "(decision A.1). Returns the full profile.\n\n"
         "409 `phone_already_set` when the account has a number already, and "
-        "`phone_in_use` when the number belongs to another account. A wrong or "
-        "expired code is a 401, as at sign-in."
+        "`phone_in_use` when the number belongs to another account. A token that "
+        "is invalid, not from a phone sign-in, or older than "
+        "`PHONE_PROOF_MAX_AGE_SECONDS` is a 401. 503 when `FIREBASE_PROJECT_ID` is "
+        "not set."
     ),
     dependencies=[Depends(user_rate_limit(bucket="add_phone", limit=10, window_seconds=3600))],
 )
@@ -231,13 +234,13 @@ async def add_phone(
     redis: RedisDep,
     settings: SettingsDep,
     storage: StorageDep,
+    verifier: PhoneVerifierDep,
 ) -> MeOut:
     await auth_service.add_phone(
         session,
-        redis,
+        verifier,
         user=user,
-        phone_number=normalise_phone_number(payload.phone_number),
-        code=payload.code,
+        firebase_id_token=payload.firebase_id_token,
         settings=settings,
     )
     return await get_me(user, session, redis, settings, storage)

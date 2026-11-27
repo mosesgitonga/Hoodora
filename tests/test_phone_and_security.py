@@ -19,12 +19,10 @@ from app.core.security import (
     create_access_token,
     decode_access_token,
     expires_in_seconds,
-    generate_numeric_code,
     generate_opaque_token,
     hash_secret,
-    verify_secret,
 )
-from app.modules.auth.phone import mask_for_display, normalise_phone_number
+from app.modules.auth.phone import normalise_phone_number
 
 
 # ---------------------------------------------------------------------------
@@ -84,39 +82,9 @@ def test_an_international_number_is_honoured_as_given() -> None:
     assert normalise_phone_number("+447911123456") == "+447911123456"
 
 
-def test_masking_hides_the_middle_but_keeps_it_recognisable() -> None:
-    masked = mask_for_display("+254712345678")
-
-    assert masked.startswith("+2547")
-    assert masked.endswith("678")
-    assert "1234" not in masked
-
-
 # ---------------------------------------------------------------------------
-# Codes and tokens
+# Tokens
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("length", [4, 6, 8])
-def test_codes_are_the_requested_length_and_numeric(length: int) -> None:
-    code = generate_numeric_code(length)
-
-    assert len(code) == length
-    assert code.isdigit()
-
-
-def test_codes_are_zero_padded() -> None:
-    """A code rendered as "42" instead of "000042" would be rejected by a client
-    expecting six digits, and looks like a bug to the user."""
-    codes = {generate_numeric_code(6) for _ in range(300)}
-
-    assert all(len(code) == 6 for code in codes)
-
-
-def test_codes_vary() -> None:
-    codes = {generate_numeric_code(6) for _ in range(200)}
-
-    assert len(codes) > 150
-
-
 def test_opaque_tokens_are_long_and_unique() -> None:
     tokens = {generate_opaque_token() for _ in range(200)}
 
@@ -145,19 +113,6 @@ def test_hashing_hides_the_secret(settings: Settings) -> None:
 
 def test_different_secrets_hash_differently(settings: Settings) -> None:
     assert hash_secret("one", settings) != hash_secret("two", settings)
-
-
-def test_verification_accepts_the_right_secret(settings: Settings) -> None:
-    assert verify_secret("correct", hash_secret("correct", settings), settings)
-
-
-def test_verification_rejects_the_wrong_secret(settings: Settings) -> None:
-    assert not verify_secret("wrong", hash_secret("correct", settings), settings)
-
-
-def test_verification_rejects_an_empty_stored_hash(settings: Settings) -> None:
-    """The shape a missing Redis field takes, so it must not accidentally pass."""
-    assert not verify_secret("anything", "", settings)
 
 
 def test_rotating_the_application_key_invalidates_stored_hashes(

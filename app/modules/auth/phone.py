@@ -20,7 +20,7 @@ DEFAULT_REGION = "KE"
 
 # Kenyan mobile numbers are 07xx and, since the range expansion, 01xx. Safaricom,
 # Airtel and Telkom all sit in these. Landlines and premium ranges are rejected:
-# this is a mobile product and an OTP to a landline cannot arrive.
+# this is a mobile product and an SMS code to a landline cannot arrive.
 MOBILE_TYPES = frozenset(
     {
         phonenumbers.PhoneNumberType.MOBILE,
@@ -53,19 +53,7 @@ def normalise_phone_number(raw: str, *, region: str = DEFAULT_REGION) -> str:
 
     if phonenumbers.number_type(parsed) not in MOBILE_TYPES:
         raise BadRequestError(
-            "A mobile number is required, because the verification code is sent by SMS"
+            "A mobile number is required, because the verification code comes by SMS"
         )
 
     return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-
-
-def mask_for_display(e164: str) -> str:
-    """A number with its middle hidden, for "we sent a code to +2547••••678".
-
-    The client usually knows the number it just submitted, but a confirmation
-    screen after a redirect or a retry may not, and showing the whole number again
-    puts it somewhere it does not need to be.
-    """
-    if len(e164) < 7:
-        return "•" * len(e164)
-    return f"{e164[:5]}{'•' * (len(e164) - 8)}{e164[-3:]}"

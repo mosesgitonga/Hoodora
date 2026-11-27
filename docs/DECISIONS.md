@@ -2737,6 +2737,9 @@ a release, and `FEED_TARGET_RECENT_POSTS=0` turns the condition off.
 
 ### A.1 Sign up with Google, or with a phone number (2026-11-23)
 
+*Amended by A.2 (2026-11-27): Google is now the only way to sign in, and
+Firebase sends and checks the code that proves a number.*
+
 **Context.** Until now, identity was a phone number proved by an SMS code. The
 product owner asked for Google as a second way to sign up, beside the phone
 number verified through Africa's Talking.
@@ -2797,6 +2800,63 @@ a phone number, which is scarcer and is banned with the account.
   guideline 4.8 asks apps offering Google sign-in to offer an equivalent
   privacy-focused option too, such as Sign in with Apple. To check when the iOS
   app ships.
+
+
+### A.2 Google only to sign in; Firebase proves phone numbers (2026-11-27, amends A.1)
+
+**Context.** The product owner asked for Google as the only way to sign in,
+and for Firebase SMS wherever a phone number still has to be proved.
+
+**Choice.**
+- **Sign-in is Google only.** The sign-in screen has one button. `POST
+  /v1/auth/otp/request` and `/otp/verify` are gone (404), and
+  `GET /v1/auth/methods` says `phone: false`.
+  - Production refuses to start without `GOOGLE_CLIENT_ID`, since nobody could
+    sign in.
+  - A phone signup token issued before the change can't be completed. The person
+    signs in again, with Google.
+- **A number is still needed for trust** (A.1): posting jobs and the
+  verified-neighbour badge. It is added from Settings ("Add a phone number"), or
+  when a job is refused with `phone_required`.
+- **Firebase sends the code and checks it, on the phone.**
+  - The app signs in to Firebase with the number and the code, which gives a
+    Firebase ID token, and sends that token to `POST /v1/me/phone` as
+    `firebase_id_token`.
+  - The server checks the token with google-auth (`verify_firebase_token`):
+    Firebase's published keys, our project (`FIREBASE_PROJECT_ID`) as the
+    audience and issuer, and the expiry.
+  - Then it checks the sign-in was by phone and recent: `auth_time` within
+    `PHONE_PROOF_MAX_AGE_SECONDS`, 10 minutes. Only the number is read.
+  - After that, the old rules apply: a mobile number only, banned numbers are
+    refused, and so are numbers another account holds.
+  - On Android, Firebase may read the SMS itself, and then no code is typed.
+- **Firebase keeps no list of our numbers.** Its sign-in creates a Firebase user.
+  The app deletes that user as soon as it has the token, and signs out of
+  Firebase. The account lives only on our server, as A.1 intended.
+- **Removed:**
+  - the Africa's Talking provider and its settings;
+  - the server's own codes, with their Redis keys and settings;
+  - the helpers only they used.
+
+**Consequence.** An account with only a phone number can no longer sign in.
+Staging had one such account, a test account of the product owner's ("Root").
+
+**Reasoning.**
+- The product owner chose Google only.
+- Firebase's SMS is maintained, abuse-protected (Play Integrity, reCAPTCHA) and
+  needs no SMS contract of our own.
+- Checking Firebase's token ourselves, as for Google, keeps the account in our
+  own database. Firebase is used only to prove a number.
+
+**Setup, in the Firebase console** (project `hoodora-c028f`):
+- Authentication → Sign-in method → **Phone**: on.
+- Authentication → Settings → **SMS region policy**: allow only Kenya, against SMS
+  pumping.
+- Project settings → the Android app → add the **SHA-256** (and SHA-1) of every key
+  that signs the app: the upload key, and Play's app-signing key once on the Play
+  Store. Without them, Firebase falls back to a browser reCAPTCHA or refuses.
+- Optionally, test numbers with fixed codes, for trying it without real SMS.
+- Firebase may ask for the pay-as-you-go (Blaze) plan before it sends SMS.
 
 ## Location after launch
 

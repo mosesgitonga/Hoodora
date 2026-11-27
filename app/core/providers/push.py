@@ -1,13 +1,13 @@
 """Push delivery.
 
-The same shape as SMS: a protocol the notifications module depends on, a fake
-that records what would have been sent, and the real vendor behind it.
+A protocol the notifications module depends on, a fake that records what would
+have been sent, and the real vendor behind it.
 
 **What a push says is decided before it gets here.** By the time a `PushMessage`
 reaches a provider, the title and body are final, and for messages they carry the
 sender's name but not the text unless the recipient opted in. The provider never
-logs the body, for the same reason the SMS provider does not: it may be someone's
-private message, and the redaction filter cannot recognise that.
+logs the body: it may be someone's private message, and the redaction filter
+cannot recognise that.
 """
 
 from __future__ import annotations
@@ -187,8 +187,8 @@ _provider: PushProvider | None = None
 
 
 def get_push_provider() -> PushProvider:
-    """The process-wide provider, a singleton for the same reason as SMS: so a
-    test can see what a task it triggered would have sent."""
+    """The process-wide provider, a singleton so a test can see what a task it
+    triggered would have sent."""
     global _provider
     if _provider is None:
         from app.core.config import get_settings
