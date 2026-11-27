@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -24,7 +25,7 @@ from app.modules.auth.dependencies import (
     tiered_user_rate_limit,
     user_rate_limit,
 )
-from app.modules.feed import guest, views, votes
+from app.modules.feed import guest, polls, views, votes
 from app.modules.feed import service as feed_service
 from app.modules.feed.models import Post, Story, StoryKind
 from app.modules.feed.schemas import (
@@ -34,11 +35,14 @@ from app.modules.feed.schemas import (
     FeedOut,
     GuestFeedIn,
     GuestFeedOut,
+    PollOut,
+    PollVoteIn,
     PostCreatedOut,
     PostCreateIn,
     PostOut,
     PostPageOut,
     PostUpdateIn,
+    PostViewsIn,
     ReactionIn,
     ReactionOut,
     StoryCreateIn,
@@ -94,6 +98,8 @@ _story_limit = tiered_user_rate_limit(
     established_limit=lambda s: s.stories_per_day,
 )
 _reaction_limit = user_rate_limit(bucket="react", limit=300, window_seconds=3600)
+_poll_vote_limit = user_rate_limit(bucket="poll_vote", limit=120, window_seconds=3600)
+_post_views_limit = user_rate_limit(bucket="post_views", limit=600, window_seconds=3600)
 _post_edit_limit = user_rate_limit(bucket="post_edit", limit=60, window_seconds=3600)
 
 
@@ -165,8 +171,10 @@ async def create_post(
             settings=settings,
             audience=payload.audience,
             service_post_id=payload.service_post_id,
+            poll_options=payload.poll.options if payload.poll is not None else None,
+            poll_duration_hours=payload.poll.duration_hours if payload.poll is not None else 72,
         )
-        await session.refresh(post, attribute_names=["images", "created_at"])
+        await session.refresh(post, attribute_names=["images", "poll", "created_at"])
         return PostCreatedOut(
             post=await _one_post_view(
                 session, redis, storage, post=post, viewer=user, settings=settings
@@ -545,6 +553,45 @@ async def react_to_post(
         session, user=user, kind=payload.kind, settings=settings, post_id=post_id
     )
     return ReactionOut(kind=kind, reaction_count=count)
+
+
+@router.post(
+    "/posts/{post_id}/poll/vote",
+    response_model=PollOut,
+    summary="Vote in a post's poll",
+    description=(
+        "One vote per person, and it can't be changed (decision F.1). Hoodora records "
+        "only that you voted, never which answer, so nobody can tell how anyone voted. "
+        "Returns the poll with its results. 409 `already_voted` or `poll_closed`."
+    ),
+    dependencies=[Depends(_poll_vote_limit)],
+)
+async def vote_in_poll(
+    post_id: uuid.UUID, payload: PollVoteIn, user: ActiveUser, session: SessionDep
+) -> PollOut:
+    post = await feed_service.get_post(session, viewer=user, post_id=post_id)
+    await feed_service.require_can_engage(session, post=post, viewer=user)
+    poll = await polls.vote(session, voter=user, post=post, option_id=payload.option_id)
+    return views.poll_out(
+        poll, voted=True, is_author=post.author_id == user.id, now=datetime.now(UTC)
+    )
+
+
+@router.post(
+    "/posts/views",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Report posts seen",
+    description=(
+        "The app reports posts as they appear on screen, in batches of up to 50. Each "
+        "person counts once per post, the author not at all, and only the number is "
+        "ever shown: no list of viewers is kept (decision F.1)."
+    ),
+    dependencies=[Depends(_post_views_limit)],
+)
+async def report_post_views(
+    payload: PostViewsIn, user: ActiveUser, session: SessionDep, redis: RedisDep
+) -> None:
+    await polls.record_views(session, redis, viewer=user, post_ids=payload.post_ids)
 
 
 @router.delete(

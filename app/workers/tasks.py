@@ -35,6 +35,7 @@ from app.core.providers.storage import get_storage_provider
 from app.core.redis import get_redis
 from app.modules.circle import service as circle_service
 from app.modules.events import service as events_service
+from app.modules.feed import polls
 from app.modules.feed.tasks import expire_stories
 from app.modules.follows import service as follows_service
 from app.modules.groups import service as groups_service
@@ -153,6 +154,15 @@ async def count_presence(ctx: JobContext) -> dict[str, int]:
     async with task_session(ctx) as session:
         result = await snapshot_presence(session, get_redis(), settings=settings)
     return {"people": result.people, "cells": result.cells, "removed": result.removed}
+
+
+@with_job_context
+async def flush_post_views(ctx: JobContext) -> dict[str, int]:
+    """Every minute: copy the view counts of posts seen since the last run onto
+    their rows (decision F.1)."""
+    async with task_session(ctx) as session:
+        flushed = await polls.flush_view_counts(session, get_redis())
+    return {"posts": flushed}
 
 
 @with_job_context

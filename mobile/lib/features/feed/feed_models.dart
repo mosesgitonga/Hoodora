@@ -113,6 +113,8 @@ class Post {
     this.pinned = false,
     this.editedAt,
     this.freshAlert,
+    this.viewCount = 0,
+    this.poll,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
@@ -136,6 +138,8 @@ class Post {
         pinned: json['pinned'] as bool? ?? false,
         editedAt: json['edited_at'] == null ? null : DateTime.parse(json['edited_at'] as String),
         freshAlert: json['fresh_alert'] as bool?,
+        viewCount: json['view_count'] as int? ?? 0,
+        poll: json['poll'] == null ? null : Poll.fromJson(Map<String, dynamic>.from(json['poll'] as Map)),
       );
 
   final String id;
@@ -165,6 +169,12 @@ class Post {
   /// Null from a server that predates it, which leaves every alert as it was.
   final bool? freshAlert;
 
+  /// How many people have seen it, its author not counted. Never who (decision F.1).
+  final int viewCount;
+
+  /// The question's answers, when the post is a poll (decision F.1).
+  final Poll? poll;
+
   /// An alert past its days: shown like any other post, its time in full, so
   /// last month's warning does not read as news (decision T.2).
   bool get isStaleAlert => category == 'alert' && freshAlert == false;
@@ -173,7 +183,7 @@ class Post {
   bool get awaitsApproval => approvalStatus == 'pending';
   String get categoryLabel => postCategories[category] ?? category;
 
-  Post copyWith({int? commentCount, int? reactionCount, String? myReaction, bool clearReaction = false}) {
+  Post copyWith({int? commentCount, int? reactionCount, String? myReaction, bool clearReaction = false, Poll? poll}) {
     return Post(
       id: id,
       author: author,
@@ -192,8 +202,65 @@ class Post {
       pinned: pinned,
       editedAt: editedAt,
       freshAlert: freshAlert,
+      viewCount: viewCount,
+      poll: poll ?? this.poll,
     );
   }
+}
+
+/// One answer in a poll. [votes] is null until results may be shown.
+class PollOption {
+  const PollOption({required this.id, required this.text, this.votes});
+
+  factory PollOption.fromJson(Map<String, dynamic> json) =>
+      PollOption(id: json['id'] as String, text: json['text'] as String, votes: json['votes'] as int?);
+
+  final String id;
+  final String text;
+  final int? votes;
+}
+
+/// A post's poll (decision F.1). Votes are anonymous: the server keeps that
+/// someone voted, never which answer, so [voted] is all the app is told.
+class Poll {
+  const Poll({
+    required this.options,
+    required this.totalVotes,
+    required this.closesAt,
+    required this.closed,
+    required this.voted,
+    required this.resultsVisible,
+  });
+
+  factory Poll.fromJson(Map<String, dynamic> json) => Poll(
+        options: [
+          for (final option in json['options'] as List) PollOption.fromJson(Map<String, dynamic>.from(option as Map)),
+        ],
+        totalVotes: json['total_votes'] as int,
+        closesAt: DateTime.parse(json['closes_at'] as String),
+        closed: json['closed'] as bool,
+        voted: json['voted'] as bool,
+        resultsVisible: json['results_visible'] as bool,
+      );
+
+  final List<PollOption> options;
+  final int totalVotes;
+  final DateTime closesAt;
+  final bool closed;
+  final bool voted;
+  final bool resultsVisible;
+}
+
+/// How long a poll runs, as the composer offers it.
+const pollDurations = <int, String>{24: '1 day', 72: '3 days', 168: '1 week'};
+
+/// "Closes in 2 days", from now until [closesAt].
+String pollClosesIn(DateTime closesAt, {DateTime? now}) {
+  final left = closesAt.difference(now ?? DateTime.now());
+  if (left.inDays >= 1) return 'Closes in ${left.inDays} ${left.inDays == 1 ? 'day' : 'days'}';
+  if (left.inHours >= 1) return 'Closes in ${left.inHours} ${left.inHours == 1 ? 'hour' : 'hours'}';
+  final minutes = left.inMinutes < 1 ? 1 : left.inMinutes;
+  return 'Closes in $minutes ${minutes == 1 ? 'minute' : 'minutes'}';
 }
 
 class Comment {

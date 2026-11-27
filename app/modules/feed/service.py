@@ -46,6 +46,7 @@ from app.core.errors import (
 from app.core.links import contains_link
 from app.core.pagination import PageParams, decode_cursor, encode_cursor, paginate
 from app.modules.circle import links as circle_links
+from app.modules.feed import polls
 from app.modules.feed.models import (
     Audience,
     Comment,
@@ -53,6 +54,7 @@ from app.modules.feed.models import (
     PostApproval,
     PostEdit,
     PostImage,
+    PostPollVote,
     Reaction,
     Story,
     StoryKind,
@@ -154,8 +156,13 @@ async def create_post(
     needs_approval: bool = False,
     audience: Audience = Audience.neighbours_and_circle,
     service_post_id: uuid.UUID | None = None,
+    poll_options: list[str] | None = None,
+    poll_duration_hours: int = 72,
 ) -> tuple[Post, int]:
     """Create a post, and estimate who can see it.
+
+    With `poll_options`, the post asks a question with those answers (decision
+    F.1): neighbourhood posts only, and without photos.
 
     With `group`, the post belongs to that group and never reaches the
     neighbourhood feed; the caller (the groups service) has already checked the
@@ -191,12 +198,24 @@ async def create_post(
             f"A post can have at most {settings.post_max_images} images",
             details={"max_images": settings.post_max_images},
         )
+    options: list[str] | None = None
+    if poll_options is not None:
+        if group is not None:
+            raise BadRequestError("Polls can't be posted in groups yet", details={"field": "poll"})
+        if media_ids:
+            raise BadRequestError("A poll can't have photos", details={"field": "poll"})
+        options = polls.clean_poll(poll_options, poll_duration_hours)
     if group is None:
         # Posting in a place means having been there, or a starter post without
         # links (decisions L.2 and L.3). A group post reaches only the group's
         # members, so it isn't placed.
         await zones.claim_posting_right_at(
-            session, user=author, location=location, settings=settings, starter=True, text=cleaned
+            session,
+            user=author,
+            location=location,
+            settings=settings,
+            starter=True,
+            text=" ".join([cleaned, *(options or [])]),
         )
 
     assets = await claim_assets_for(
@@ -216,6 +235,12 @@ async def create_post(
     post.images = [
         PostImage(media_id=asset.id, position=position) for position, asset in enumerate(assets)
     ]
+    # Set either way, so a new post never lazy-loads its poll (which async can't).
+    post.poll = (
+        polls.new_poll(options, poll_duration_hours, now=datetime.now(UTC))
+        if options is not None
+        else None
+    )
     session.add(post)
     await session.flush()
     await hold_if_restricted(session, author=author, content=post, target_type="post")
@@ -1230,6 +1255,11 @@ async def purge_author_content(session: AsyncSession, *, user_id: uuid.UUID) -> 
         "story_views": await execute_dml(
             session, delete(StoryView).where(StoryView.viewer_id == user_id)
         ),
+        # That they voted, never what (decision F.1). The answers' counts stay:
+        # they name nobody.
+        "poll_votes": await execute_dml(
+            session, delete(PostPollVote).where(PostPollVote.user_id == user_id)
+        ),
     }
 
 
@@ -1275,6 +1305,13 @@ async def export_author_content(session: AsyncSession, *, user_id: uuid.UUID) ->
     reactions = (
         await session.execute(select(Reaction).where(Reaction.user_id == user_id))
     ).scalars()
+    poll_votes = (
+        await session.execute(
+            select(PostPollVote)
+            .where(PostPollVote.user_id == user_id)
+            .order_by(PostPollVote.created_at)
+        )
+    ).scalars()
 
     def _when(value: datetime | None) -> str | None:
         return value.isoformat() if value else None
@@ -1286,6 +1323,15 @@ async def export_author_content(session: AsyncSession, *, user_id: uuid.UUID) ->
                 "body": post.body,
                 "category": post.category,
                 "image_media_ids": [str(image.media_id) for image in post.images],
+                "poll": (
+                    {
+                        "options": [option.text for option in post.poll.options],
+                        "closes_at": _when(post.poll.closes_at),
+                    }
+                    if post.poll is not None
+                    else None
+                ),
+                "views": post.view_count,
                 "status": str(post.status),
                 "created_at": _when(post.created_at),
                 "edited_at": _when(post.edited_at),
@@ -1325,5 +1371,10 @@ async def export_author_content(session: AsyncSession, *, user_id: uuid.UUID) ->
                 "created_at": _when(reaction.created_at),
             }
             for reaction in reactions
+        ],
+        # Which polls they voted in. Not their answers: those are never stored.
+        "poll_votes": [
+            {"post_id": str(vote.post_id), "voted_at": _when(vote.created_at)}
+            for vote in poll_votes
         ],
     }

@@ -12,6 +12,7 @@ import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
 import '../../chats/start_chat.dart';
 import '../../feed/feed_models.dart';
+import '../../feed/post_views.dart';
 import '../../feed/widgets/own_post_actions.dart';
 import '../../feed/widgets/post_card.dart';
 import '../../feed/widgets/report_sheet.dart';
@@ -470,6 +471,8 @@ class _GroupScreenState extends ConsumerState<GroupScreen> {
               },
               onMore: () => _postMenu(post, mine: mine),
               onAuthor: () => openProfile(context, ref, post.author.id),
+              onVote: (optionId) => ref.read(feedRepositoryProvider).votePoll(post.id, optionId),
+              onSeen: mine ? null : () => ref.read(postViewReporterProvider).seen(post.id),
             ),
           ],
         ),

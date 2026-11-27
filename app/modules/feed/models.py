@@ -171,6 +171,19 @@ class Post(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, LocatedCo
     otherwise need two aggregate subqueries per row, and these are read far more
     often than they change."""
 
+    view_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    """How many people have seen the post, its author not counted (decision F.1).
+    Copied each minute from a Redis HyperLogLog, which counts distinct viewers
+    without keeping who they are: no list of viewers exists anywhere."""
+
+    poll: Mapped[PostPoll | None] = relationship(
+        back_populates="post",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="selectin",
+    )
+    """A post may ask a question with 2 to 4 answers (decision F.1)."""
+
     images: Mapped[list[PostImage]] = relationship(
         back_populates="post",
         cascade="all, delete-orphan",
@@ -183,6 +196,7 @@ class Post(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, LocatedCo
     __table_args__ = (
         CheckConstraint("comment_count >= 0", name="post_comment_count_non_negative"),
         CheckConstraint("reaction_count >= 0", name="post_reaction_count_non_negative"),
+        CheckConstraint("view_count >= 0", name="post_view_count_non_negative"),
         CheckConstraint("length(body) > 0", name="post_body_not_empty"),
         # The feed: visible, undeleted, newest first. The (created_at, id) tail is
         # what the keyset paginator needs to page without duplicates.
@@ -224,6 +238,70 @@ class PostEdit(Base, UUIDPrimaryKeyMixin):
     )
     """When this version was replaced. A Python default too, as for `created_at`
     (decision 2.19), so two edits in one transaction keep their order."""
+
+
+class PostPoll(Base):
+    """A poll on a post: the post's text is the question (decision F.1)."""
+
+    __tablename__ = "post_polls"
+
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True
+    )
+    closes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    vote_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    post: Mapped[Post] = relationship(back_populates="poll")
+    options: Mapped[list[PostPollOption]] = relationship(
+        back_populates="poll",
+        cascade="all, delete-orphan",
+        order_by="PostPollOption.position",
+        lazy="selectin",
+    )
+
+    __table_args__ = (CheckConstraint("vote_count >= 0", name="poll_vote_count_non_negative"),)
+
+
+class PostPollOption(Base, UUIDPrimaryKeyMixin):
+    """One answer, and how many chose it."""
+
+    __tablename__ = "post_poll_options"
+
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("post_polls.post_id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(SmallInteger)
+    text: Mapped[str] = mapped_column(String(80))
+    vote_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    poll: Mapped[PostPoll] = relationship(back_populates="options")
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "position", name="uq_post_poll_options_post_id_position"),
+        CheckConstraint("position >= 0 AND position < 4", name="poll_option_position_in_range"),
+        CheckConstraint("vote_count >= 0", name="poll_option_vote_count_non_negative"),
+        CheckConstraint("length(text) > 0", name="poll_option_text_not_empty"),
+    )
+
+
+class PostPollVote(Base):
+    """That someone voted in a poll, and nothing more (decision F.1).
+
+    Deliberately no option: the choice only adds one to an option's count, so
+    nobody, Hoodora included, can say how anyone voted. One row per person, which
+    is what stops a second vote.
+    """
+
+    __tablename__ = "post_poll_votes"
+
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("post_polls.post_id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class PostImage(Base, UUIDPrimaryKeyMixin):

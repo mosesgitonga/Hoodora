@@ -17,6 +17,7 @@ import '../../stories/stories_strip.dart';
 import '../explore.dart';
 import '../feed_controller.dart';
 import '../feed_models.dart';
+import '../post_views.dart';
 import '../widgets/explore_widgets.dart';
 import '../widgets/home_menu.dart';
 import '../widgets/own_post_actions.dart';
@@ -301,6 +302,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         onOpen: () => context.go(Routes.post(post.id)),
                         onMore: () => _postMenu(post, mine),
                         onAuthor: () => openProfile(context, ref, post.author.id),
+                        onVote: (optionId) async {
+                          final poll = await ref.read(feedRepositoryProvider).votePoll(post.id, optionId);
+                          ref.read(feedControllerProvider.notifier).replace(post.copyWith(poll: poll));
+                          return poll;
+                        },
+                        onSeen: mine ? null : () => ref.read(postViewReporterProvider).seen(post.id),
                       ),
                     );
                     if (index != olderFrom) return card;

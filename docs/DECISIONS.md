@@ -3111,6 +3111,47 @@ keeping what they may post locked down gives launch-day activity without opening
 the doors spammers use. Starter posts (L.3) matter less with one day, but stay
 for posting somewhere new.
 
+## Posts
+
+### F.1 Polls on posts, and how many saw a post (2026-11-27)
+
+**Context.** The product owner asked for polls when posting, and for a post's
+views: "number of views not the actual viewers".
+
+**Choice.**
+- **A poll is a post with 2 to 4 answers.** The post's text is the question.
+  - Answers are up to 80 characters each, all different.
+  - It runs for a day, three days or a week (default three).
+  - Polls are for neighbourhood posts only, not group posts or edits, and come
+    without photos.
+  - A new account's answers carry no links, as for its posts (L.5).
+- **Votes are anonymous by construction.**
+  - Voting adds one to the answer's count. `post_poll_votes` records only that
+    the person voted, so they can't vote twice. There is no column for the
+    answer, so nobody, Hoodora included, can say how anyone voted.
+  - It follows that a vote is final.
+  - A purge deletes the record that someone voted, and the counts stay.
+- **Results:** each answer's count and share show after voting, to the author,
+  and to everyone once the poll closes. Before that, only the total shows. 409
+  `already_voted` and `poll_closed`.
+- **Views count distinct people, never who.**
+  - The app reports posts as they appear on screen, in batches (`POST
+    /v1/posts/views`, at most 50), at most once per post per run of the app.
+  - The server adds the viewer to a Redis HyperLogLog per post, skipping the
+    author and anyone blocked either way.
+  - A worker copies the count to `posts.view_count` every minute, and never
+    lowers it.
+  - The card shows "123 views" once someone has seen the post.
+
+**Reasoning.**
+- An exact count would need a list of who saw what. That's the list the product
+  owner didn't want shown, and a list that exists can leak. A HyperLogLog is
+  about 1% off, which no one reading "1.2K views" can tell, and it can't name a
+  viewer.
+- Polls on local questions ("which day for the clean-up?") are where a
+  neighbourhood app shines. Asking only "that you voted" keeps a vote on
+  something sensitive from ever being on record.
+
 ## App polish
 
 From the product owner's review of the app on a phone against staging

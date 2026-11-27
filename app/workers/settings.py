@@ -33,6 +33,7 @@ from app.workers.tasks import (
     deliver_notification_push,
     expire_circle_requests,
     expire_old_stories,
+    flush_post_views,
     heartbeat,
     lift_suspensions,
     process_media,
@@ -80,6 +81,7 @@ class WorkerSettings:
         as_worker_task(recompute_badges),
         as_worker_task(lift_suspensions),
         as_worker_task(expire_circle_requests),
+        as_worker_task(flush_post_views),
     ]
 
     cron_jobs: ClassVar[list[CronJob]] = [
@@ -109,6 +111,8 @@ class WorkerSettings:
         # Every minute, so a one-hour reminder is never more than a minute late.
         cron(as_worker_task(send_event_reminders), second=5, run_at_startup=True),
         cron(as_worker_task(heartbeat), minute={0}, second=0, run_at_startup=False),
+        # Every minute: view counts reach posts within a minute of being seen.
+        cron(as_worker_task(flush_post_views), second=40),
         # Every five minutes: uploads whose processing job was lost. Often enough
         # that a dropped job means a slightly late image, not a confused user.
         cron(as_worker_task(catch_up_media), minute=set(range(0, 60, 5)), second=30),

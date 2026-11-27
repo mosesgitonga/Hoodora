@@ -35,6 +35,58 @@ class PostImageOut(BaseModel):
     variants: dict[str, ImageVariantOut]
 
 
+class PollIn(BaseModel):
+    """A question with 2 to 4 answers (decision F.1). The post's text is the
+    question."""
+
+    options: list[str] = Field(
+        min_length=2,
+        max_length=4,
+        description="The answers, in order, each up to 80 characters and all different.",
+        examples=[["Saturday morning", "Sunday afternoon"]],
+    )
+    duration_hours: Literal[24, 72, 168] = Field(
+        default=72, description="How long it takes votes: a day, three days or a week."
+    )
+
+
+class PollOptionOut(BaseModel):
+    id: uuid.UUID
+    text: str
+    votes: int | None = Field(
+        default=None,
+        description=(
+            "Null until the viewer may see results: after voting, as the author, or once closed."
+        ),
+    )
+
+
+class PollOut(BaseModel):
+    options: list[PollOptionOut]
+    total_votes: int
+    closes_at: datetime
+    closed: bool
+    voted: bool = Field(
+        description=(
+            "Whether the viewer has voted. Which answer they chose is never stored, "
+            "so it is never returned."
+        )
+    )
+    results_visible: bool
+
+
+class PollVoteIn(BaseModel):
+    option_id: uuid.UUID
+
+
+class PostViewsIn(BaseModel):
+    post_ids: list[uuid.UUID] = Field(
+        min_length=1,
+        max_length=50,
+        description="Posts the viewer has just seen on screen. Each counts the viewer once.",
+    )
+
+
 class PostCreateIn(BaseModel):
     body: str = Field(
         min_length=1, max_length=4000, examples=["Has anyone seen a brown dog near Kamakwa?"]
@@ -59,6 +111,10 @@ class PostCreateIn(BaseModel):
             "see it in their circle feed."
         ),
     )
+    poll: PollIn | None = Field(
+        default=None,
+        description="Ask a question: the post's text is the question. Not with photos.",
+    )
 
 
 class PostOut(BaseModel):
@@ -81,6 +137,11 @@ class PostOut(BaseModel):
     )
     comment_count: int
     reaction_count: int
+    view_count: int = Field(
+        default=0,
+        description="How many people have seen it, the author not counted. Never who.",
+    )
+    poll: PollOut | None = None
     my_reaction: str | None = None
     status: ContentStatus = Field(
         description=(
@@ -242,6 +303,8 @@ class GuestPostOut(BaseModel):
     distance_bucket: DistanceBucket | None = None
     comment_count: int
     reaction_count: int
+    view_count: int = 0
+    poll: PollOut | None = None
     fresh_alert: bool = Field(
         default=False,
         description=(

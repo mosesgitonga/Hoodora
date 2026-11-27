@@ -151,6 +151,8 @@ travels in the request body, which neither nginx nor the API logs.
 | `arealabel:<cell>` | A resolved area label | Avoids recomputing k-anonymity per profile render | 1 hour |
 | `radius:feed:<cell>` | A cached feed radius: its ring, what set it (`limited_by`) and its km | Stability and cost | 15 minutes |
 | `rl:<bucket>:<identity>` | Rate-limit counters | Abuse and cost control | Window length |
+| `post-views:<post id>` | A HyperLogLog of who saw the post (decision F.1). It answers "how many" to about 1%, and **can't be asked who**: it keeps hashed registers, not IDs | Counting views without a list of viewers | 90 days after the post was last seen; the count lives on in `posts.view_count` |
+| `post-views:dirty` | Post IDs seen since the worker last copied their counts | The minute job's to-do list | Emptied each minute |
 | `audit:people-map:<staff id>` | That this admin's opening of God's view was audited this hour (decision D.8) | Fewer audit rows for one viewing | 1 hour |
 | `admin:stats:v1` | The admin overview: counts per day and in total, and the radius spread (decision D.3). Aggregates only: no ID, name or number | Speed: not recounted on every visit | `ADMIN_STATS_CACHE_SECONDS` (5 minutes) |
 
@@ -196,6 +198,9 @@ references it, and nothing servable remains.
 | `status`, `hidden_at` | Moderation state | With the post |
 | `reach_estimate`, `comment_count`, `reaction_count` | Display | With the post |
 | `edited_at` | Shows readers the post was edited (decision 2.22) | With the post |
+| `view_count` | How many distinct people saw the post, the author not counted (decision F.1). A number only | With the post |
+| `post_polls`, `post_poll_options`: the closing time, each answer's text and count | A post's poll (decision F.1) | Deleted with the post (cascade) |
+| `post_poll_votes`: `post_id`, `user_id`, `created_at` | That someone voted, so they can't vote twice. **Never which answer**: the choice only adds one to that answer's count, so nobody can tell how anyone voted | Deleted with the poll, and at purge (the counts stay: they name nobody). In the export as "polls voted in" |
 | `post_edits`: `post_id`, previous `body` and `category`, `edited_at` | What the post said before each edit, so an edit can't hide reported abuse. Seen only by moderators, and by the author in their export | Deleted with the post (cascade), so the retention job's hard delete takes them too |
 
 The location is the **cell the author was in when posting** — a cell centre, never

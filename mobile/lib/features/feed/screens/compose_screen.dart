@@ -17,8 +17,11 @@ import '../feed_models.dart';
 
 const _maxPhotos = 6;
 const _maxLength = 2000;
+const _maxPollOptions = 4;
+const _maxPollOptionLength = 80;
 
-/// Writing a post: a category, words, and up to six photos. To the area the
+/// Writing a post: a category, words, and up to six photos, or a poll of 2 to 4
+/// answers instead of photos (decision F.1). To the area the
 /// phone is in (decision L.1), or
 /// with [groupId] to that group, in which case the new post is handed back to
 /// the group screen when this closes. With [editing], it changes one of your
@@ -45,6 +48,11 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   /// Who sees it besides neighbours: my Circle too, unless I say not.
   bool _withCircle = true;
   final List<Uint8List> _photos = [];
+
+  /// A poll instead of photos: the text is the question (decision F.1).
+  bool _pollOn = false;
+  final List<TextEditingController> _options = [TextEditingController(), TextEditingController()];
+  int _pollHours = 72;
   bool _busy = false;
   String? _progress;
   String? _error;
@@ -54,10 +62,46 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
     return auth is AuthSignedIn ? auth.me.starterPostsLeft : 0;
   }
 
+  /// Polls go to the neighbourhood only, and aren't added by editing.
+  bool get _canPoll => widget.editing == null && widget.groupId == null;
+
   @override
   void dispose() {
     _body.dispose();
+    for (final option in _options) {
+      option.dispose();
+    }
     super.dispose();
+  }
+
+  void _startPoll() => setState(() {
+        _pollOn = true;
+        // A poll asks something, so it starts as a question unless chosen otherwise.
+        if (_category == 'general') _category = 'question';
+      });
+
+  void _removePoll() => setState(() {
+        _pollOn = false;
+        for (final option in _options) {
+          option.clear();
+        }
+        while (_options.length > 2) {
+          _options.removeLast().dispose();
+        }
+      });
+
+  /// The answers, or null after saying what's wrong with them.
+  List<String>? _pollAnswers() {
+    final answers = [for (final option in _options) option.text.trim().replaceAll(RegExp(r'\s+'), ' ')];
+    if (answers.any((answer) => answer.isEmpty)) {
+      setState(() => _error = 'Fill in every answer, or remove the empty one.');
+      return null;
+    }
+    if (answers.map((answer) => answer.toLowerCase()).toSet().length != answers.length) {
+      setState(() => _error = 'Each answer must be different.');
+      return null;
+    }
+    return answers;
   }
 
   Future<void> _addPhotos() async {
@@ -80,9 +124,11 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   Future<void> _post() async {
     final body = _body.text.trim();
     if (body.isEmpty) {
-      setState(() => _error = 'Write something first.');
+      setState(() => _error = _pollOn ? 'Write your question first.' : 'Write something first.');
       return;
     }
+    final answers = _pollOn ? _pollAnswers() : null;
+    if (_pollOn && answers == null) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -120,8 +166,14 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(groupPostPostedMessage(post))));
         return;
       }
-      final (post, reach) =
-          await repo.createPost(body: body, category: _category, mediaIds: mediaIds, withCircle: _withCircle);
+      final (post, reach) = await repo.createPost(
+        body: body,
+        category: _category,
+        mediaIds: mediaIds,
+        withCircle: _withCircle,
+        pollOptions: answers,
+        pollDurationHours: _pollHours,
+      );
       ref.read(feedControllerProvider.notifier).prepend(post);
       final auth = ref.read(authControllerProvider);
       if (auth is AuthSignedIn) ref.read(hintsProvider.notifier).mark(Hint.posted(auth.me.id));
@@ -143,6 +195,79 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
       }
     }
   }
+
+  /// The answers, how long it runs, and a way back to a plain post.
+  List<Widget> _pollEditor(TextTheme text) => [
+        Row(
+          children: [
+            Icon(Icons.poll_outlined, size: 20, color: Palette.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Poll', style: text.titleSmall)),
+            TextButton(onPressed: _busy ? null : _removePoll, child: const Text('Remove poll')),
+          ],
+        ),
+        for (var i = 0; i < _options.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: TextField(
+              key: Key('poll-option-$i'),
+              controller: _options[i],
+              enabled: !_busy,
+              maxLength: _maxPollOptionLength,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: 'Answer ${i + 1}',
+                counterText: '',
+                suffixIcon: _options.length > 2
+                    ? IconButton(
+                        tooltip: 'Remove answer',
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() => _options.removeAt(i).dispose()),
+                        icon: const Icon(Icons.close_rounded),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+        if (_options.length < _maxPollOptions)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _busy ? null : () => setState(() => _options.add(TextEditingController())),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add an answer'),
+            ),
+          ),
+        const SizedBox(height: 4),
+        Text('Runs for', style: text.labelMedium?.copyWith(color: Palette.muted)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final entry in pollDurations.entries)
+              ChoiceChip(
+                label: Text(entry.value),
+                selected: _pollHours == entry.key,
+                onSelected: _busy ? null : (_) => setState(() => _pollHours = entry.key),
+                selectedColor: Palette.selectedFill,
+                labelStyle: text.labelMedium?.copyWith(
+                  color: _pollHours == entry.key ? Palette.onPrimary : Palette.ink,
+                ),
+                showCheckmark: false,
+                side: BorderSide(color: _pollHours == entry.key ? Palette.primary : Palette.lineStrong),
+                backgroundColor: Palette.surface,
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const NotePanel(
+          icon: Icons.lock_outline_rounded,
+          text: 'Votes are anonymous: nobody, not even Hoodora, can see who chose what. '
+              'Each person votes once.',
+        ),
+        const SizedBox(height: 4),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -200,10 +325,13 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                     maxLines: 12,
                     maxLength: _maxLength,
                     textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      hintText: 'Ask a question, share a tip, report something lost or found…',
+                    decoration: InputDecoration(
+                      hintText: _pollOn
+                          ? 'Ask your question…'
+                          : 'Ask a question, share a tip, report something lost or found…',
                     ),
                   ),
+                  if (_pollOn) ..._pollEditor(text),
                   if (widget.editing != null)
                     NotePanel(
                       icon: Icons.history_rounded,
@@ -241,16 +369,27 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                         ),
                       ),
                     ),
-                  if (widget.editing == null) ...[
+                  if (widget.editing == null && !_pollOn) ...[
                     const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        onPressed: _busy || _photos.length >= _maxPhotos ? null : _addPhotos,
-                        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                        icon: const Icon(Icons.add_photo_alternate_outlined),
-                        label: Text(_photos.isEmpty ? 'Add photos' : 'Add photos (${_photos.length}/$_maxPhotos)'),
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _busy || _photos.length >= _maxPhotos ? null : _addPhotos,
+                          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                          icon: const Icon(Icons.add_photo_alternate_outlined),
+                          label: Text(_photos.isEmpty ? 'Add photos' : 'Add photos (${_photos.length}/$_maxPhotos)'),
+                        ),
+                        // A poll or photos, not both.
+                        if (_canPoll && _photos.isEmpty)
+                          OutlinedButton.icon(
+                            onPressed: _busy ? null : _startPoll,
+                            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                            icon: const Icon(Icons.poll_outlined),
+                            label: const Text('Add a poll'),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                   ],

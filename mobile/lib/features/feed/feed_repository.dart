@@ -129,11 +129,20 @@ class FeedRepository {
   ///
   /// [withCircle] false keeps it to neighbours; by default the author's Circle
   /// sees it too, wherever they live (decision C.4).
+  /// One vote, final, in a post's poll. Answers with the poll and its results.
+  Future<Poll> votePoll(String postId, String optionId) async => Poll.fromJson(Map<String, dynamic>.from(
+      await _api.post('/posts/$postId/poll/vote', body: {'option_id': optionId}) as Map));
+
+  /// Posts seen on screen, so their view counts include this person once.
+  Future<void> reportViews(List<String> postIds) => _api.post('/posts/views', body: {'post_ids': postIds});
+
   Future<(Post, int)> createPost({
     required String body,
     required String category,
     List<String> mediaIds = const [],
     bool withCircle = true,
+    List<String>? pollOptions,
+    int pollDurationHours = 72,
   }) async {
     final data = Map<String, dynamic>.from(await _api.post('/posts',
         body: {
@@ -141,6 +150,7 @@ class FeedRepository {
           'category': category,
           'media_ids': mediaIds,
           'audience': withCircle ? 'neighbours_and_circle' : 'neighbours_only',
+          if (pollOptions != null) 'poll': {'options': pollOptions, 'duration_hours': pollDurationHours},
         },
         idempotent: true) as Map);
     // Shown at the top of the feed straight away, so it joins the saved copy too.

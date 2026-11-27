@@ -5670,3 +5670,24 @@ Decision T.3, at the product owner's request:
 - **The change:** 0 is now a valid setting, kept as 0 by the radius engine, with
   tests.
 - **Restoring the people condition later** is the same setting.
+
+## Polls on posts, and view counts (2026-11-27)
+
+Decision F.1, at the product owner's request.
+- **Server:**
+  - migration 0031 adds `post_polls`, `post_poll_options`, `post_poll_votes`
+    (who voted, never what) and `posts.view_count`;
+  - `POST /v1/posts` takes `poll`;
+  - `POST /v1/posts/{id}/poll/vote` records the vote;
+  - `POST /v1/posts/views` counts viewers in a Redis HyperLogLog, which a
+    minute job (`flush_post_views`) copies to the post;
+  - purge and export cover poll votes.
+- **App:**
+  - the composer's "Add a poll" (2 to 4 answers; a day, three days or a week);
+  - the poll on the card (tap to vote, then each answer's share);
+  - "N views" on posts;
+  - a batched reporter for posts seen on screen.
+- **Tests:**
+  - 17 new server tests in `tests/test_polls_and_views.py`; the full suite
+    passes;
+  - 9 new app tests in `test/polls_test.dart`; all 199 app tests pass.

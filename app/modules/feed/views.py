@@ -22,12 +22,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.providers.storage import StorageProvider
-from app.modules.feed import votes
-from app.modules.feed.models import Comment, Post, Story, StoryKind, StoryView
+from app.modules.feed import polls, votes
+from app.modules.feed.models import Comment, Post, PostPoll, Story, StoryKind, StoryView
 from app.modules.feed.schemas import (
     AuthorOut,
     CommentOut,
     GuestPostOut,
+    PollOptionOut,
+    PollOut,
     PostImageOut,
     PostOut,
     StoryOut,
@@ -98,6 +100,32 @@ async def _town_labels(
     return labels
 
 
+def poll_out(poll: PostPoll, *, voted: bool, is_author: bool, now: datetime) -> PollOut:
+    """A poll as one viewer sees it. Each answer's count shows once they've
+    voted, if they wrote it, or once it has closed (decision F.1)."""
+    closed = polls.is_closed(poll, now)
+    visible = voted or is_author or closed
+    return PollOut(
+        options=[
+            PollOptionOut(
+                id=option.id, text=option.text, votes=option.vote_count if visible else None
+            )
+            for option in poll.options
+        ],
+        total_votes=poll.vote_count,
+        closes_at=poll.closes_at,
+        closed=closed,
+        voted=voted,
+        results_visible=visible,
+    )
+
+
+def poll_view(
+    poll: PostPoll | None, *, voted: bool, is_author: bool, now: datetime
+) -> PollOut | None:
+    return None if poll is None else poll_out(poll, voted=voted, is_author=is_author, now=now)
+
+
 def is_fresh_alert(post: Post, settings: Settings, now: datetime) -> bool:
     """An alert young enough to look urgent (`ALERT_FRESH_DAYS`)."""
     return post.category == settings.alert_category and post.created_at > now - timedelta(
@@ -133,6 +161,9 @@ async def post_views(
         session, redis, (post.cell_res9 for post in posts if post.id in far), settings
     )
     mine = await reactions_by(session, user_id=viewer.id, post_ids=[post.id for post in posts])
+    voted = await polls.voted_in(
+        session, user_id=viewer.id, post_ids=[post.id for post in posts if post.poll is not None]
+    )
     now = datetime.now(UTC)
 
     views: list[PostOut] = []
@@ -165,6 +196,13 @@ async def post_views(
                 service_post_id=post.service_post_id,
                 comment_count=post.comment_count,
                 reaction_count=post.reaction_count,
+                view_count=post.view_count,
+                poll=poll_view(
+                    post.poll,
+                    voted=post.id in voted,
+                    is_author=post.author_id == viewer.id,
+                    now=now,
+                ),
                 my_reaction=mine.get(post.id),
                 status=post.status,
                 group_id=post.group_id,
@@ -207,6 +245,8 @@ async def guest_post_views(
             distance_bucket=cells.bucket_between_cells(viewer_cell_res8, post.cell_res8),
             comment_count=post.comment_count,
             reaction_count=post.reaction_count,
+            view_count=post.view_count,
+            poll=poll_view(post.poll, voted=False, is_author=False, now=now),
             fresh_alert=is_fresh_alert(post, settings, now),
             created_at=post.created_at,
         )

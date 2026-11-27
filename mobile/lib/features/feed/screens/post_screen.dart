@@ -10,6 +10,7 @@ import '../../chats/start_chat.dart';
 import '../../profile/profile_screen.dart';
 import '../feed_controller.dart';
 import '../feed_models.dart';
+import '../post_views.dart';
 import '../widgets/own_post_actions.dart';
 import '../widgets/post_card.dart';
 import '../widgets/report_sheet.dart';
@@ -395,6 +396,13 @@ class _PostScreenState extends ConsumerState<PostScreen> {
                           onReact: _toggleReaction,
                           onMore: post.author.id == myId ? () => _ownPostMenu(post) : () => _postMenu(post),
                           onAuthor: () => openProfile(context, ref, post.author.id),
+                          onVote: (optionId) async {
+                            final poll = await ref.read(feedRepositoryProvider).votePoll(post.id, optionId);
+                            if (mounted) setState(() => _post = _post?.copyWith(poll: poll));
+                            return poll;
+                          },
+                          onSeen:
+                              post.author.id == myId ? null : () => ref.read(postViewReporterProvider).seen(post.id),
                         ),
                         const SizedBox(height: 16),
                         Text(post.commentCount == 0 ? 'No comments yet' : 'Comments', style: text.titleSmall),

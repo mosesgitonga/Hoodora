@@ -8,6 +8,7 @@ import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../auth/auth_controller.dart';
 import '../feed/feed_models.dart';
+import '../feed/post_views.dart';
 import '../feed/widgets/post_card.dart';
 import '../profile/profile_screen.dart';
 import '../stories/story_models.dart';
@@ -199,6 +200,8 @@ class _CircleScreenState extends ConsumerState<CircleScreen> {
                   onReact: () => _toggleReaction(post),
                   onOpen: () => context.push(Routes.post(post.id)),
                   onAuthor: () => openProfile(context, ref, post.author.id),
+                  onVote: (optionId) => ref.read(feedRepositoryProvider).votePoll(post.id, optionId),
+                  onSeen: post.author.id == myId ? null : () => ref.read(postViewReporterProvider).seen(post.id),
                 ),
               ),
             if (_postsCursor != null)
