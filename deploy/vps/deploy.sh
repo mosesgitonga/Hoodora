@@ -66,6 +66,22 @@ publish_admin() {
   echo "deploy: the admin dashboard is ${sha:0:12}"
 }
 
+# The public website, hoodora.one (website/README.md): static files, copied as
+# they are. Nothing happens until /srv/hoodora-website has been made, which is
+# the step that puts the site live. Its README stays out of the public folder.
+WEBSITE_ROOT=/srv/hoodora-website
+publish_website() {
+  [[ -d website && -d "$WEBSITE_ROOT" ]] || return 0
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete --exclude README.md website/ "$WEBSITE_ROOT/"
+  else
+    cp -r website/. "$WEBSITE_ROOT/"
+    rm -f "$WEBSITE_ROOT/README.md"
+  fi
+  chmod -R a+rX "$WEBSITE_ROOT"
+  echo "deploy: the website is ${sha:0:12}"
+}
+
 if [[ "$previous" != "$sha" ]] && ! git diff --quiet "$previous" "$sha" -- migrations/; then
   echo "deploy: this release changes migrations; backing up first"
   COMPOSE_FILE=docker-compose.prod.yml:docker-compose.vps.yml ENV_FILE=.env.production \
@@ -79,6 +95,7 @@ if compose up -d --build --remove-orphans && ready; then
     >/dev/null 2>&1 || true
   echo "deploy: ${sha:0:12} is live"
   publish_admin
+  publish_website
   docker image prune -f >/dev/null
   exit 0
 fi
