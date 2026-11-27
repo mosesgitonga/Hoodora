@@ -22,7 +22,7 @@ concurrency:
 
 env:
   DEPLOY_HOST: 77.237.238.14
-  DEPLOY_URL: https://myradius.chatara.co
+  DEPLOY_URL: https://api.hoodora.one
 
 jobs:
   deploy:
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: staging
-      url: https://myradius.chatara.co
+      url: https://api.hoodora.one
     steps:
       - name: Deploy over SSH
         env:

@@ -16,6 +16,8 @@
 set -euo pipefail
 
 REPO=/srv/myradius
+# The site files keep the names they were first installed under; the sites
+# answer to api.hoodora.one and hoodora-admin.hoodora.one too (decision D.10).
 DOMAIN=myradius.chatara.co
 ADMIN_DOMAIN=myradius-admin.chatara.co
 ORIGIN=https://github.com/mosesgitonga/radius.git

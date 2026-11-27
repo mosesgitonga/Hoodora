@@ -40,7 +40,7 @@ alone between a release and its patches. Bump it for every release.
 To try a build on a phone plugged in over USB, against staging:
 
 ```sh
-flutter build apk --release --target-platform android-arm64   --dart-define=API_BASE_URL=https://myradius.chatara.co   --dart-define=APP_BUILD=<the number after + in pubspec.yaml>
+flutter build apk --release --target-platform android-arm64   --dart-define=API_BASE_URL=https://api.hoodora.one   --dart-define=APP_BUILD=<the number after + in pubspec.yaml>
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 

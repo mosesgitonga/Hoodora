@@ -55,7 +55,7 @@ if [[ "${needs_upload_key}" == true && ! -f android/key.properties ]]; then
 fi
 # On PATH once the terminal has restarted after installing; else its usual home.
 shorebird="$(command -v shorebird || echo "${HOME}/.shorebird/bin/shorebird")"
-api="${API_BASE_URL:-https://myradius.chatara.co}"
+api="${API_BASE_URL:-https://api.hoodora.one}"
 version="$(grep -E '^version:' pubspec.yaml | awk '{print $2}')"
 build="${version##*+}"
 

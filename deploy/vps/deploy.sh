@@ -43,7 +43,7 @@ echo "deploy: ${previous:0:12} -> ${sha:0:12}"
 # The dashboard talks to the API's public address, fixed at build time.
 ADMIN_ROOT=/srv/myradius-admin
 admin_api="$(grep -m1 '^ADMIN_API_BASE_URL=' .env.production | cut -d= -f2- || true)"
-admin_api="${admin_api:-https://myradius.chatara.co}"
+admin_api="${admin_api:-https://api.hoodora.one}"
 admin_build="${ADMIN_ROOT}/releases/${sha}"
 if [[ -d admin ]]; then
   echo "deploy: building the admin dashboard against ${admin_api}"

@@ -215,13 +215,13 @@ jobs:
 
       - name: Build
         env:
-          VITE_API_BASE_URL: https://myradius.chatara.co
+          VITE_API_BASE_URL: https://api.hoodora.one
         run: npm run build
 
       # The same image the deploy builds on the VPS, so a broken one fails here.
       - name: Build as the VPS does
         run: >-
           docker build -f Dockerfile
-          --build-arg VITE_API_BASE_URL=https://myradius.chatara.co
+          --build-arg VITE_API_BASE_URL=https://api.hoodora.one
           --output type=local,dest=${{ runner.temp }}/admin-dist .
           && test -f ${{ runner.temp }}/admin-dist/index.html

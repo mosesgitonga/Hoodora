@@ -3505,3 +3505,34 @@ trace one person's day from a run of 1s across small hexagons. The product owner
 chose that detail and a year's history knowing this. Who sees it is limited to
 admins and audited. A coarser history (5 km² and up) and 90 days were the
 alternatives.
+
+## Domains
+
+### D.10 Hoodora moves to hoodora.one (2026-11-27)
+
+**Context.** The product owner registered `hoodora.one` for production. Until
+now everything ran under `chatara.co`, a domain shared with other projects.
+
+**Choice, the product owner's: this server moves to the new names.** It is the
+same server, database and data; it is not a second copy.
+
+| What | New | Old, kept during the switch |
+| --- | --- | --- |
+| API | `api.hoodora.one` | `myradius.chatara.co` |
+| Admin dashboard | `hoodora-admin.hoodora.one` | `myradius-admin.chatara.co` |
+| Photos (Bunny CDN) | `media.hoodora.one` | `media.myradius.chatara.co` |
+
+- **Kept during the switch:** the old names answer too, from the same nginx
+  sites, each certificate covering both names. That way app builds made before
+  the switch, and links already shared, keep working.
+- **Settings now on the new names:** uploads, the dashboard's build and CORS,
+  CI and the deploy's health check, and the default the release and patch
+  scripts build the app against.
+- **The Bunny pull zone** fetches from `https://api.hoodora.one/cdn-origin`, and
+  serves `media.hoodora.one` once its CNAME
+  (`media → hoodora-staging-media.b-cdn.net`) exists.
+- **Group invite links** take their domain from the app's API address, so new
+  builds share `api.hoodora.one/g/…`, and old links keep working.
+- **Retiring the old names** waits until phones run a build made against the new
+  API. Then the old names come off the nginx sites, the certificates and
+  `ADMIN_CORS_ORIGINS`, and the dashboard's CSP drops them.

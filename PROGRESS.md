@@ -5541,3 +5541,29 @@ Decision D.9.
   Now view counts where people are.
 - **Counting starts with this deploy,** so An hour and Typical day fill in from
   then.
+
+## Moving to hoodora.one (2026-11-27)
+
+The product owner registered `hoodora.one` and added `api` and `hoodora-admin`
+A records for this server. Decision D.10: this server moves to the new names,
+and photos move to `media.hoodora.one`.
+
+- **nginx:**
+  - each site answers to its new name as well as the old one;
+  - certbot expanded both certificates;
+  - `nginx -t` passed, with backups in `/root`.
+- **The dashboard's CSP** on the live site allows the new API and photo hosts.
+- **Server settings:**
+  - uploads (`STORAGE_PRESIGN_ENDPOINT_URL`), `API_DOMAIN` and
+    `ADMIN_API_BASE_URL` now use `api.hoodora.one`;
+  - `ADMIN_CORS_ORIGINS` allows both dashboard names.
+- **Bunny:** the pull zone's origin is now `https://api.hoodora.one/cdn-origin`.
+- **Repo:**
+  - the nginx templates, the deploy and bootstrap scripts, CI, the deploy
+    health check, and the release and patch scripts' default API now use the
+    new names;
+  - `docs/DEPLOYMENT.md` has a "Domains" section.
+- **Waiting on:**
+  - the `media` CNAME, before photos switch to `media.hoodora.one`;
+  - an app build against `api.hoodora.one` on every phone, before the old
+    names retire.

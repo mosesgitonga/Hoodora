@@ -262,6 +262,31 @@ billing are the product owner's.
 - **Rolling back:** empty `STORAGE_PUBLIC_BASE_URL` and `BUNNY_TOKEN_KEY` and
   restart `api` and `worker`. Photos go back to presigned URLs straight away.
 
+### Domains (decision D.10, from 2026-11-27)
+
+| Name | Serves | DNS |
+| --- | --- | --- |
+| `api.hoodora.one` | the API, uploads (`/myradius-media/`) and the CDN's origin (`/cdn-origin/`) | `A 77.237.238.14` |
+| `hoodora-admin.hoodora.one` | the admin dashboard | `A 77.237.238.14` |
+| `media.hoodora.one` | photos, through the Bunny pull zone | `CNAME hoodora-staging-media.b-cdn.net` |
+
+- **The old names still answer** (`myradius.chatara.co`,
+  `myradius-admin.chatara.co`, `media.myradius.chatara.co`), from the same nginx
+  sites and certificates. The site files keep their old names:
+  `/etc/nginx/sites-available/myradius.chatara.co` and
+  `myradius-admin.chatara.co`.
+- **Adding a name to a site:** add it to the site's `server_name` lines, run
+  `nginx -t && systemctl reload nginx`, then expand that site's certificate:
+  ```sh
+  certbot --nginx --cert-name myradius.chatara.co -d myradius.chatara.co -d api.hoodora.one --expand --redirect
+  ```
+- **Settings that name the domain,** in `.env.production`:
+  - `STORAGE_PRESIGN_ENDPOINT_URL` (uploads);
+  - `STORAGE_PUBLIC_BASE_URL` (the photo CDN);
+  - `ADMIN_CORS_ORIGINS`;
+  - `ADMIN_API_BASE_URL` (what the dashboard is built to call);
+  - `API_DOMAIN`.
+
 ### Admin dashboard (decision D.6, from 2026-11-25)
 
 The moderation dashboard (`admin/`) is static files on its own subdomain. It
