@@ -3136,7 +3136,14 @@ views: "number of views not the actual viewers".
   `already_voted` and `poll_closed`.
 - **Views count distinct people, never who.**
   - The app reports posts as they appear on screen, in batches (`POST
-    /v1/posts/views`, at most 50), at most once per post per run of the app.
+    /v1/posts/views`, at most 50), at most once per post per account per run
+    of the app. A batch goes three seconds after the first post in it was
+    seen, at once when ten are waiting, and when the app goes to the
+    background.
+  - Voting, reacting or commenting also counts as seeing the post, so a post
+    never shows more people acting on it than seeing it. (Found on staging: a
+    second account on the same phone voted, but the app had already reported
+    that post for the first account and never sent the second's view.)
   - The server adds the viewer to a Redis HyperLogLog per post, skipping the
     author and anyone blocked either way.
   - A worker copies the count to `posts.view_count` every minute, and never

@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final, cast
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -192,6 +193,19 @@ async def record_views(
     pipe.sadd(VIEWS_DIRTY_KEY, *(str(post_id) for post_id in counted))
     await pipe.execute()
     return len(counted)
+
+
+async def count_as_seen(
+    session: AsyncSession, redis: Redis, *, viewer: User, post_id: uuid.UUID
+) -> None:
+    """Acting on a post means having seen it: a vote, reaction or comment counts as
+    a view, so a post never shows more people acting on it than seeing it,
+    whatever the app reported. Best effort: a Redis hiccup never fails the act.
+    """
+    try:
+        await record_views(session, redis, viewer=viewer, post_ids=[post_id])
+    except RedisError:
+        logger.warning("post_view_not_counted", extra={"post_id": str(post_id)})
 
 
 async def flush_view_counts(session: AsyncSession, redis: Redis, *, batch: int = 500) -> int:

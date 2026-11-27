@@ -301,3 +301,29 @@ async def test_a_count_never_goes_down(
     )
 
     assert await views_of(db_session, redis_client, post["id"]) == 3
+
+
+async def test_acting_on_a_post_counts_as_seeing_it(
+    db_session: AsyncSession, redis_client: Redis, authenticate: Authenticate
+) -> None:
+    """Never more voters than viewers, whatever the app reported: two people on
+    one phone, the second never reported, still both count."""
+    author, post = await a_poll(db_session, authenticate)
+    voters = [await neighbour(db_session, north) for north in (0.3, 0.6)]
+    reactor, commenter = await neighbour(db_session, 0.9), await neighbour(db_session, 1.2)
+
+    for index, voter in enumerate(voters):
+        assert (await vote(await authenticate(voter), post, index)).status_code == 200
+    reacted = await (await authenticate(reactor)).put(
+        f"/v1/posts/{post['id']}/reaction", json={"kind": "helpful"}
+    )
+    commented = await (await authenticate(commenter)).post(
+        f"/v1/posts/{post['id']}/comments", json={"body": "Saturday suits us"}
+    )
+    await (await authenticate(author)).post(
+        f"/v1/posts/{post['id']}/comments", json={"body": "Thanks all"}
+    )
+
+    assert reacted.status_code == 200, reacted.text
+    assert commented.status_code == 201, commented.text
+    assert await views_of(db_session, redis_client, post["id"]) == 4

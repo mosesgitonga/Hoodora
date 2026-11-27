@@ -13,6 +13,7 @@ import 'feed_test.dart' show postJson;
 import 'support/fake_adapter.dart';
 import 'support/fake_location.dart';
 import 'support/fake_socket.dart';
+import 'support/no_views.dart';
 
 /// Circle in the app (decisions C.1–C.6): from a profile, on the Circle screen,
 /// when posting, and in Privacy. The server holds the rules; these check the app
@@ -105,6 +106,7 @@ void main() {
       tokenStoreProvider.overrideWithValue(store),
       apiClientProvider.overrideWithValue(api),
       locationReaderProvider.overrideWithValue(const FakeReader.none()),
+      noViews,
       realtimeProvider.overrideWith((ref) {
         final client = RealtimeClient(api, connect: FakeSockets().connect, uri: Uri.parse('ws://api.test/v1/ws'));
         ref.onDispose(client.dispose);

@@ -472,6 +472,7 @@ async def add_comment(
             settings=settings,
         )
         await session.refresh(comment)
+        await polls.count_as_seen(session, redis, viewer=user, post_id=post_id)
         (rendered,) = await views.comment_views(
             session, redis, storage, comments=[comment], viewer=user, settings=settings
         )
@@ -547,11 +548,13 @@ async def react_to_post(
     payload: ReactionIn,
     user: ActiveUser,
     session: SessionDep,
+    redis: RedisDep,
     settings: SettingsDep,
 ) -> ReactionOut:
     kind, count = await feed_service.set_reaction(
         session, user=user, kind=payload.kind, settings=settings, post_id=post_id
     )
+    await polls.count_as_seen(session, redis, viewer=user, post_id=post_id)
     return ReactionOut(kind=kind, reaction_count=count)
 
 
@@ -567,11 +570,16 @@ async def react_to_post(
     dependencies=[Depends(_poll_vote_limit)],
 )
 async def vote_in_poll(
-    post_id: uuid.UUID, payload: PollVoteIn, user: ActiveUser, session: SessionDep
+    post_id: uuid.UUID,
+    payload: PollVoteIn,
+    user: ActiveUser,
+    session: SessionDep,
+    redis: RedisDep,
 ) -> PollOut:
     post = await feed_service.get_post(session, viewer=user, post_id=post_id)
     await feed_service.require_can_engage(session, post=post, viewer=user)
     poll = await polls.vote(session, voter=user, post=post, option_id=payload.option_id)
+    await polls.count_as_seen(session, redis, viewer=user, post_id=post.id)
     return views.poll_out(
         poll, voted=True, is_author=post.author_id == user.id, now=datetime.now(UTC)
     )

@@ -1,10 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myradius/core/api/token_store.dart';
+import 'package:myradius/core/offline_store.dart';
+import 'package:myradius/core/providers.dart';
 import 'package:myradius/core/theme.dart';
+import 'package:myradius/features/auth/auth_controller.dart';
+import 'package:myradius/features/auth/auth_models.dart';
 import 'package:myradius/features/feed/feed_models.dart';
+import 'package:myradius/features/feed/post_views.dart';
 import 'package:myradius/features/feed/widgets/post_card.dart';
 
+import 'chats_test.dart' show meJson;
 import 'feed_test.dart' show postJson;
+
+/// The signed-in account, set by the test.
+class _Auth extends AuthController {
+  _Auth(this._initial);
+  final AuthState _initial;
+
+  @override
+  AuthState build() => _initial;
+
+  void become(AuthState next) => state = next;
+}
+
+AuthState _signedIn(String id) => AuthSignedIn(Me.fromJson({...meJson, 'id': id}));
 
 /// Polls on posts, and how many saw a post (decision F.1).
 void main() {
@@ -125,6 +146,67 @@ void main() {
       await tester.pump();
 
       expect(seen, 1);
+    });
+  });
+
+  group('reporting views', () {
+    testWidgets('a post seen is sent after a short wait, even when nothing else appears', (tester) async {
+      final sent = <List<String>>[];
+      final reporter = PostViewReporter((ids) async => sent.add(ids));
+      addTearDown(reporter.dispose);
+
+      reporter
+        ..seen('p1')
+        ..seen('p2')
+        ..seen('p1');
+      await tester.pump(const Duration(seconds: 2));
+      expect(sent, isEmpty);
+      await tester.pump(const Duration(seconds: 2));
+      expect(sent, [
+        ['p1', 'p2'],
+      ]);
+
+      reporter.seen('p1');
+      await tester.pump(const Duration(seconds: 5));
+      expect(sent, hasLength(1), reason: 'each post once');
+    });
+
+    testWidgets('ten waiting go at once', (tester) async {
+      final sent = <List<String>>[];
+      final reporter = PostViewReporter((ids) async => sent.add(ids));
+      addTearDown(reporter.dispose);
+
+      for (var i = 0; i < 10; i++) {
+        reporter.seen('p$i');
+      }
+      await tester.pump();
+      expect(sent.single, hasLength(10));
+    });
+
+    testWidgets('a failed report is dropped quietly', (tester) async {
+      final reporter = PostViewReporter((ids) async => throw StateError('offline'));
+      addTearDown(reporter.dispose);
+
+      reporter.seen('p1');
+      await tester.pump(const Duration(seconds: 4));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('each account on the phone starts afresh', (tester) async {
+      final auth = _Auth(_signedIn('u1'));
+      final container = ProviderContainer(overrides: [
+        tokenStoreProvider.overrideWithValue(MemoryTokenStore()),
+        offlineStoreProvider.overrideWithValue(MemoryOfflineStore()),
+        authControllerProvider.overrideWith(() => auth),
+      ]);
+      addTearDown(container.dispose);
+
+      final first = container.read(postViewReporterProvider);
+      auth.become(_signedIn('u1'));
+      expect(container.read(postViewReporterProvider), same(first), reason: 'same account, profile refreshed');
+
+      auth.become(_signedIn('u2'));
+      expect(container.read(postViewReporterProvider), isNot(same(first)));
     });
   });
 }

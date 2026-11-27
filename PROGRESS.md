@@ -5691,3 +5691,14 @@ Decision F.1, at the product owner's request.
   - 17 new server tests in `tests/test_polls_and_views.py`; the full suite
     passes;
   - 9 new app tests in `test/polls_test.dart`; all 199 app tests pass.
+
+## Views fixed: never fewer than voters (2026-11-28)
+
+On staging a poll showed 2 votes and 1 view. The second voter was another
+account on the same phone, and the app's view reporter remembered posts for
+the whole run of the app, not per account, so that view was never sent.
+- **Server:** a vote, reaction or comment counts as a view (`polls.count_as_seen`).
+- **App:** the reporter starts afresh for each account, and sends three seconds
+  after a post is seen instead of waiting for another post to scroll into view.
+- **Tests:** a new server test, and 4 new app tests for the reporter.
+
