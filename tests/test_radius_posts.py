@@ -190,6 +190,35 @@ async def test_a_posts_target_of_zero_turns_the_condition_off(
     assert result.limited_by == "users"
 
 
+async def test_a_people_target_of_zero_lets_recent_posts_alone_set_the_radius(
+    db_session: AsyncSession, redis_client: Redis, settings: Settings
+) -> None:
+    """The launch setting (decision T.3): nobody counted as active nearby, yet the
+    feed is as small as the posts around it allow."""
+    anchor = await set_cell_density(
+        db_session, origin=NYERI_TOWN, active_per_cell=0, posts_per_cell=5, rings=12
+    )
+    launch = settings.model_copy(update={"feed_target_active_users": 0})
+    result = await feed(RadiusEngine(db_session, redis_client, launch), anchor)
+
+    assert result.rings_expanded == first_ring(5, launch.feed_target_recent_posts)
+    assert result.limited_by == "posts"
+    assert result.radius_km < launch.feed_radius_max_km
+    assert result.reached_target is True
+
+
+async def test_with_both_targets_off_the_radius_sits_on_the_floor(
+    db_session: AsyncSession, redis_client: Redis, settings: Settings
+) -> None:
+    anchor = await set_cell_density(
+        db_session, origin=NYERI_TOWN, active_per_cell=0, posts_per_cell=0, rings=3
+    )
+    off = settings.model_copy(update={"feed_target_active_users": 0, "feed_target_recent_posts": 0})
+    result = await feed(RadiusEngine(db_session, redis_client, off), anchor)
+
+    assert result.radius_km == off.feed_radius_min_km
+
+
 async def test_the_other_radii_follow_a_feed_radius_set_by_posts(
     db_session: AsyncSession, redis_client: Redis, settings: Settings
 ) -> None:

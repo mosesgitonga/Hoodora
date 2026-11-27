@@ -2733,6 +2733,31 @@ apart, but it has something in it. Older posts still show; they just stop
 holding the radius in. All five settings can be tuned per deployment without
 a release, and `FEED_TARGET_RECENT_POSTS=0` turns the condition off.
 
+### T.3 At launch, recent posts alone set the feed radius (2026-11-27)
+
+**Context.** The feed radius grows until its rings hold enough active people
+(200, T.1) and enough recent posts (60, T.2). At launch, few people are counted
+as active anywhere, so the people condition would hold every feed at the 15 km
+ceiling whatever was being posted. The product owner chose to size the feed by
+posts alone for the launch.
+
+**Choice.**
+- **`FEED_TARGET_ACTIVE_USERS=0`** in the server's settings means no people
+  condition. Until now the setting had to be at least 1, and the engine turned a
+  missing target into 1. Now 0 is allowed and kept as 0, as
+  `FEED_TARGET_RECENT_POSTS=0` already was. The code default stays 200.
+- **The radius is then the smallest ring holding 60 counted recent posts**
+  (30 days, at most 3 per author), between the 1 km floor and the 15 km
+  ceiling, with the same smoothing as before. `limited_by` reads `posts`.
+- **The other features follow,** since their radii are multiples of the feed's.
+- **With both targets 0** the feed sits on its 1 km floor. That's a
+  configuration mistake, not a mode.
+
+**Reasoning.** In a new market, how much is being posted is the honest measure
+of whether a feed has something to read. People counts lag: they need the app
+opened at home on enough days. Restoring the people condition later, for example
+at 200 once areas are busy, is the same setting.
+
 ## Sign-in
 
 ### A.1 Sign up with Google, or with a phone number (2026-11-23)

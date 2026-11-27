@@ -43,7 +43,8 @@ class RadiusRule(BaseModel, frozen=True):
 
     target_active_users: int | None = None
     """Density target. Only the feed has one; the rest are multiples of the feed
-    radius, so that every feature widens and narrows together as an area fills up."""
+    radius, so that every feature widens and narrows together as an area fills up.
+    0 means no people condition (decision T.3)."""
 
     target_recent_posts: int | None = None
     """The feed's second target: counted recent posts inside the rings (decision
@@ -301,7 +302,9 @@ class Settings(BaseSettings):
     # so every feature widens and narrows together as an area fills up.
     # 200 rather than the brief's 500 (decision T.1): about 200 active people
     # within 3 km is enough to keep a feed busy and genuinely local.
-    feed_target_active_users: int = Field(default=200, ge=1)
+    feed_target_active_users: int = Field(default=200, ge=0)
+    """Active people the rings must hold. 0 turns the condition off, so recent
+    posts alone set the feed radius: the launch setting (decision T.3)."""
     feed_radius_min_km: float = Field(default=1.0, gt=0)
     feed_radius_max_km: float = Field(default=15.0, gt=0)
 

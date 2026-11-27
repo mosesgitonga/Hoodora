@@ -135,6 +135,12 @@ class _FeedRadius:
     source: RadiusSource
 
 
+def _users_target(rule: RadiusRule) -> int:
+    """The people the rings must hold. 0 is a real setting, no people condition
+    (decision T.3), so it is not mistaken for unset."""
+    return 1 if rule.target_active_users is None else rule.target_active_users
+
+
 @dataclass(frozen=True, slots=True)
 class _RingTotals:
     """Running totals out from the anchor: index k counts everything within k
@@ -414,7 +420,7 @@ class RadiusEngine:
         return _RingTotals(
             users=tuple(users),
             posts=tuple(posts),
-            target_users=rule.target_active_users or 1,
+            target_users=_users_target(rule),
             target_posts=rule.target_recent_posts or 0,
         )
 
@@ -441,7 +447,7 @@ class RadiusEngine:
         ).all()
         counts = {int(cell): (int(active), int(recent)) for cell, active, recent in rows}
 
-        target_users = rule.target_active_users or 1
+        target_users = _users_target(rule)
         target_posts = rule.target_recent_posts or 0
         cap = self._settings.radius_max_ring_k
         entries: list[SpreadEntry] = []

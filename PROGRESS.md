@@ -5661,3 +5661,12 @@ Decision L.5. For the launch:
   groups and events, comments and stories.
 - **Unchanged:** jobs and the other protections.
 - **Tests:** in `tests/test_zones.py`. The full suite passes.
+
+## The feed radius set by recent posts alone, for the launch (2026-11-27)
+
+Decision T.3, at the product owner's request:
+- **The setting:** `FEED_TARGET_ACTIVE_USERS=0` on staging. The feed radius is the
+  smallest ring holding 60 recent posts, between 1 and 15 km.
+- **The change:** 0 is now a valid setting, kept as 0 by the radius engine, with
+  tests.
+- **Restoring the people condition later** is the same setting.
