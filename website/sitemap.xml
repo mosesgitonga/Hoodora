@@ -7,4 +7,12 @@
     <image:image><image:loc>https://hoodora.one/images/neighbours-community-garden-740.jpg</image:loc></image:image>
     <image:image><image:loc>https://hoodora.one/images/community-circle-aerial-736.jpg</image:loc></image:image>
   </url>
+  <url>
+    <loc>https://hoodora.one/privacy/</loc>
+    <lastmod>2026-11-27</lastmod>
+  </url>
+  <url>
+    <loc>https://hoodora.one/delete-account/</loc>
+    <lastmod>2026-11-27</lastmod>
+  </url>
 </urlset>

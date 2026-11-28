@@ -29,6 +29,16 @@ and no JavaScript, so it loads fast on a slow phone, which Google ranks on. Open
 - **Accessibility:** a skip link, descriptive alt text, focus outlines, and the
   FAQ built on `<details>`, which needs no script.
 
+## Other pages
+
+- `privacy/`: the privacy policy, at `https://hoodora.one/privacy/`.
+- `delete-account/`: how to delete an account, at
+  `https://hoodora.one/delete-account/`. This is the URL Google Play asks for.
+
+Both share `legal.css`, and both name `privacy@hoodora.one` for requests. Keep
+them in step with `docs/DATA_MAP.md`: a change to what is collected, shared or
+kept belongs in the policy too, with a new date at the top.
+
 ## Image slots
 
 Replace a file with your own under **the same name and size** and the page picks
