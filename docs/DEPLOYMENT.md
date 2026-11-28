@@ -275,6 +275,7 @@ billing are the product owner's.
 | `api.hoodora.one` | the API, uploads (`/myradius-media/`) and the CDN's origin (`/cdn-origin/`) | `A 77.237.238.14` |
 | `hoodora-admin.hoodora.one` | the admin dashboard | `A 77.237.238.14` |
 | `media.hoodora.one` | photos, through the Bunny pull zone | `CNAME hoodora-staging-media.b-cdn.net` |
+| `mta-sts.hoodora.one` | the mail MTA-STS policy, `/.well-known/mta-sts.txt` (see below) | `A 77.237.238.14` |
 
 - **The old names still answer** (`myradius.chatara.co`,
   `myradius-admin.chatara.co`, `media.myradius.chatara.co`), from the same nginx
@@ -292,6 +293,19 @@ billing are the product owner's.
   - `ADMIN_CORS_ORIGINS`;
   - `ADMIN_API_BASE_URL` (what the dashboard is built to call);
   - `API_DOMAIN`.
+
+- **Mail is Zoho** (`@hoodora.one`, MX `mx.zoho.com`, `mx2`, `mx3`). Its
+  MTA-STS policy, which tells sending servers to deliver only over verified
+  TLS to those hosts, is `deploy/vps/mta-sts.txt` as Zoho made it, served by
+  the nginx site `deploy/vps/nginx-hoodora-mta-sts.conf` from
+  `/srv/hoodora-mta-sts/.well-known/mta-sts.txt`.
+  - It is fetched only over HTTPS, so the site has its own certificate
+    (`certbot --nginx -d mta-sts.hoodora.one --redirect`).
+  - **Changing it** (say, a new MX host): edit the file, copy it to the
+    server, and change the `id` in the `_mta-sts.hoodora.one` TXT record.
+    Senders cache the policy for its `max_age` (7 days) until the id changes.
+  - **Moving off Zoho:** first set `mode: testing` and change the id, a week
+    ahead. In `enforce` mode, mail to MX hosts not in the policy is refused.
 
 ### Admin dashboard (decision D.6, from 2026-11-25)
 
