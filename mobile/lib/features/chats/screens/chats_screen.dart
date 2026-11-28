@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,10 +11,16 @@ import '../../../core/widgets.dart';
 import '../../auth/auth_controller.dart';
 import '../../feed/feed_models.dart';
 import '../../feed/widgets/post_card.dart';
+import '../../profile/profile_screen.dart';
 import '../chat_models.dart';
 import '../chats_controller.dart';
+import '../typing.dart';
 
-/// The Chats tab: the inbox, and the requests waiting on me.
+/// Which chats the inbox shows.
+enum ChatFilter { all, unread, groups, requests }
+
+/// The Chats tab: the inbox, searched or filtered, and the requests waiting on
+/// me (decision P.2).
 class ChatsScreen extends ConsumerStatefulWidget {
   const ChatsScreen({super.key});
 
@@ -22,56 +29,182 @@ class ChatsScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatsScreenState extends ConsumerState<ChatsScreen> {
-  bool _showRequests = false;
+  final _search = TextEditingController();
+  var _filter = ChatFilter.all;
+  var _searching = false;
+  var _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _closeSearch() => setState(() {
+        _searching = false;
+        _query = '';
+        _search.clear();
+      });
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final chats = ref.watch(chatsControllerProvider);
     final requests = chats.requests.length;
+    final unread = chats.chats.where((c) => c.unreadCount > 0).length;
+    final hasGroups = chats.chats.any((c) => c.isGroup);
+    // A filter whose chip went away shows everything instead.
+    final filter = _filter == ChatFilter.groups && !hasGroups ? ChatFilter.all : _filter;
 
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-              child: Text('Chats', style: text.headlineSmall),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SegmentedButton<bool>(
-                showSelectedIcon: false,
-                segments: [
-                  const ButtonSegment(value: false, label: Text('Chats')),
-                  ButtonSegment(value: true, label: Text(requests == 0 ? 'Requests' : 'Requests · $requests')),
-                ],
-                selected: {_showRequests},
-                onSelectionChanged: (value) => setState(() => _showRequests = value.single),
+    return PopScope(
+      canPop: !_searching,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _closeSearch();
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(height: 60, child: _searching ? _searchBar() : _titleBar()),
+              SizedBox(
+                height: 42,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    _FilterChip('All', selected: filter == ChatFilter.all, onTap: () => _show(ChatFilter.all)),
+                    _FilterChip(
+                      unread == 0 ? 'Unread' : 'Unread · $unread',
+                      selected: filter == ChatFilter.unread,
+                      onTap: () => _show(ChatFilter.unread),
+                    ),
+                    if (hasGroups)
+                      _FilterChip('Groups', selected: filter == ChatFilter.groups, onTap: () => _show(ChatFilter.groups)),
+                    _FilterChip(
+                      requests == 0 ? 'Requests' : 'Requests · $requests',
+                      selected: filter == ChatFilter.requests,
+                      onTap: () => _show(ChatFilter.requests),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: RefreshIndicator(
-                color: Palette.primary,
-                onRefresh: () => ref.read(chatsControllerProvider.notifier).refresh(),
-                child: _showRequests
-                    ? _Requests(chats: chats, onAccepted: () => setState(() => _showRequests = false))
-                    : _Inbox(chats: chats),
+              const SizedBox(height: 4),
+              Expanded(
+                child: RefreshIndicator(
+                  color: Palette.primary,
+                  onRefresh: () => ref.read(chatsControllerProvider.notifier).refresh(),
+                  child: filter == ChatFilter.requests
+                      ? _Requests(
+                          chats: chats,
+                          query: _query,
+                          onAccepted: () => setState(() => _filter = ChatFilter.all),
+                        )
+                      : _Inbox(chats: chats, filter: filter, query: _query),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  void _show(ChatFilter filter) => setState(() => _filter = filter);
+
+  Widget _titleBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+      child: Row(
+        children: [
+          Expanded(child: Text('Chats', style: Theme.of(context).textTheme.headlineSmall)),
+          IconButton(
+            tooltip: 'Search chats',
+            onPressed: () => setState(() => _searching = true),
+            icon: Icon(Icons.search_rounded, color: Palette.ink),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _searchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 16, 4),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Close search',
+            onPressed: _closeSearch,
+            icon: Icon(Icons.arrow_back_rounded, color: Palette.ink),
+          ),
+          Expanded(
+            child: TextField(
+              controller: _search,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) => setState(() => _query = value.trim()),
+              decoration: InputDecoration(
+                hintText: 'Search names and messages',
+                isDense: true,
+                prefixIcon: Icon(Icons.search_rounded, size: 20, color: Palette.muted),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear',
+                        onPressed: () => setState(() {
+                          _search.clear();
+                          _query = '';
+                        }),
+                        icon: Icon(Icons.close_rounded, size: 20, color: Palette.muted),
+                      ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+class _FilterChip extends StatelessWidget {
+  const _FilterChip(this.label, {required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        visualDensity: VisualDensity.compact,
+        // Colours from the theme's chip style: orange and white when selected.
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+      ),
+    );
+  }
+}
+
+/// Whether [conversation] matches what was typed into search: its name, or
+/// the text of its last message.
+bool matchesSearch(Conversation conversation, String query) {
+  if (query.isEmpty) return true;
+  final wanted = query.toLowerCase();
+  if (conversation.name.toLowerCase().contains(wanted)) return true;
+  final last = conversation.lastMessage;
+  return last != null && !last.deleted && (last.body ?? '').toLowerCase().contains(wanted);
+}
+
 class _Inbox extends ConsumerWidget {
-  const _Inbox({required this.chats});
+  const _Inbox({required this.chats, required this.filter, required this.query});
 
   final ChatsState chats;
+  final ChatFilter filter;
+  final String query;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -94,6 +227,18 @@ class _Inbox extends ConsumerWidget {
         body: 'Message a neighbour from one of their posts. Your conversations will be here.',
       );
     }
+    final shown = [
+      for (final c in chats.chats)
+        if ((filter != ChatFilter.unread || c.unreadCount > 0) &&
+            (filter != ChatFilter.groups || c.isGroup) &&
+            matchesSearch(c, query))
+          c,
+    ];
+    if (shown.isEmpty) {
+      return query.isNotEmpty
+          ? _Empty(title: 'No chats found', body: 'Nothing matches "$query".')
+          : const _Empty(title: 'All caught up', body: "You've read every message.");
+    }
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         if (n.metrics.pixels > n.metrics.maxScrollExtent - 400) {
@@ -103,15 +248,73 @@ class _Inbox extends ConsumerWidget {
       },
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: chats.chats.length,
+        itemCount: shown.length,
         itemBuilder: (context, index) {
-          final conversation = chats.chats[index];
+          final conversation = shown[index];
           return _ChatRow(
             conversation: conversation,
             myId: myId,
             onTap: () => context.go(Routes.conversation(conversation.id)),
+            onLongPress: () => _rowMenu(context, ref, conversation),
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _rowMenu(BuildContext context, WidgetRef ref, Conversation conversation) async {
+    HapticFeedback.selectionClick();
+    final controller = ref.read(chatsControllerProvider.notifier);
+    final messenger = ScaffoldMessenger.of(context);
+    Future<void> attempt(Future<void> Function() action) async {
+      try {
+        await action();
+      } on ApiException catch (error) {
+        messenger.showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Palette.cream,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: conversationAvatar(conversation, radius: 18),
+              title: Text(conversation.name, style: Theme.of(sheet).textTheme.titleSmall),
+            ),
+            Divider(height: 1, color: Palette.line),
+            if (conversation.unreadCount > 0)
+              ListTile(
+                leading: const Icon(Icons.mark_chat_read_outlined),
+                title: const Text('Mark as read'),
+                onTap: () {
+                  Navigator.of(sheet).pop();
+                  attempt(() => controller.markAllRead(conversation));
+                },
+              ),
+            ListTile(
+              leading: Icon(conversation.muted ? Icons.notifications_active_outlined : Icons.notifications_off_outlined),
+              title: Text(conversation.muted ? 'Unmute' : 'Mute'),
+              subtitle: conversation.muted ? null : const Text('No notifications from this chat'),
+              onTap: () {
+                Navigator.of(sheet).pop();
+                attempt(() => controller.setMuted(conversation, !conversation.muted));
+              },
+            ),
+            if (conversation.otherUser != null)
+              ListTile(
+                leading: const Icon(Icons.person_outline_rounded),
+                title: const Text('View profile'),
+                onTap: () {
+                  Navigator.of(sheet).pop();
+                  openProfile(context, ref, conversation.otherUser!.id);
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -124,22 +327,52 @@ Widget conversationAvatar(Conversation conversation, {double radius = 26}) => In
           Author(id: conversation.id, displayName: conversation.name, isVerifiedNeighbour: false),
     );
 
-class _ChatRow extends StatelessWidget {
-  const _ChatRow({required this.conversation, required this.myId, required this.onTap});
+/// The line under a chat's name: its last message, said briefly.
+String inboxPreview(Conversation conversation, {String? myId}) {
+  final last = conversation.lastMessage;
+  if (last == null) return conversation.isRequestSent ? 'Request sent' : 'No messages yet';
+  if (last.deleted || last.isSystem) return messagePreview(last);
+  final text = last.isPhoto ? 'Photo' : (last.body ?? '');
+  final mine = myId != null && last.sender?.id == myId;
+  if (!conversation.isGroup) return text;
+  if (mine) return 'You: $text';
+  final sender = last.sender;
+  return sender == null ? text : '${firstName(sender.displayName)}: $text';
+}
+
+class _ChatRow extends ConsumerWidget {
+  const _ChatRow({
+    required this.conversation,
+    required this.myId,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   final Conversation conversation;
   final String? myId;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    final typing = typingLine(
+      ref.watch(typingProvider.select((all) => all[conversation.id])),
+      group: false,
+    );
     final unread = conversation.unreadCount;
     final last = conversation.lastMessage;
-    // Opening a chat about a post makes it "request sent" before anything is.
-    final preview = last == null ? 'No messages yet' : messagePreview(last, myId: myId);
+    final mine = last != null && myId != null && last.sender?.id == myId && !last.isSystem && !last.deleted;
+    final otherRead = conversation.otherLastReadSeq;
+    final seen = mine && otherRead != null && last.seq <= otherRead;
+    final topic = conversation.listingId != null
+        ? Icons.sell_outlined
+        : (conversation.servicePostId != null ? Icons.handyman_outlined : null);
+    final previewInk = unread > 0 ? Palette.ink : Palette.muted;
+
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -157,19 +390,23 @@ class _ChatRow extends StatelessWidget {
                           conversation.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: text.titleSmall?.copyWith(fontSize: 15.5),
+                          style: text.titleSmall?.copyWith(
+                            fontSize: 15.5,
+                            fontWeight: unread > 0 ? FontWeight.w700 : null,
+                          ),
                         ),
                       ),
                       if (conversation.muted)
                         Padding(
-                          padding: EdgeInsets.only(right: 4),
+                          padding: const EdgeInsets.only(right: 4),
                           child: Icon(Icons.notifications_off_outlined, size: 15, color: Palette.muted),
                         ),
                       Text(
-                        timeAgo(conversation.activeAt),
+                        inboxTime(conversation.activeAt),
                         style: text.bodySmall?.copyWith(
                           fontSize: 12.5,
-                          color: unread > 0 ? Palette.primary : Palette.muted,
+                          color: unread > 0 && !conversation.muted ? Palette.primary : Palette.muted,
+                          fontWeight: unread > 0 ? FontWeight.w600 : null,
                         ),
                       ),
                     ],
@@ -177,18 +414,53 @@ class _ChatRow extends StatelessWidget {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      Expanded(
-                        child: Text(
-                          preview,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: text.bodyMedium?.copyWith(
-                            fontSize: 14,
-                            color: unread > 0 ? Palette.ink : Palette.muted,
-                            fontStyle: last?.deleted == true ? FontStyle.italic : null,
+                      if (typing != null)
+                        Expanded(
+                          child: Text(
+                            typing,
+                            maxLines: 1,
+                            style: text.bodyMedium?.copyWith(
+                              fontSize: 14,
+                              color: Palette.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      else ...[
+                        if (mine && !conversation.isGroup)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 3),
+                            child: Icon(
+                              seen ? Icons.done_all_rounded : Icons.done_rounded,
+                              size: 16,
+                              color: seen ? Palette.primary : Palette.muted,
+                              semanticLabel: seen ? 'Read' : 'Sent',
+                            ),
+                          ),
+                        if (topic != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 3),
+                            child: Icon(topic, size: 15, color: Palette.muted),
+                          ),
+                        if (last != null && last.isPhoto && !last.deleted)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 3),
+                            child: Icon(Icons.photo_camera_outlined, size: 15, color: previewInk),
+                          ),
+                        Expanded(
+                          child: Text(
+                            inboxPreview(conversation, myId: myId),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodyMedium?.copyWith(
+                              fontSize: 14,
+                              color: previewInk,
+                              fontWeight: unread > 0 ? FontWeight.w600 : null,
+                              fontStyle: last?.deleted == true ? FontStyle.italic : null,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                       if (unread > 0) ...[
                         const SizedBox(width: 8),
                         _Count(unread, muted: conversation.muted),
@@ -231,9 +503,10 @@ class _Count extends StatelessWidget {
 }
 
 class _Requests extends ConsumerWidget {
-  const _Requests({required this.chats, required this.onAccepted});
+  const _Requests({required this.chats, required this.query, required this.onAccepted});
 
   final ChatsState chats;
+  final String query;
 
   /// Back to the inbox, where the accepted conversation now is.
   final VoidCallback onAccepted;
@@ -262,6 +535,7 @@ class _Requests extends ConsumerWidget {
     if (chats.loading && chats.requests.isEmpty) {
       return Center(child: CircularProgressIndicator(color: Palette.primary));
     }
+    final shown = [for (final c in chats.requests) if (matchesSearch(c, query)) c];
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -272,12 +546,16 @@ class _Requests extends ConsumerWidget {
           style: text.bodyMedium?.copyWith(color: Palette.muted, fontSize: 13.5),
         ),
         const SizedBox(height: 12),
-        if (chats.requests.isEmpty)
+        if (shown.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 48),
-            child: Text('No requests', textAlign: TextAlign.center, style: text.titleMedium),
+            child: Text(
+              chats.requests.isEmpty ? 'No requests' : 'No requests match "$query"',
+              textAlign: TextAlign.center,
+              style: text.titleMedium,
+            ),
           ),
-        for (final c in chats.requests)
+        for (final c in shown)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Material(

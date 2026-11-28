@@ -98,10 +98,11 @@ class ChatRepository {
     required String idempotencyKey,
     String? body,
     String? mediaId,
+    String? replyToId,
   }) async =>
       Message.fromJson(Map<String, dynamic>.from(await _api.post(
         '/conversations/$conversationId/messages',
-        body: {'body': ?body, 'media_id': ?mediaId},
+        body: {'body': ?body, 'media_id': ?mediaId, 'reply_to_id': ?replyToId},
         idempotencyKey: idempotencyKey,
       ) as Map));
 

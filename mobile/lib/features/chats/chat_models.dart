@@ -3,6 +3,18 @@ import '../feed/feed_models.dart';
 /// Whether a message of mine has reached the server.
 enum SendState { sent, sending, failed }
 
+/// The message a message replies to. The server sends only which one; the
+/// screen finds it among the messages it holds.
+class ReplyRef {
+  const ReplyRef({required this.id, required this.seq});
+
+  factory ReplyRef.fromJson(Map<String, dynamic> json) =>
+      ReplyRef(id: json['id'] as String, seq: json['seq'] as int);
+
+  final String id;
+  final int seq;
+}
+
 class Message {
   const Message({
     required this.id,
@@ -21,10 +33,12 @@ class Message {
     this.error,
     this.refused = false,
     this.localImage,
+    this.replyTo,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
     final image = json['image'];
+    final replyTo = json['reply_to'];
     return Message(
       id: json['id'] as String,
       conversationId: json['conversation_id'] as String,
@@ -46,6 +60,7 @@ class Message {
       system: json['system'] is Map ? Map<String, dynamic>.from(json['system'] as Map) : null,
       deleted: json['deleted'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
+      replyTo: replyTo is Map ? ReplyRef.fromJson(Map<String, dynamic>.from(replyTo)) : null,
     );
   }
 
@@ -58,6 +73,7 @@ class Message {
     required String idempotencyKey,
     String? body,
     List<int>? localImage,
+    ReplyRef? replyTo,
   }) =>
       Message(
         id: '',
@@ -71,6 +87,7 @@ class Message {
         localId: localId,
         idempotencyKey: idempotencyKey,
         localImage: localImage,
+        replyTo: replyTo,
       );
 
   final String id;
@@ -98,6 +115,12 @@ class Message {
   /// The photo's bytes while it is still being sent, so it shows at once.
   final List<int>? localImage;
 
+  /// The message this one answers, if any.
+  final ReplyRef? replyTo;
+
+  /// Whether it is a photo, sent or still sending.
+  bool get isPhoto => image != null || localImage != null || kind == 'image';
+
   bool get isSystem => kind == 'system';
   bool get isPending => sendState != SendState.sent;
 
@@ -118,6 +141,7 @@ class Message {
         error: error,
         refused: refused ?? false,
         localImage: localImage,
+        replyTo: replyTo,
       );
 }
 
@@ -313,6 +337,25 @@ String dayLabel(DateTime moment, {DateTime? now}) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   final year = local.year == today.year ? '' : ' ${local.year}';
   return '${local.day} ${months[local.month - 1]}$year';
+}
+
+/// The time on an inbox row: the clock today, then as [dayLabel] says.
+String inboxTime(DateTime moment, {DateTime? now}) {
+  final label = dayLabel(moment, now: now);
+  return label == 'Today' ? clockTime(moment) : label;
+}
+
+/// "Wanjiku" from "Wanjiku M.": how a group chat names who wrote.
+String firstName(String displayName) {
+  final first = displayName.trim().split(RegExp(r'\s+')).first;
+  return first.isEmpty ? displayName : first;
+}
+
+/// A one-line summary of a message being replied to.
+String replySnippet(Message message) {
+  if (message.deleted) return 'Message deleted';
+  if (message.isPhoto) return 'Photo';
+  return (message.body ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
 }
 
 /// "14:05", the time a message was sent.

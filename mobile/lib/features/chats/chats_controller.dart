@@ -105,6 +105,8 @@ class ChatsController extends Notifier<ChatsState> {
   }
 
   void _onEvent(RealtimeEvent event) {
+    // Live only: nothing about the conversation itself changed.
+    if (event.type == RealtimeEvent.typing) return;
     if (event.type == RealtimeEvent.connected) {
       // Back after a gap: anything may have changed.
       if (!state.loading) refresh();
@@ -148,6 +150,19 @@ class ChatsController extends Notifier<ChatsState> {
       for (final c in state.chats)
         c.id == id && seq >= c.lastReadSeq ? c.copyWith(lastReadSeq: seq, unreadCount: 0) : c,
     ]);
+  }
+
+  /// Marks everything in [conversation] read, from the inbox.
+  Future<void> markAllRead(Conversation conversation) async {
+    if (conversation.unreadCount == 0) return;
+    await ref.read(chatRepositoryProvider).markRead(conversation.id, conversation.lastSeq);
+    markedRead(conversation.id, conversation.lastSeq);
+  }
+
+  Future<void> setMuted(Conversation conversation, bool muted) async {
+    await ref.read(chatRepositoryProvider).setMuted(conversation.id, muted);
+    final current = [...state.chats, ...state.requests].where((c) => c.id == conversation.id).firstOrNull;
+    put((current ?? conversation).copyWith(muted: muted));
   }
 
   static List<Conversation> _byActivity(List<Conversation> list) =>

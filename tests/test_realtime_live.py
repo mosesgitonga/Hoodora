@@ -452,3 +452,65 @@ async def test_a_bad_token_is_refused(workers: list[Worker]) -> None:
         await asyncio.wait_for(connection.recv(), 5)
     assert closed.value.rcvd is not None
     assert closed.value.rcvd.reason == "invalid_token"
+
+
+async def _quiet(connection: ClientConnection, event_type: str, seconds: float = 1.5) -> bool:
+    """True if no frame of that type arrives within `seconds`."""
+
+    async def _read() -> None:
+        while json.loads(await connection.recv())["type"] != event_type:
+            pass
+
+    try:
+        await asyncio.wait_for(_read(), seconds)
+    except TimeoutError:
+        return True
+    return False
+
+
+async def test_typing_reaches_the_other_member_and_only_apps_that_asked(
+    workers: list[Worker], people: list[Person]
+) -> None:
+    """Decision P.2: "typing…" goes to the other members of an accepted chat, on
+    sockets that subscribed to it, and nowhere else."""
+    one, two = workers
+    alice, bob, carol = people
+    subscribe = json.dumps({"type": "subscribe", "events": ["conversation.typing"]})
+    async with httpx.AsyncClient(timeout=10) as client:
+        conversation_id = await _accepted_conversation(client, one, alice, bob)
+        request = await client.post(
+            f"{one.http}/v1/conversations/direct",
+            json={"user_id": str(bob.id)},
+            headers=carol.headers,
+        )
+        request_id = str(request.json()["id"])
+        assert (await _send(client, one, carol, request_id, "Hello Bob")).status_code == 201
+
+        alice_socket = await _socket(one, alice)
+        bob_socket = await _socket(two, bob)
+        bobs_old_app = await _socket(two, bob)
+        carol_socket = await _socket(one, carol)
+        for subscriber in (alice_socket, bob_socket, carol_socket):
+            await subscriber.send(subscribe)
+        await asyncio.sleep(0.3)
+
+        await alice_socket.send(json.dumps({"type": "typing", "conversation_id": conversation_id}))
+        typing = await _next_event(bob_socket, "conversation.typing")
+        assert typing["data"] == {"conversation_id": conversation_id, "user_id": str(alice.id)}
+        assert await _quiet(bobs_old_app, "conversation.typing")
+        assert await _quiet(alice_socket, "conversation.typing", 0.3), "not to the typist"
+
+        # Not into a chat you aren't in, nor through a request not yet accepted.
+        await carol_socket.send(json.dumps({"type": "typing", "conversation_id": conversation_id}))
+        await carol_socket.send(json.dumps({"type": "typing", "conversation_id": request_id}))
+        await bob_socket.send(json.dumps({"type": "typing", "conversation_id": request_id}))
+        assert await _quiet(bob_socket, "conversation.typing")
+        assert await _quiet(carol_socket, "conversation.typing", 0.3)
+
+        # A message says who sent it, so the typing line can stop at once.
+        sent = await _send(client, one, alice, conversation_id, "Niko hapa")
+        created = await _next_event(bob_socket, "message.created", message_id=sent.json()["id"])
+        assert created["data"]["sender_id"] == str(alice.id)
+
+        for socket_ in (alice_socket, bob_socket, bobs_old_app, carol_socket):
+            await socket_.close()

@@ -5702,3 +5702,28 @@ the whole run of the app, not per account, so that view was never sent.
   after a post is seen instead of waiting for another post to scroll into view.
 - **Tests:** a new server test, and 4 new app tests for the reporter.
 
+## A fuller chats inbox (2026-11-28)
+
+Decision P.2, at the product owner's request.
+- **Inbox:**
+  - search;
+  - All / Unread / Groups / Requests chips;
+  - rows with times, ✓✓, who wrote, photo and topic icons, and "typing…";
+  - a long-press menu: Mark as read, Mute, View profile.
+- **Conversation:**
+  - replies, by swipe or menu, quoting the original;
+  - grouped bubbles with ✓/✓✓;
+  - tappable links and phone numbers;
+  - camera or gallery;
+  - a jump to the newest message;
+  - an "Unread messages" line;
+  - "typing…" in the header.
+- **Server:**
+  - the socket takes `subscribe` and `typing` frames and relays
+    `conversation.typing` to subscribed members of accepted chats;
+  - `message.created` carries `sender_id`.
+- **Tests:**
+  - a live two-process socket test for typing;
+  - 13 new app tests: models, links, the throttle, inbox filters, search,
+    long press, typing, replies, the unread line and ticks;
+  - the full server suite and all 213 app tests pass.

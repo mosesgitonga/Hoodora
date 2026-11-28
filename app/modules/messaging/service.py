@@ -208,6 +208,31 @@ async def audience(
     return [member for member in members if member not in hidden]
 
 
+async def typing_audience(
+    session: AsyncSession, *, user_id: uuid.UUID, conversation_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """Who may see that `user_id` is typing in a conversation (decision P.2).
+
+    The other active members, less anyone blocked either way, and only once the
+    conversation is accepted: like a read receipt, "typing…" would otherwise
+    tell the sender of a request that it was opened. Empty for anyone who isn't
+    an active member. Never raises: it is a nicety, not a request.
+    """
+    try:
+        conversation, _member = await _load(
+            session, conversation_id=conversation_id, user_id=user_id
+        )
+    except NotFoundError:
+        return []
+    if conversation.state != ConversationState.active:
+        return []
+    return [
+        member
+        for member in await audience(session, conversation.id, actor_id=user_id)
+        if member != user_id
+    ]
+
+
 def _require_admin(member: ConversationMember) -> None:
     if member.role not in (MemberRole.owner, MemberRole.admin):
         raise ForbiddenError("Only the chat's admins can do that")
@@ -289,6 +314,8 @@ async def _announce_message(
             "conversation_id": str(conversation.id),
             "seq": message.seq,
             "message_id": str(message.id),
+            # So an app showing "typing…" for the sender can stop at once.
+            "sender_id": str(message.sender_id) if message.sender_id else None,
         },
     )
 

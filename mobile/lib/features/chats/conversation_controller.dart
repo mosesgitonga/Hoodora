@@ -21,6 +21,7 @@ class ConversationState {
     this.loading = true,
     this.loadingEarlier = false,
     this.error,
+    this.unreadFrom,
   });
 
   final Conversation? conversation;
@@ -34,6 +35,10 @@ class ConversationState {
   final bool loading;
   final bool loadingEarlier;
   final ApiException? error;
+
+  /// The first sequence number that was unread when the chat was opened: an
+  /// "Unread messages" line goes above it.
+  final int? unreadFrom;
 
   /// The highest sequence number held: catching up fetches after it.
   int get lastSeq => messages.where((m) => !m.isPending).fold(0, (a, m) => m.seq > a ? m.seq : a);
@@ -56,6 +61,7 @@ class ConversationState {
         loading: loading ?? this.loading,
         loadingEarlier: loadingEarlier ?? this.loadingEarlier,
         error: clearError ? null : (error ?? this.error),
+        unreadFrom: unreadFrom,
       );
 }
 
@@ -104,6 +110,7 @@ class ConversationController extends Notifier<ConversationState> {
         names: names,
         hasEarlier: page.hasMore,
         loading: false,
+        unreadFrom: conversation.unreadCount > 0 ? conversation.lastReadSeq + 1 : null,
       );
       await markRead();
     } on ApiException catch (error) {
@@ -208,24 +215,26 @@ class ConversationController extends Notifier<ConversationState> {
     }
   }
 
-  /// Sends text. Shown at once; on failure it stays, marked, to retry.
-  Future<void> sendText(String body) => _send(body: body.trim());
+  /// Sends text, in reply to [replyTo] if given. Shown at once; on failure it
+  /// stays, marked, to retry.
+  Future<void> sendText(String body, {Message? replyTo}) => _send(body: body.trim(), replyTo: replyTo);
 
   /// Sends one photo: uploaded, processed, then sent as a message.
-  Future<void> sendPhoto(Uint8List bytes) => _send(photo: bytes);
+  Future<void> sendPhoto(Uint8List bytes, {Message? replyTo}) => _send(photo: bytes, replyTo: replyTo);
 
   Future<void> retry(String localId) async {
     final message = state.messages.where((m) => m.localId == localId).firstOrNull;
     if (message == null || message.sendState != SendState.failed) return;
     _replacePending(localId, message.copyWith(sendState: SendState.sending));
     await _deliver(message.localId!, message.idempotencyKey!, body: message.body,
-        photo: message.localImage == null ? null : Uint8List.fromList(message.localImage!));
+        photo: message.localImage == null ? null : Uint8List.fromList(message.localImage!),
+        replyToId: message.replyTo?.id);
   }
 
   void discard(String localId) =>
       state = state.copyWith(messages: state.messages.where((m) => m.localId != localId).toList());
 
-  Future<void> _send({String? body, Uint8List? photo}) async {
+  Future<void> _send({String? body, Uint8List? photo, Message? replyTo}) async {
     final auth = ref.read(authControllerProvider);
     if (auth is! AuthSignedIn) return;
     if ((body == null || body.isEmpty) && photo == null) return;
@@ -242,14 +251,22 @@ class ConversationController extends Notifier<ConversationState> {
         idempotencyKey: idempotencyKey,
         body: body,
         localImage: photo,
+        replyTo: replyTo == null || replyTo.isPending ? null : ReplyRef(id: replyTo.id, seq: replyTo.seq),
       ),
     ]);
-    await _deliver(localId, idempotencyKey, body: body, photo: photo);
+    await _deliver(localId, idempotencyKey,
+        body: body, photo: photo, replyToId: replyTo == null || replyTo.isPending ? null : replyTo.id);
   }
 
   /// The photo is uploaded again on a retry: an upload that failed half way
   /// cannot be resumed, and one that finished is cheap to repeat.
-  Future<void> _deliver(String localId, String idempotencyKey, {String? body, Uint8List? photo}) async {
+  Future<void> _deliver(
+    String localId,
+    String idempotencyKey, {
+    String? body,
+    Uint8List? photo,
+    String? replyToId,
+  }) async {
     try {
       final mediaId = photo == null
           ? null
@@ -259,6 +276,7 @@ class ConversationController extends Notifier<ConversationState> {
             idempotencyKey: idempotencyKey,
             body: photo == null ? body : null,
             mediaId: mediaId,
+            replyToId: replyToId,
           );
       if (_disposed) return;
       state = state.copyWith(messages: state.messages.where((m) => m.localId != localId).toList());

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,7 +21,13 @@ import '../../market/widgets/listing_card.dart';
 import '../../services/service_models.dart';
 import '../chat_models.dart';
 import '../conversation_controller.dart';
+import '../message_text.dart';
+import '../typing.dart';
 import 'chats_screen.dart';
+
+/// Messages from one person this close together read as one run: tighter, and
+/// only the last has a tail.
+const _runGap = Duration(minutes: 5);
 
 /// One conversation: its messages, newest at the bottom, and a box to reply.
 class ConversationScreen extends ConsumerStatefulWidget {
@@ -34,6 +42,21 @@ class ConversationScreen extends ConsumerStatefulWidget {
 class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   final _text = TextEditingController();
   final _scroll = ScrollController();
+  final _focus = FocusNode();
+  final _keys = <String, GlobalKey>{};
+
+  /// The message being answered, shown above the box.
+  Message? _replyTo;
+  bool _hasText = false;
+
+  /// Scrolled up, away from the newest message; and the newest held then, to
+  /// count what arrived since.
+  bool _away = false;
+  int _awaySeq = 0;
+
+  /// A message flashed after jumping to it from a reply.
+  String? _flashed;
+  Timer? _flashTimer;
 
   ConversationController get _controller =>
       ref.read(conversationControllerProvider(widget.conversationId).notifier);
@@ -41,17 +64,40 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   @override
   void initState() {
     super.initState();
-    // The list runs bottom-up, so the far end is the oldest message.
-    _scroll.addListener(() {
-      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400) _controller.loadEarlier();
-    });
+    _scroll.addListener(_onScroll);
+    _text.addListener(_onText);
   }
 
   @override
   void dispose() {
+    _flashTimer?.cancel();
     _text.dispose();
     _scroll.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    final position = _scroll.position;
+    // The list runs bottom-up, so the far end is the oldest message.
+    if (position.pixels > position.maxScrollExtent - 400) _controller.loadEarlier();
+    final away = position.pixels > 300;
+    if (away != _away) {
+      setState(() {
+        _away = away;
+        _awaySeq = ref.read(conversationControllerProvider(widget.conversationId)).lastSeq;
+      });
+    }
+  }
+
+  void _onText() {
+    final hasText = _text.text.trim().isNotEmpty;
+    if (hasText != _hasText) setState(() => _hasText = hasText);
+    final conversation = ref.read(conversationControllerProvider(widget.conversationId)).conversation;
+    // "typing…" only where the other side has accepted, as with read receipts.
+    if (hasText && conversation != null && conversation.state == 'active') {
+      ref.read(realtimeProvider).typing(widget.conversationId);
+    }
   }
 
   void _toast(String message) {
@@ -73,19 +119,78 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final body = _text.text.trim();
     if (body.isEmpty) return;
     _text.clear();
-    _controller.sendText(body);
-    if (_scroll.hasClients) _scroll.jumpTo(0);
+    _controller.sendText(body, replyTo: _replyTo);
+    setState(() => _replyTo = null);
+    _jumpToLatest(animate: false);
   }
 
-  Future<void> _sendPhoto() async {
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 2048,
-      imageQuality: 85,
+  Future<void> _attach() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Palette.cream,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.of(sheet).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.of(sheet).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
     );
+    if (source == null) return;
+    final picked = await ImagePicker().pickImage(source: source, maxWidth: 2048, imageQuality: 85);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
-    await _controller.sendPhoto(bytes);
+    final replyTo = _replyTo;
+    if (mounted) setState(() => _replyTo = null);
+    _jumpToLatest(animate: false);
+    await _controller.sendPhoto(bytes, replyTo: replyTo);
+  }
+
+  void _reply(Message message) {
+    HapticFeedback.selectionClick();
+    setState(() => _replyTo = message);
+    _focus.requestFocus();
+  }
+
+  void _jumpToLatest({bool animate = true}) {
+    if (!_scroll.hasClients) return;
+    if (animate) {
+      _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    } else {
+      _scroll.jumpTo(0);
+    }
+  }
+
+  /// Scrolls to [messageId] and flashes it. Older messages are built only as
+  /// they come into view, so it scrolls a screen at a time until it finds it.
+  Future<void> _scrollTo(String messageId) async {
+    for (var step = 0; step < 30 && mounted; step++) {
+      final target = _keys[messageId]?.currentContext;
+      if (target != null && target.mounted) {
+        await Scrollable.ensureVisible(target, alignment: 0.5, duration: const Duration(milliseconds: 250));
+        _flashTimer?.cancel();
+        setState(() => _flashed = messageId);
+        _flashTimer = Timer(const Duration(milliseconds: 1200), () {
+          if (mounted) setState(() => _flashed = null);
+        });
+        return;
+      }
+      if (!_scroll.hasClients) return;
+      final position = _scroll.position;
+      if (position.pixels >= position.maxScrollExtent) return;
+      _scroll.jumpTo((position.pixels + position.viewportDimension * 0.8).clamp(0, position.maxScrollExtent));
+      await WidgetsBinding.instance.endOfFrame;
+    }
   }
 
   Future<bool> _confirm(String title, String body, String action) async {
@@ -107,7 +212,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     return answer ?? false;
   }
 
-  void _messageMenu(Message message, {required bool mine}) {
+  void _messageMenu(Message message, {required bool mine, required bool canReply}) {
     if (message.isSystem || message.deleted) return;
     showModalBottomSheet<void>(
       context: context,
@@ -141,6 +246,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                 },
               ),
             ],
+            if (canReply && !message.isPending)
+              ListTile(
+                leading: const Icon(Icons.reply_rounded),
+                title: const Text('Reply'),
+                onTap: () {
+                  Navigator.of(sheet).pop();
+                  _reply(message);
+                },
+              ),
             if (message.body != null)
               ListTile(
                 leading: const Icon(Icons.copy_rounded),
@@ -216,6 +330,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     if (done && mounted) context.go(Routes.chats);
   }
 
+  /// Whether the box to write in is showing: not while a request waits on me,
+  /// nor while mine waits on them.
+  bool _canWrite(Conversation conversation, ConversationState state, String? myId) =>
+      !conversation.awaitsMe &&
+      !(conversation.isRequestSent && state.messages.any((m) => m.sender?.id == myId && !m.isPending));
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
@@ -223,6 +343,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final auth = ref.watch(authControllerProvider);
     final myId = auth is AuthSignedIn ? auth.me.id : null;
     final conversation = state.conversation;
+    final typing = conversation == null
+        ? null
+        : typingLine(
+            ref.watch(typingProvider.select((all) => all[widget.conversationId])),
+            group: conversation.isGroup,
+            names: state.names,
+          );
+    final newSinceAway = _away
+        ? state.messages.where((m) => !m.isPending && m.seq > _awaySeq && m.sender?.id != myId).length
+        : 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7EDE4),
@@ -237,28 +367,35 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                     : () => openProfile(context, ref, conversation.otherUser!.id),
                 behavior: HitTestBehavior.opaque,
                 child: Row(
-                children: [
-                  conversationAvatar(conversation, radius: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(conversation.name,
-                            maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleMedium),
-                        if (conversation.isGroup || conversation.muted)
-                          Text(
-                            [
-                              if (conversation.isGroup) '${conversation.memberCount} members',
-                              if (conversation.muted) 'Muted',
-                            ].join(' · '),
-                            style: text.bodySmall?.copyWith(fontSize: 12.5),
-                          ),
-                      ],
+                  children: [
+                    conversationAvatar(conversation, radius: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(conversation.name,
+                              maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleMedium),
+                          if (typing != null)
+                            Text(
+                              typing,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.bodySmall?.copyWith(fontSize: 12.5, color: Palette.primary),
+                            )
+                          else if (conversation.isGroup || conversation.muted)
+                            Text(
+                              [
+                                if (conversation.isGroup) '${conversation.memberCount} members',
+                                if (conversation.muted) 'Muted',
+                              ].join(' · '),
+                              style: text.bodySmall?.copyWith(fontSize: 12.5),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
               ),
         actions: [
           if (conversation != null && !conversation.awaitsMe)
@@ -296,7 +433,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
             ),
           if (conversation?.servicePostId != null) _AboutService(postId: conversation!.servicePostId!),
           if (conversation?.listingId != null) _AboutListing(listingId: conversation!.listingId!),
-          Expanded(child: _messages(state, myId)),
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(child: _messages(state, myId)),
+                if (_away)
+                  Positioned(
+                    right: 12,
+                    bottom: 12,
+                    child: _JumpToLatest(count: newSinceAway, onTap: _jumpToLatest),
+                  ),
+              ],
+            ),
+          ),
           if (conversation != null) _bottom(conversation, state, myId),
         ],
       ),
@@ -338,9 +487,29 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       );
     }
 
-    // The newest message of mine they have seen carries "Read".
-    final seenSeq = messages.lastWhere((m) => _controller.seen(m), orElse: () => messages.first);
-    final readMarker = _controller.seen(seenSeq) ? seenSeq.id : null;
+    final conversation = state.conversation;
+    final canReply = conversation != null && _canWrite(conversation, state, myId);
+    final byId = {for (final m in messages) if (m.id.isNotEmpty) m.id: m};
+    // "Unread messages" goes above the first message from someone else that
+    // was unread when the chat opened.
+    final unreadFrom = state.unreadFrom;
+    final firstUnread = unreadFrom == null
+        ? null
+        : messages
+            .where((m) => !m.isPending && !m.isSystem && m.seq >= unreadFrom && m.sender?.id != myId)
+            .firstOrNull;
+
+    bool sameRun(Message? a, Message b) =>
+        a != null &&
+        !a.isSystem &&
+        a.sender?.id == b.sender?.id &&
+        b.createdAt.difference(a.createdAt).abs() < _runGap &&
+        dayLabel(a.createdAt) == dayLabel(b.createdAt);
+
+    String whoWrote(Message message) {
+      if (message.sender?.id == myId) return 'You';
+      return message.sender?.displayName ?? state.names[message.sender?.id] ?? 'Someone';
+    }
 
     // Bottom-up: index 0 is the newest message.
     return ListView.builder(
@@ -357,25 +526,50 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         }
         final message = messages[messages.length - 1 - index];
         final older = index + 1 < messages.length ? messages[messages.length - 2 - index] : null;
+        final newer = index > 0 ? messages[messages.length - index] : null;
         final newDay = older == null || dayLabel(older.createdAt) != dayLabel(message.createdAt);
         final mine = message.sender?.id == myId;
-        final showName = state.conversation?.isGroup == true &&
-            !mine &&
-            !message.isSystem &&
-            (older == null || older.sender?.id != message.sender?.id || newDay);
+        final runsOn = !message.isSystem && sameRun(older, message) && message != firstUnread;
+        final runContinues = !message.isSystem &&
+            newer != null &&
+            !newer.isSystem &&
+            newer != firstUnread &&
+            sameRun(message, newer);
+        final showName = conversation?.isGroup == true && !mine && !message.isSystem && !runsOn;
+        final quoted = message.replyTo == null ? null : byId[message.replyTo!.id];
+        final key = message.id.isEmpty ? null : _keys.putIfAbsent(message.id, GlobalKey.new);
+
+        final bubble = _Bubble(
+          message: message,
+          mine: mine,
+          senderName: showName ? message.sender?.displayName : null,
+          read: _controller.seen(message),
+          tail: !runContinues,
+          flashed: message.id == _flashed,
+          quote: message.replyTo == null
+              ? null
+              : _Quote(
+                  author: quoted == null ? null : whoWrote(quoted),
+                  snippet: quoted == null ? 'An earlier message' : replySnippet(quoted),
+                  onMine: mine,
+                  onTap: quoted == null ? null : () => _scrollTo(quoted.id),
+                ),
+          onLongPress: () => _messageMenu(message, mine: mine, canReply: canReply),
+        );
         return Column(
+          key: key,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (newDay) _DayChip(dayLabel(message.createdAt)),
+            if (message == firstUnread) const _UnreadLine(),
             if (message.isSystem)
               _SystemLine(systemText(message.system, names: state.names))
             else
-              _Bubble(
-                message: message,
-                mine: mine,
-                senderName: showName ? message.sender?.displayName : null,
-                read: message.id == readMarker,
-                onLongPress: () => _messageMenu(message, mine: mine),
+              Padding(
+                padding: EdgeInsets.only(top: runsOn ? 0 : 4),
+                child: canReply && !message.isPending && !message.deleted
+                    ? _SwipeToReply(onReply: () => _reply(message), child: bubble)
+                    : bubble,
               ),
           ],
         );
@@ -430,8 +624,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         ],
       );
     }
-    final waiting = conversation.isRequestSent && state.messages.any((m) => m.sender?.id == myId && !m.isPending);
-    if (waiting) {
+    if (!_canWrite(conversation, state, myId)) {
       return _Panel(
         children: [
           Text(
@@ -442,6 +635,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         ],
       );
     }
+    final replyTo = _replyTo;
     return SafeArea(
       top: false,
       child: Container(
@@ -450,38 +644,258 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           color: Palette.surface,
           border: Border(top: BorderSide(color: Palette.line)),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              onPressed: _sendPhoto,
-              tooltip: 'Send a photo',
-              style: IconButton.styleFrom(backgroundColor: Palette.cream),
-              icon: Icon(Icons.image_outlined, color: Palette.ink),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: TextField(
-                controller: _text,
-                minLines: 1,
-                maxLines: 5,
-                maxLength: 20000,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  hintText: 'Message',
-                  counterText: '',
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
+            if (replyTo != null)
+              _ReplyBar(
+                author: replyTo.sender?.id == myId ? 'yourself' : (replyTo.sender?.displayName ?? 'Someone'),
+                snippet: replySnippet(replyTo),
+                onCancel: () => setState(() => _replyTo = null),
               ),
-            ),
-            const SizedBox(width: 6),
-            IconButton.filled(
-              onPressed: _send,
-              tooltip: 'Send',
-              style: IconButton.styleFrom(backgroundColor: Palette.primary),
-              icon: const Icon(Icons.arrow_forward_rounded, color: Palette.onPrimary),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                IconButton(
+                  onPressed: _attach,
+                  tooltip: 'Send a photo',
+                  style: IconButton.styleFrom(backgroundColor: Palette.cream),
+                  icon: Icon(Icons.add_photo_alternate_outlined, color: Palette.ink),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: TextField(
+                    controller: _text,
+                    focusNode: _focus,
+                    minLines: 1,
+                    maxLines: 5,
+                    maxLength: 20000,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      hintText: 'Message',
+                      counterText: '',
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                IconButton.filled(
+                  onPressed: _send,
+                  tooltip: 'Send',
+                  style: IconButton.styleFrom(
+                    backgroundColor: _hasText ? Palette.primary : Palette.lineStrong,
+                  ),
+                  icon: const Icon(Icons.send_rounded, color: Palette.onPrimary, size: 20),
+                ),
+              ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Drag a message to the right to answer it.
+class _SwipeToReply extends StatefulWidget {
+  const _SwipeToReply({required this.onReply, required this.child});
+
+  final VoidCallback onReply;
+  final Widget child;
+
+  @override
+  State<_SwipeToReply> createState() => _SwipeToReplyState();
+}
+
+class _SwipeToReplyState extends State<_SwipeToReply> {
+  static const _trigger = 56.0;
+  double _dx = 0;
+  bool _dragging = false;
+  bool _armed = false;
+
+  void _reset() => setState(() {
+        _dx = 0;
+        _dragging = false;
+        _armed = false;
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onHorizontalDragStart: (_) => setState(() => _dragging = true),
+      onHorizontalDragUpdate: (details) {
+        setState(() => _dx = (_dx + details.delta.dx).clamp(0.0, 76.0));
+        if (!_armed && _dx >= _trigger) {
+          _armed = true;
+          HapticFeedback.selectionClick();
+        } else if (_armed && _dx < _trigger) {
+          _armed = false;
+        }
+      },
+      onHorizontalDragEnd: (_) {
+        if (_armed) widget.onReply();
+        _reset();
+      },
+      onHorizontalDragCancel: _reset,
+      child: Stack(
+        alignment: Alignment.centerLeft,
+        children: [
+          Opacity(
+            opacity: (_dx / _trigger).clamp(0.0, 1.0),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: CircleAvatar(
+                radius: 15,
+                backgroundColor: Palette.surface,
+                child: Icon(Icons.reply_rounded, size: 18, color: Palette.inkSoft),
+              ),
+            ),
+          ),
+          AnimatedContainer(
+            duration: _dragging ? Duration.zero : const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            transform: Matrix4.translationValues(_dx, 0, 0),
+            child: widget.child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Above the box: the message being answered, and a way to stop.
+class _ReplyBar extends StatelessWidget {
+  const _ReplyBar({required this.author, required this.snippet, required this.onCancel});
+
+  final String author;
+  final String snippet;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(4, 0, 0, 8),
+      padding: const EdgeInsets.fromLTRB(10, 6, 0, 6),
+      decoration: BoxDecoration(
+        color: Palette.cream,
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: Palette.primary, width: 3)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Replying to $author',
+                    style: TextStyle(color: Palette.primaryDark, fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(snippet,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Palette.inkSoft, fontSize: 13.5)),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Cancel reply',
+            onPressed: onCancel,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.close_rounded, size: 20, color: Palette.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Inside a bubble: the message it answers.
+class _Quote extends StatelessWidget {
+  const _Quote({required this.author, required this.snippet, required this.onMine, this.onTap});
+
+  final String? author;
+  final String snippet;
+  final bool onMine;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = onMine ? Palette.onPrimary : Palette.ink;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
+        decoration: BoxDecoration(
+          color: onMine ? const Color(0x33FFFFFF) : Palette.cream,
+          borderRadius: BorderRadius.circular(8),
+          border: Border(left: BorderSide(color: onMine ? Palette.onPrimary : Palette.primary, width: 3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (author != null)
+              Text(author!,
+                  style: TextStyle(
+                    color: onMine ? Palette.onPrimary : Palette.primaryDark,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  )),
+            Text(snippet,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: ink.withValues(alpha: 0.85), fontSize: 13.5, height: 1.3)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UnreadLine extends StatelessWidget {
+  const _UnreadLine();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: Palette.primary.withValues(alpha: 0.4))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text('Unread messages',
+                style: TextStyle(color: Palette.primaryDark, fontSize: 12, fontWeight: FontWeight.w600)),
+          ),
+          Expanded(child: Divider(color: Palette.primary.withValues(alpha: 0.4))),
+        ],
+      ),
+    );
+  }
+}
+
+/// Back to the newest message, with how many arrived meanwhile.
+class _JumpToLatest extends StatelessWidget {
+  const _JumpToLatest({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Badge(
+      isLabelVisible: count > 0,
+      label: Text(count > 99 ? '99+' : '$count'),
+      backgroundColor: Palette.primary,
+      child: Material(
+        color: Palette.surface,
+        shape: const CircleBorder(),
+        elevation: 3,
+        child: IconButton(
+          tooltip: 'Newest messages',
+          onPressed: onTap,
+          icon: Icon(Icons.keyboard_double_arrow_down_rounded, color: Palette.ink),
         ),
       ),
     );
@@ -709,14 +1123,24 @@ class _Bubble extends StatelessWidget {
     required this.message,
     required this.mine,
     required this.read,
+    required this.tail,
     required this.onLongPress,
+    this.flashed = false,
     this.senderName,
+    this.quote,
   });
 
   final Message message;
   final bool mine;
+
+  /// Mine, and the other person has read it.
   final bool read;
+
+  /// The last of a run from one person: it gets the pointed corner.
+  final bool tail;
+  final bool flashed;
   final String? senderName;
+  final Widget? quote;
   final VoidCallback onLongPress;
 
   @override
@@ -724,10 +1148,25 @@ class _Bubble extends StatelessWidget {
     final failed = message.sendState == SendState.failed;
     final ink = mine ? Palette.onPrimary : Palette.ink;
     final metaInk = mine ? const Color(0xFFF8D3C3) : Palette.muted;
+    final metaStyle = TextStyle(color: failed ? _onFailed : metaInk, fontSize: 11);
     final meta = switch (message.sendState) {
-      SendState.sending => 'Sending…',
-      SendState.failed => message.refused ? 'Not sent' : 'Not sent · tap for options',
-      SendState.sent => read ? '${clockTime(message.createdAt)} · Read' : clockTime(message.createdAt),
+      SendState.sending => Text('Sending…', style: metaStyle),
+      SendState.failed => Text(message.refused ? 'Not sent' : 'Not sent · tap for options', style: metaStyle),
+      SendState.sent => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(clockTime(message.createdAt), style: metaStyle),
+            if (mine && !message.deleted) ...[
+              const SizedBox(width: 3),
+              Icon(
+                read ? Icons.done_all_rounded : Icons.done_rounded,
+                size: 15,
+                color: read ? Palette.onPrimary : metaInk,
+                semanticLabel: read ? 'Read' : 'Sent',
+              ),
+            ],
+          ],
+        ),
     };
 
     Widget content;
@@ -750,56 +1189,71 @@ class _Bubble extends StatelessWidget {
         ),
       );
     } else {
-      content = Text(message.body ?? '', style: TextStyle(color: ink, fontSize: 15, height: 1.35));
+      final style = TextStyle(color: ink, fontSize: 15, height: 1.35);
+      // Links only once sent: tapping a failed message opens its options.
+      content = message.isPending
+          ? Text(message.body ?? '', style: style)
+          : MessageText(message.body ?? '', style: style, linkColor: mine ? Palette.onPrimary : Palette.primaryDark);
     }
 
+    const round = Radius.circular(16);
+    const pointed = Radius.circular(4);
+    final colour = failed ? const Color(0xFFE8A28C) : (mine ? Palette.primary : Palette.surface);
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Material(
-            color: failed ? const Color(0xFFE8A28C) : (mine ? Palette.primary : Palette.surface),
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(mine ? 16 : 4),
-              bottomRight: Radius.circular(mine ? 4 : 16),
+          padding: const EdgeInsets.symmetric(vertical: 1.5),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: flashed ? [BoxShadow(color: Palette.primary.withValues(alpha: 0.45), blurRadius: 12)] : null,
             ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onLongPress: onLongPress,
-              onTap: failed ? onLongPress : null,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (senderName != null)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 2),
-                          child: Text(senderName!,
-                              style: TextStyle(
-                                  color: Palette.primaryDark, fontSize: 13, fontWeight: FontWeight.w600)),
+            child: Material(
+              color: colour,
+              borderRadius: BorderRadius.only(
+                topLeft: round,
+                topRight: round,
+                bottomLeft: mine || !tail ? round : pointed,
+                bottomRight: mine && tail ? pointed : round,
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onLongPress: onLongPress,
+                onTap: failed ? onLongPress : null,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (senderName != null)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(senderName!,
+                                style: TextStyle(
+                                    color: Palette.primaryDark, fontSize: 13, fontWeight: FontWeight.w600)),
+                          ),
                         ),
-                      ),
-                    Align(alignment: Alignment.centerLeft, widthFactor: 1, child: content),
-                    const SizedBox(height: 3),
-                    Text(meta, style: TextStyle(color: failed ? _onFailed : metaInk, fontSize: 11)),
-                    // Why it wasn't sent, from the server, on the message itself.
-                    if (failed && message.error != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        message.error!,
-                        textAlign: TextAlign.end,
-                        style: const TextStyle(color: _onFailed, fontSize: 12.5, height: 1.3),
-                      ),
+                      ?quote,
+                      Align(alignment: Alignment.centerLeft, widthFactor: 1, child: content),
+                      const SizedBox(height: 3),
+                      meta,
+                      // Why it wasn't sent, from the server, on the message itself.
+                      if (failed && message.error != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          message.error!,
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(color: _onFailed, fontSize: 12.5, height: 1.3),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),

@@ -19,6 +19,14 @@ re-checked every few heartbeats in case that event was missed.
 sequence number; the client fetches the message itself. That way a missed event
 and a reconnect are handled by the same code — fetch after the last seq held.
 
+**"Typing…"** (decision P.2). A client sends `{"type": "typing",
+"conversation_id": ...}` while its person types, and the other members hear
+`conversation.typing` with the conversation and who. Only clients that asked,
+with `{"type": "subscribe", "events": ["conversation.typing"]}`, are sent it:
+apps from before it would take every such event as a reason to re-fetch the
+conversation. Relayed at most every couple of seconds per conversation, only in
+accepted conversations, never stored.
+
 **Close codes:** 4401 not (or no longer) authenticated, 4403 account banned,
 1008 too many frames, 1013 the client fell too far behind and should reconnect.
 """
@@ -42,9 +50,10 @@ from starlette.websockets import WebSocketState
 from app.core.config import Settings, get_settings
 from app.core.db import session_scope
 from app.core.errors import ForbiddenError, UnauthenticatedError
-from app.core.realtime import SESSION_REVOKED, get_hub, mark_offline, mark_online
+from app.core.realtime import SESSION_REVOKED, get_hub, mark_offline, mark_online, publish
 from app.core.redis import get_redis
 from app.modules.auth.dependencies import BEARER_PREFIX, Authenticated, authenticate_access_token
+from app.modules.messaging import service as messaging_service
 from app.modules.users.service import touch_last_active
 
 logger = logging.getLogger(__name__)
@@ -62,6 +71,15 @@ reconnecting and syncing than by the server holding its backlog."""
 
 FRAMES_PER_MINUTE = 120
 SESSION_RECHECK_TICKS = 4
+
+TYPING_EVENT = "conversation.typing"
+OPTIONAL_EVENTS = frozenset({TYPING_EVENT})
+"""Sent only to clients that subscribed to them."""
+TYPING_MIN_INTERVAL_SECONDS = 2.0
+"""A person typing is relayed at most this often per conversation."""
+TYPING_AUDIENCE_TTL_SECONDS = 30.0
+"""Who hears a conversation's "typing…" is looked up at most this often."""
+TYPING_CACHE_LIMIT = 64
 
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
@@ -93,9 +111,15 @@ class SocketConnection:
         self.expires_at = authenticated.claims.expires_at
         self._queue: asyncio.Queue[dict[str, Any] | _Close] = asyncio.Queue(SEND_QUEUE_SIZE)
         self._closing = False
+        self.subscribed: set[str] = set()
+        self.typing_relayed: dict[uuid.UUID, float] = {}
+        self.typing_audience: dict[uuid.UUID, tuple[float, list[uuid.UUID]]] = {}
 
     def deliver(self, event: dict[str, Any]) -> None:
         if self._closing:
+            return
+        kind = event.get("type")
+        if kind in OPTIONAL_EVENTS and kind not in self.subscribed:
             return
         try:
             self._queue.put_nowait(event)
@@ -264,8 +288,63 @@ async def _reader(
             connection.deliver({"type": "pong", "data": {}})
         elif kind == "auth":
             await _reauthenticate(connection, frame, session_factory, settings)
+        elif kind == "subscribe":
+            _subscribe(connection, frame)
+        elif kind == "typing":
+            await _relay_typing(connection, frame, session_factory)
         else:
             connection.deliver({"type": "error", "data": {"code": "unknown_frame"}})
+
+
+def _subscribe(connection: SocketConnection, frame: dict[str, Any]) -> None:
+    """`{"type": "subscribe", "events": [...]}`: opt in to optional events."""
+    events = frame.get("events")
+    if not isinstance(events, list):
+        connection.deliver({"type": "error", "data": {"code": "invalid_frame"}})
+        return
+    connection.subscribed |= {event for event in events if event in OPTIONAL_EVENTS}
+
+
+async def _relay_typing(
+    connection: SocketConnection, frame: dict[str, Any], session_factory: SessionFactory
+) -> None:
+    """`{"type": "typing", "conversation_id": ...}`: tell the other members.
+
+    Throttled per conversation, and the audience is cached briefly, so a fast
+    typist costs a database query every half minute at most, not per key.
+    """
+    try:
+        conversation_id = uuid.UUID(str(frame.get("conversation_id")))
+    except ValueError:
+        connection.deliver({"type": "error", "data": {"code": "invalid_frame"}})
+        return
+    now = time.monotonic()
+    last = connection.typing_relayed.get(conversation_id)
+    if last is not None and now - last < TYPING_MIN_INTERVAL_SECONDS:
+        return
+    if len(connection.typing_relayed) >= TYPING_CACHE_LIMIT:
+        connection.typing_relayed.clear()
+        connection.typing_audience.clear()
+    connection.typing_relayed[conversation_id] = now
+
+    cached = connection.typing_audience.get(conversation_id)
+    if cached is not None and cached[0] > now:
+        recipients = cached[1]
+    else:
+        async with session_factory() as session:
+            recipients = await messaging_service.typing_audience(
+                session, user_id=connection.user_id, conversation_id=conversation_id
+            )
+        connection.typing_audience[conversation_id] = (
+            now + TYPING_AUDIENCE_TTL_SECONDS,
+            recipients,
+        )
+    if recipients:
+        await publish(
+            recipients,
+            TYPING_EVENT,
+            {"conversation_id": str(conversation_id), "user_id": str(connection.user_id)},
+        )
 
 
 async def _reauthenticate(

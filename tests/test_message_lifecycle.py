@@ -325,6 +325,8 @@ async def test_a_message_rings_every_member_after_commit(
         "conversation_id": conversation_id,
         "seq": sent["seq"],
         "message_id": sent["id"],
+        # So "typing…" for the sender can stop at once (decision P.2).
+        "sender_id": str(first.id),
     }
     # The sender's other devices hear about it too.
     await own_device.wait_for("message.created")

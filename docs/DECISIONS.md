@@ -3781,3 +3781,52 @@ someone's listing never reaches that person.
 **Reasoning.** The product owner asked for both. Deletion has to stay findable
 in the app (the Play Store requires it), so it moved down a level rather than
 going away.
+
+### P.2 A fuller inbox: search, filters, replies and "typing…" (2026-11-28)
+
+**Context.** The product owner asked to improve the chats inbox, its features
+and its look.
+
+**Choice.**
+- **The inbox:**
+  - Search, behind an icon so the list keeps its room, over names and each
+    chat's last message. It searches the chats already loaded, without asking
+    the server.
+  - Chips instead of the two-way switch: All, Unread, Groups (only when there
+    are any) and Requests. Unread and Requests show their counts.
+  - Each row gives the clock time today, then "Yesterday", the weekday or the
+    date. An unread chat is in bold, my last message has ✓ or ✓✓ once read,
+    and a group's preview says who wrote ("Wanjiku: …"). Icons mark a photo
+    and a chat about a listing or a service.
+  - A long press offers Mark as read, Mute or Unmute, and View profile.
+- **A conversation:**
+  - **Replies:** swipe a message to the right, or long-press and choose
+    Reply. The bubble shows what it answers, and tapping that scrolls to the
+    original. The server already kept `reply_to`; the app now uses it.
+  - Messages from one person within five minutes run together, and only the
+    last has the pointed corner.
+  - ✓ when sent, ✓✓ once read: direct chats only, as before.
+  - Web addresses and Kenyan phone numbers are tappable, once a message is
+    sent.
+  - The photo button offers the camera or the gallery.
+  - A button back to the newest message appears when scrolled up, counting
+    what arrived meanwhile.
+  - An "Unread messages" line sits above what was unread on opening.
+- **"typing…"**, in the chat's header and on its inbox row:
+  - The app sends a `typing` frame on the socket at most every three seconds
+    while someone types.
+  - The server relays it as `conversation.typing` to the other members,
+    looking up who at most every 30 seconds. It is never stored.
+  - It only does so in accepted conversations, less anyone blocked either
+    way. Like a read receipt, it would otherwise tell the sender of a request
+    that it was opened.
+  - It is sent only to sockets that `subscribe` to it. Older apps would take
+    each one as a reason to re-fetch the conversation.
+  - `message.created` now says who sent it, so the line stops as the message
+    lands; otherwise it fades after six seconds.
+
+**Not done, on purpose:**
+- **Archiving or deleting a chat for oneself.** It needs a place on the
+  server for "hidden until something new", and nobody has asked yet.
+- **Starting a group chat from the inbox.** The API has it, but who may
+  start one is a product question.

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -16,6 +17,10 @@ class RealtimeEvent {
   /// Sent by the client itself each time a connection is (re)established, so
   /// listeners can catch up on anything missed while it was down.
   static const connected = 'ready';
+
+  /// Someone in a conversation is typing (decision P.2). Live only: nothing to
+  /// fetch.
+  static const typing = 'conversation.typing';
 
   final String type;
   final Map<String, dynamic> data;
@@ -155,7 +160,14 @@ class RealtimeClient {
         _scheduleRenewal(data['expires_at']);
         // A `ready` also answers each renewal; only a new connection means
         // there may be something to catch up on.
-        if (!wasConnected) _events.add(RealtimeEvent(RealtimeEvent.connected, data));
+        if (!wasConnected) {
+          // The server sends "typing…" only to apps that ask for it.
+          _send({
+            'type': 'subscribe',
+            'events': [RealtimeEvent.typing],
+          });
+          _events.add(RealtimeEvent(RealtimeEvent.connected, data));
+        }
       case 'pong':
         break;
       default:
@@ -173,6 +185,20 @@ class RealtimeClient {
     if (code == closeUnauthenticated) _renewFirst = true;
     _scheduleRetry();
   }
+
+  /// Tells the others in [conversationId] that I am typing. Call as often as
+  /// keys are pressed: it goes at most every [typingInterval].
+  void typing(String conversationId) {
+    if (!connected.value) return;
+    final now = clock.now();
+    final last = _typingSent[conversationId];
+    if (last != null && now.difference(last) < typingInterval) return;
+    _typingSent[conversationId] = now;
+    _send({'type': 'typing', 'conversation_id': conversationId});
+  }
+
+  static const typingInterval = Duration(seconds: 3);
+  final _typingSent = <String, DateTime>{};
 
   void _send(Map<String, dynamic> frame) {
     try {
